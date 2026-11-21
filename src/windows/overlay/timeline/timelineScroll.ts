@@ -1,3 +1,5 @@
+import { traceMethod } from "./historyProbe";
+
 type ScrollIntent =
   | { kind: "down" | "pointer"; top: number }
   | { kind: "scrollbar"; top: number; range: number };
@@ -17,6 +19,8 @@ export class TimelineScroll {
   private pointerInterruptedGlide = false;
 
   pointerDown(element: HTMLElement, scrollbar = false) {
+    traceMethod("pointerDown", "enter", this.following, this.userScrolling, element);
+    try {
     this.pointerInterruptedGlide = this.smoothFollowing;
     if (this.pointerInterruptedGlide) {
       // Freeze automatic movement before attributing any scroll to a pointer.
@@ -25,13 +29,25 @@ export class TimelineScroll {
       this.move(element, element.scrollTop, "instant");
     }
     this.userIntent(element, scrollbar ? "scrollbar" : "pointer");
+
+    } finally {
+      traceMethod("pointerDown", "exit", this.following, this.userScrolling, element);
+    }
   }
 
   pointerMove(element: HTMLElement) {
+    traceMethod("pointerMove", "enter", this.following, this.userScrolling, element);
+    try {
     if (this.userScrolling?.kind !== "scrollbar") this.userIntent(element);
+
+    } finally {
+      traceMethod("pointerMove", "exit", this.following, this.userScrolling, element);
+    }
   }
 
   pointerUp(element: HTMLElement) {
+    traceMethod("pointerUp", "enter", this.following, this.userScrolling, element);
+    try {
     const scrollbar = this.userScrolling?.kind === "scrollbar";
     // A quick release can precede the last scroll event from the browser.
     if (scrollbar) this.scrolled(element);
@@ -40,39 +56,67 @@ export class TimelineScroll {
     this.pointerInterruptedGlide = false;
     if (resume) this.contentChanged(element, "smooth");
     else if (scrollbar && this.following && !this.atTail(element)) this.contentChanged(element, "instant");
+
+    } finally {
+      traceMethod("pointerUp", "exit", this.following, this.userScrolling, element);
+    }
   }
 
   userIntent(element: HTMLElement, kind: ScrollIntent["kind"] = "pointer") {
+    traceMethod("userIntent", "enter", this.following, this.userScrolling, element);
+    try {
     this.smoothFollowing = false;
     this.readingStart = false;
     const top = element.scrollTop;
     this.userScrolling = kind === "scrollbar" ? { kind, top, range: maxScrollTop(element) } : { kind, top };
     this.rememberReading(element);
+
+    } finally {
+      traceMethod("userIntent", "exit", this.following, this.userScrolling, element);
+    }
   }
 
   endUserIntent() {
+    traceMethod("endUserIntent", "enter", this.following, this.userScrolling);
+    try {
     this.userScrolling = null;
+
+    } finally {
+      traceMethod("endUserIntent", "exit", this.following, this.userScrolling);
+    }
   }
 
   /** Enter full confirmed-history reading even if the compact rows do not
    * overflow yet, so an upward wheel/key can reveal a single long sentence. */
   beginReading(element: HTMLElement) {
+    traceMethod("beginReading", "enter", this.following, this.userScrolling, element);
+    try {
     this.pointerInterruptedGlide = false;
     this.smoothFollowing = false;
     this.readingStart = false;
     this.endUserIntent();
     this.following = false;
     this.rememberReading(element);
+
+    } finally {
+      traceMethod("beginReading", "exit", this.following, this.userScrolling, element);
+    }
   }
 
   /** Explicit Home outranks the old compact-row anchor while full rows finish
    * measuring. A new gesture releases it back to ordinary sentence reading. */
   readFromStart(element: HTMLElement) {
+    traceMethod("readFromStart", "enter", this.following, this.userScrolling, element);
+    try {
     this.beginReading(element);
     this.modeAnchor = false;
     this.readingStart = true;
     this.move(element, 0, "instant");
     this.rememberReading(element);
+
+    } finally {
+      traceMethod("readFromStart", "exit", this.following, this.userScrolling, element);
+    }
   }
 
   isFollowing(): boolean {
@@ -80,6 +124,8 @@ export class TimelineScroll {
   }
 
   followTail(element: HTMLElement) {
+    traceMethod("followTail", "enter", this.following, this.userScrolling, element);
+    try {
     this.endUserIntent();
     this.pointerInterruptedGlide = false;
     this.smoothFollowing = false;
@@ -88,14 +134,26 @@ export class TimelineScroll {
     this.reading = null;
     this.readingStart = false;
     this.move(element, element.scrollHeight, "instant");
+
+    } finally {
+      traceMethod("followTail", "exit", this.following, this.userScrolling, element);
+    }
   }
 
   /** Called only by a new downward gesture; short text may emit no scroll. */
   followIfAtTail(element: HTMLElement) {
+    traceMethod("followIfAtTail", "enter", this.following, this.userScrolling, element);
+    try {
     if (this.atTail(element)) this.followTail(element);
+
+    } finally {
+      traceMethod("followIfAtTail", "exit", this.following, this.userScrolling, element);
+    }
   }
 
   scrolled(element: HTMLElement) {
+    traceMethod("scrolled", "enter", this.following, this.userScrolling, element);
+    try {
     const atTail = this.atTail(element);
     if (atTail) this.smoothFollowing = false;
     const intent = this.userScrolling;
@@ -109,16 +167,28 @@ export class TimelineScroll {
     // Native layout/anchor corrections may emit scroll without user input.
     // Keep the actual visible anchor, but never use them to leave reading.
     if (!this.following) this.rememberReading(element);
+
+    } finally {
+      traceMethod("scrolled", "exit", this.following, this.userScrolling, element);
+    }
   }
 
   displayChanged(element: HTMLElement) {
+    traceMethod("displayChanged", "enter", this.following, this.userScrolling, element);
+    try {
     this.pointerInterruptedGlide = false;
     this.smoothFollowing = false;
     this.modeAnchor = true;
     this.reflow(element);
+
+    } finally {
+      traceMethod("displayChanged", "exit", this.following, this.userScrolling, element);
+    }
   }
 
   contentChanged(element: HTMLElement, behavior: ScrollBehavior, motionEnabled = true) {
+    traceMethod("contentChanged", "enter", this.following, this.userScrolling, element);
+    try {
     this.modeAnchor = false;
     if (!motionEnabled) this.pointerInterruptedGlide = false;
     if (this.following && (this.pointerInterruptedGlide || this.userScrolling?.kind === "scrollbar")) return;
@@ -128,9 +198,15 @@ export class TimelineScroll {
     this.smoothFollowing = this.following && followBehavior === "smooth" && !this.atTail(element);
     if (this.following) this.move(element, element.scrollHeight, followBehavior);
     else this.restoreReading(element);
+
+    } finally {
+      traceMethod("contentChanged", "exit", this.following, this.userScrolling, element);
+    }
   }
 
   reflow(element: HTMLElement) {
+    traceMethod("reflow", "enter", this.following, this.userScrolling, element);
+    try {
     if (!this.following) {
       this.restoreReading(element);
       return;
@@ -144,6 +220,10 @@ export class TimelineScroll {
     // Retarget it instead of snapping to the final tail.
     if (this.atTail(element)) this.smoothFollowing = false;
     this.move(element, top, this.smoothFollowing ? "smooth" : "instant");
+
+    } finally {
+      traceMethod("reflow", "exit", this.following, this.userScrolling, element);
+    }
   }
 
   private rememberReading(element: HTMLElement) {
@@ -185,6 +265,8 @@ export class TimelineScroll {
   }
 
   private syncScrollPosition(element: HTMLElement) {
+    traceMethod("syncScrollPosition", "enter", this.following, this.userScrolling, element);
+    try {
     // Native thumb drags can send many scroll events without a pointermove.
     // Retain only that gesture, rebasing it after our own moves and reflows.
     if (this.userScrolling?.kind === "scrollbar") {
@@ -192,6 +274,10 @@ export class TimelineScroll {
       this.userScrolling.range = maxScrollTop(element);
     } else {
       this.endUserIntent();
+    }
+
+    } finally {
+      traceMethod("syncScrollPosition", "exit", this.following, this.userScrolling, element);
     }
   }
 

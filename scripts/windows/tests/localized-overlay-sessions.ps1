@@ -5,17 +5,39 @@ function Invoke-LocalizedOverlaySession([hashtable]$Preferences, [string]$Eviden
         throw 'The previous test process must exit before a fresh locale is started.'
     }
     Reset-SmokeFrontendMarkers $frontendReadyDir
+    $historyTrace = $OverlayInteraction -eq 'caption-history'
+    if ($historyTrace) {
+        foreach ($name in @('history-pointer-probe-enabled', 'history-pointer-probe-ready', 'history-pointer-probe.jsonl')) {
+            Remove-Item -LiteralPath (Join-Path $frontendReadyDir $name) -Force -ErrorAction SilentlyContinue
+        }
+        [IO.File]::WriteAllBytes((Join-Path $frontendReadyDir 'history-pointer-probe-enabled'), [byte[]]@())
+    }
     Remove-Item -LiteralPath $sessionStateFile, $settingsActivationFile -Force -ErrorAction SilentlyContinue
     $Preferences | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $preferencesDir 'preferences.json') -Encoding utf8NoBOM
     $primary = Start-Process -FilePath $resolvedExecutable -PassThru
     try {
         Wait-SmokeFrontendReady $primary $frontendReadyDir
+        if ($historyTrace) {
+            $traceReady = Join-Path $frontendReadyDir 'history-pointer-probe-ready'
+            $deadline = [Diagnostics.Stopwatch]::StartNew()
+            while ((Read-SmokeMarker $traceReady) -ne 'ready' -and $deadline.ElapsedMilliseconds -lt 5000) {
+                if ($primary.HasExited) { throw 'History trace app exited before its observer was ready.' }
+                Start-Sleep -Milliseconds 25
+            }
+            if ((Read-SmokeMarker $traceReady) -ne 'ready') { throw 'History metadata observer was not ready within 5000ms.' }
+        }
         $settingsWindow = [MimiWindowSmoke]::FindUniqueWindow([uint32]$primary.Id, 'mimi UI test settings')
         if ($settingsWindow -eq [IntPtr]::Zero) { throw 'The mounted Settings window could not be identified.' }
         Invoke-OverlayInteractionProbe $primary $settingsWindow $OverlayInteraction 60000 -EvidencePath $EvidencePath -Locale $Preferences.ui_language
     }
     finally {
         Stop-SmokeProcess $primary
+        if ($historyTrace) {
+            $trace = Join-Path $frontendReadyDir 'history-pointer-probe.jsonl'
+            if (Test-Path -LiteralPath $trace -PathType Leaf) {
+                Copy-Item -LiteralPath $trace -Destination (Join-Path $EvidencePath 'history-pointer-probe.jsonl') -Force
+            }
+        }
         if (-not $primary.HasExited) { throw 'The fixture is still running; the next language cannot start.' }
         $primary.Dispose()
     }

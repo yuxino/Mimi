@@ -3,6 +3,7 @@
 //! Handlers live with their product concern. `lib.rs` registers their explicit
 //! module paths; payload names used by native publishers remain stable here.
 
+mod windows_history_probe;
 pub(crate) mod app;
 pub(crate) mod apple_resources;
 pub(crate) mod connection;

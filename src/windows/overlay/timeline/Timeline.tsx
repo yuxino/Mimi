@@ -4,6 +4,7 @@ import { subtitleFontFamily } from "../../../lib/subtitles/subtitleFont";
 import { IMMERSIVE_TEXT_SHADOW, subtitleLineHeight, subtitleTextStyle } from "../../../lib/subtitles/subtitleTypography";
 import type { SettingsSnapshot, SubtitleAlignment, SubtitleColor } from "../../../lib/types";
 import { observeTimelineResize } from "./timelineResize";
+import { traceReact } from "./historyProbe";
 import { hitsVerticalScrollbar } from "../interaction/overlayContentDrag";
 import { TimelineScroll } from "./timelineScroll";
 import { Icon } from "../../../components/Icon";
@@ -123,9 +124,10 @@ export const Timeline = memo(function Timeline({
 
   useEffect(() => {
     // A thumb can be released outside this viewport, before its last scroll event.
-    const release = () => {
+    const release = (event: Event) => {
       const element = containerRef.current;
       if (!element) return;
+      traceReact(event, element);
       const wasFollowing = scroll.isFollowing();
       scroll.pointerUp(element);
       if (wasFollowing !== scroll.isFollowing()) setReadingHistory(!scroll.isFollowing());
@@ -221,11 +223,15 @@ export const Timeline = memo(function Timeline({
       onTouchEnd={() => { touchStartYRef.current = null; scroll.endUserIntent(); }}
       onTouchCancel={() => { touchStartYRef.current = null; scroll.endUserIntent(); }}
       onPointerDown={(event) => {
+        traceReact(event.nativeEvent, event.currentTarget);
         const scrollbar = event.target === event.currentTarget && event.pointerType === "mouse" &&
           event.button === 0 && event.isPrimary !== false && hitsVerticalScrollbar(event.currentTarget, event.clientX);
         scroll.pointerDown(event.currentTarget, scrollbar);
       }}
-      onPointerMove={(event) => { if (event.buttons !== 0) scroll.pointerMove(event.currentTarget); }}
+      onPointerMove={(event) => { if (event.buttons !== 0) {
+        traceReact(event.nativeEvent, event.currentTarget);
+        scroll.pointerMove(event.currentTarget);
+      } }}
       onKeyDown={(event) => {
         if (event.key === "Home") {
           event.preventDefault();
