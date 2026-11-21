@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Instrumentation
 import android.app.NotificationManager
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.Build
@@ -27,6 +28,7 @@ import app.yuxino.mimi.android.provider.ServiceConfiguration
 import app.yuxino.mimi.android.provider.ServiceProvider
 import app.yuxino.mimi.android.settings.SettingsStore
 import java.io.File
+import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
@@ -37,6 +39,12 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
     private val host get() = (context.applicationContext as MimiApplication).captionShortcuts
     private val notifications = context.getSystemService(NotificationManager::class.java)
     private val consent = PlaybackCaptureChecks(test)
+    private val tileTitles by lazy {
+        InterfaceLanguage.tags.filter(String::isNotEmpty).mapTo(mutableSetOf()) { tag ->
+            val locale = Configuration(context.resources.configuration).apply { setLocale(Locale.forLanguageTag(tag)) }
+            context.createConfigurationContext(locale).getString(R.string.shortcut_tile_label)
+        }
+    }
     private var stage = "prepare"
     private var evidence: File? = null
 
@@ -186,9 +194,13 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
             if (profile != null) {
                 if (MimiService.isRunning) onMain { context.startService(MimiService.stopIntent(context)) }
                 await { !MimiService.isRunning && !MimiService.isStopping }
-                onMain { check(SettingsStore.deleteProfile(context, checkNotNull(profile))) }
+                onMain {
+                    host.showEdge = true
+                    check(SettingsStore.deleteProfile(context, checkNotNull(profile)))
+                }
             }
             onMain { MimiService.setCaptureEngineForTests(context, null) }
+            shell("cmd statusbar collapse")
         }
         val error = result.exceptionOrNull() ?: cleanup.exceptionOrNull()
         test.finish(if (error == null) Activity.RESULT_OK else Activity.RESULT_CANCELED, Bundle().apply {
@@ -341,7 +353,9 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
         // The compact shade also exposes tile_label before the expanded pager accepts input.
         await { pager() != null && page() != null }
         val name = label(R.string.shortcut_tile_label)
-        fun tileVisible() = systemNode { it.text?.toString() == name } != null
+        // SystemUI may first draw the previous language on this page while the tile service binds.
+        // Stay on the installed tile's page; tapSystem still waits for the exact current language.
+        fun tileVisible() = systemNode { it.text?.toString() in tileTitles } != null
         // SystemUI retains its last page. Navigate the actual pager and wait for each settled page.
         for (direction in listOf(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)) {
             while (!tileVisible()) {
