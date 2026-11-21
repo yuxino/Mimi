@@ -2,6 +2,8 @@
 function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) {
     $scope = [System.Windows.Automation.TreeScope]::Descendants
     $type = [System.Windows.Automation.ControlType]
+    $observation=$null
+    . (Join-Path $PSScriptRoot 'panel-drag-observation.ps1')
     $metadata = [ordered]@{ scenario = 'panel-blank-horizontal-drag'; locale = $Labels.locale; fullWindows = [MimiCaptionDragDesktop]::FullWindows() }
     [void][IO.Directory]::CreateDirectory($EvidencePath)
     function Wait-BlankPanel([string]$Stage, [scriptblock]$Observe) {
@@ -203,6 +205,8 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
         $metadata.patch=@{width=9;height=9;min=$range.Minimum;max=$range.Maximum}
         $metadata.visibleBlank.nativeForegroundOwned=[MimiPanelKeyboard]::OwnsFocus($Controls)
         if (-not $metadata.visibleBlank.nativeForegroundOwned) { throw 'The isolated control window does not own native foreground and focus.' }
+        $observation=Start-PanelDragObservation $overlay $Controls $EvidencePath
+        $observation.Observer.Mark('move-to-blank')
         [MimiPointerSmoke]::MoveOverWindow($Controls,$point.X,$point.Y,'Hold verified panel blank space')
         $metadata.point=@($point.X,$point.Y);$metadata.before=Read-BlankGeometry
         Start-Sleep -Milliseconds 400
@@ -210,22 +214,28 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
         Assert-BlankGeometry $metadata.stableBefore 0
         if ($null -eq (Read-BlankHit $point.X $point.Y)) { throw 'Blank-area physical/UIA hit changed before the press.' }
         Save-PanelLanguageScreenshot $Controls $EvidencePath 'panel-before.png'
+        $observation.Observer.Mark('before-press')
+        if (-not [MimiPanelKeyboard]::OwnsFocus($Controls)) { throw 'The control lost native foreground before input.' }
         $heldFailure=$null
         try {
             [MimiCaptionDragDesktop]::SetLeftButton($true)
+            $observation.Observer.Mark('pressed')
             Start-Sleep -Milliseconds 80
             for ($step=1;$step -le 8;$step++) {
                 [MimiPointerSmoke]::MoveAndVerify(($point.X+6*$step),$point.Y)
                 Start-Sleep -Milliseconds 20
             }
             $metadata.held=Read-BlankGeometry
+            $observation.Observer.Mark('held')
             if (-not $metadata.held.leftDown) { throw 'Physical left button was not held after the gesture.' }
             [MimiPointerSmoke]::AssertCaptionMoveModal($overlay)
-        } catch { $heldFailure=$_ }
-        finally { [MimiCaptionDragDesktop]::SetLeftButton($false) }
+            $metadata.rootMoveModalVerified=$true
+        } catch { $heldFailure=$_;$metadata.heldFailure=[string]$_ }
+        finally { $observation.Observer.Mark('before-release');[MimiCaptionDragDesktop]::SetLeftButton($false);$observation.Observer.Mark('released') }
         $metadata.released=Read-BlankGeometry
         Start-Sleep -Milliseconds 400
         $metadata.settled=Read-BlankGeometry
+        $observation.Observer.Mark('settled')
         Assert-SettingsHidden
         if ((Read-SmokeMarker $SessionStateFile) -ne 'listening') { throw 'The panel gesture changed session state.' }
         if ($metadata.settled.leftDown) { throw 'The panel gesture left the mouse button held.' }
@@ -276,10 +286,12 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
         Write-Host "Visible middle blank observation passed: horizontal=48 vertical=0; same root/child HWNDs and sizes; real selected menu option clicked; source=en target=zh_tw; Settings hidden/listening."
     } catch {
         $metadata.passed=$false;$metadata.failure=[string]$_
+        if($observation){$observation.Observer.Mark('assertion-failure');Start-Sleep -Milliseconds 750}
         try { Save-PanelLanguageScreenshot $Controls $EvidencePath 'panel-failed.png' } catch { Write-Warning 'Guarded synthetic panel failure screenshot unavailable.' }
         throw
     } finally {
         [MimiCaptionDragDesktop]::SetLeftButton($false)
+        if($observation){try{Stop-PanelDragObservation $observation}catch{$metadata.observationFailure=[string]$_;Write-Warning 'Native recording/trace finalization failed; original interaction result preserved.'}}
         [IO.File]::WriteAllText((Join-Path $EvidencePath 'panel-blank-drag.json'),($metadata|ConvertTo-Json -Depth 12),[Text.UTF8Encoding]::new($false))
     }
 }

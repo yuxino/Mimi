@@ -1,5 +1,5 @@
 name: Windows blank panel drag QA
-run-name: One native middle visual blank drag — verified 9ee0 Portable
+run-name: Native focus trace and video — original 9ee0 Portable
 on:
   workflow_dispatch:
 permissions:
@@ -44,12 +44,26 @@ jobs:
             $null=[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file),[ref]$tokens,[ref]$errors)
             if ($errors.Count) { throw ($errors | Out-String) }
           }
-          Write-Host 'Windows PowerShell 5.1 helper parsing passed.'
+          Add-Type -Path scripts/windows/tests/PanelDragObservation.cs
+          Write-Host 'Windows PowerShell parsing and native observer compilation passed.'
           '@
           $parse = Join-Path $env:RUNNER_TEMP 'parse-panel-blank.ps1'
           $source | Set-Content -LiteralPath $parse -Encoding utf8NoBOM
           powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $parse
           if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell parser failed.' }
+      - name: Prepare pinned QA-only video encoder
+        shell: pwsh
+        run: |
+          $archive=Join-Path $env:RUNNER_TEMP 'ffmpeg-qa.zip'
+          Invoke-WebRequest -Uri 'https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-gpl-shared-9.0.zip' -OutFile $archive
+          if ((Get-FileHash -Algorithm SHA256 $archive).Hash -cne 'E20801968256E40CF2EDD0D3A0B7F5E7C9394C96691530A86A42F1F35807B49F') { throw 'Pinned QA encoder archive identity changed.' }
+          $destination=Join-Path $env:RUNNER_TEMP 'ffmpeg-qa'
+          Expand-Archive -LiteralPath $archive -DestinationPath $destination
+          $encoder=@(Get-ChildItem $destination -Recurse -File -Filter 'ffmpeg.exe')
+          if($encoder.Count -ne 1){throw 'Exactly one pinned QA encoder required.'}
+          $encoder[0].FullName | ForEach-Object { "MIMI_QA_FFMPEG=$_" } | Out-File -LiteralPath $env:GITHUB_ENV -Append -Encoding utf8
+          & $encoder[0].FullName -version
+          if($LASTEXITCODE -ne 0){throw 'Pinned QA encoder could not initialize.'}
       - name: One physical blank drag and original language selection
         shell: pwsh
         run: |
@@ -74,7 +88,7 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: windows-panel-blank-drag-9ee0
+          name: windows-panel-focus-baseline
           path: ${{ runner.temp }}/panel-blank-evidence
           if-no-files-found: ignore
           retention-days: 3
