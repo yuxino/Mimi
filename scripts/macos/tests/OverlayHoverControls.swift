@@ -60,9 +60,24 @@ struct OverlayTestPointer {
     func click(_ point: CGPoint, pid: pid_t, windowID: CGWindowID, window: CGRect,
                stage: String, output: URL, buttonName: String? = nil) throws {
         let cursor = CGEvent(source: nil)?.location
-        // Nonactivating WebKit controls can omit AXWindow. Verify the native
-        // frontmost window instead, and retain AXWindow only as diagnostic data.
-        let top = NSWindow.windowNumber(at: NSEvent.mouseLocation, belowWindowWithWindowNumber: 0)
+        // Nonactivating WebKit controls can omit AXWindow. Use WindowServer's
+        // front-to-back list at the real Quartz pointer, plus the actual AX hit.
+        // The command-line AppKit lookup has returned 0 for a painted, hittable
+        // child; retain that independent reading without using it as the gate.
+        let appKitPoint = NSEvent.mouseLocation
+        let appKitNumber = NSWindow.windowNumber(at: appKitPoint, belowWindowWithWindowNumber: 0)
+        let rows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
+        let atPoint: [[String: Any]] = (rows ?? []).compactMap { row in
+            guard let id = row[kCGWindowNumber as String] as? NSNumber,
+                  let pid = row[kCGWindowOwnerPID as String] as? NSNumber,
+                  let raw = row[kCGWindowBounds as String] as? NSDictionary,
+                  let rect = CGRect(dictionaryRepresentation: raw), rect.contains(point),
+                  let alpha = row[kCGWindowAlpha as String] as? NSNumber, alpha.doubleValue > 0 else { return nil }
+            return ["windowID": id, "pid": pid, "alpha": alpha,
+                    "bounds": ["x": rect.minX, "y": rect.minY, "width": rect.width, "height": rect.height]]
+        }
+        let top = (atPoint.first?["windowID"] as? NSNumber)?.uint32Value ?? kCGNullWindowID
+        let topPID = (atPoint.first?["pid"] as? NSNumber)?.int32Value ?? -1
         var hit: AXUIElement?, owner: pid_t = -1
         let hitResult = AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(point.x), Float(point.y), &hit)
         let ownerResult = hit.map { AXUIElementGetPid($0, &owner) }
@@ -84,11 +99,13 @@ struct OverlayTestPointer {
             }
         }
         let accepted = window.contains(point) && cursor.map { hypot($0.x - point.x, $0.y - point.y) < 2 } == true &&
-            top == Int(windowID) && hitResult == .success && ownerResult == .success && owner == pid && matches &&
+            top == windowID && topPID == pid && hitResult == .success && ownerResult == .success && owner == pid && matches &&
             !CGEventSource.buttonState(.combinedSessionState, button: .left)
         var evidence: [String: Any] = ["accepted": accepted, "expectedWindowID": windowID, "topWindowID": top,
             "expectedPID": pid, "hitPID": owner, "hitRole": role, "hitResult": hitResult.rawValue,
             "buttonMatched": matches, "target": ["x": point.x, "y": point.y],
+            "windowsAtPointFrontToBack": Array(atPoint.prefix(8)), "windowListAvailable": rows != nil,
+            "appKitWindowNumber": appKitNumber, "appKitCursor": ["x": appKitPoint.x, "y": appKitPoint.y],
             "cursor": cursor.map { ["x": $0.x, "y": $0.y] } ?? [:]]
         if let hit, let value = hoverAttribute(hit, kAXWindowAttribute), CFGetTypeID(value) == AXUIElementGetTypeID() {
             evidence["axWindowRole"] = hoverAttribute(value as! AXUIElement, kAXRoleAttribute) as? String ?? ""
