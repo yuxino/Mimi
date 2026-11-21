@@ -50,6 +50,20 @@ private struct Node {
         func record(_ stage: String, _ data: [String: Any] = [:]) {
             var entry = data; entry["stage"] = stage; entry["uptime"] = uptime(); events.append(entry)
         }
+        // Only callers that have already validated the exact blank chrome or
+        // native Settings close button use this press, never a web control.
+        func physicalPress(_ point: CGPoint, _ stage: String) throws {
+            guard let cursor = CGEvent(source:nil)?.location, hypot(cursor.x-point.x,cursor.y-point.y) < 2,
+                  !CGEventSource.buttonState(.combinedSessionState,button:.left),
+                  let input = CGEventSource(stateID:.combinedSessionState),
+                  let down = CGEvent(mouseEventSource:input,mouseType:.leftMouseDown,mouseCursorPosition:point,mouseButton:.left),
+                  let up = CGEvent(mouseEventSource:input,mouseType:.leftMouseUp,mouseCursorPosition:point,mouseButton:.left) else {
+                throw CheckError(stage+"_physical_press_unavailable")
+            }
+            record(stage+"-down")
+            down.post(tap:.cghidEventTap); Thread.sleep(forTimeInterval:0.06); up.post(tap:.cghidEventTap)
+            record(stage+"-up")
+        }
         defer {
             let result: [String: Any] = ["scene": scene, "passed": passed, "pid": pid, "events": events,
                 "sampling": "Physical mouse input, native window metadata and isolated -a glyph pixels; no provider or audio"]
@@ -224,13 +238,10 @@ private struct Node {
             let top = try windows().first(where:{$0.visible && $0.rect.contains(blank)})
             record("blank-hit",["role":role,"pid":hitPID,"point":["x":blank.x,"y":blank.y],"topOwnedWindowID":top?.id ?? 0])
             guard top?.id == panel.id, hitResult == .success, owner == .success, hitPID == pid,
-                  [kAXGroupRole,"AXWebArea"].contains(role),
-                  let input = CGEventSource(stateID:.combinedSessionState),
-                  let down = CGEvent(mouseEventSource:input,mouseType:.leftMouseDown,mouseCursorPosition:blank,mouseButton:.left),
-                  let up = CGEvent(mouseEventSource:input,mouseType:.leftMouseUp,mouseCursorPosition:blank,mouseButton:.left) else {
+                  [kAXGroupRole,"AXWebArea"].contains(role) else {
                 throw CheckError("blank_point_not_noninteractive_owned_chrome")
             }
-            down.post(tap:.cghidEventTap); Thread.sleep(forTimeInterval:0.06); up.post(tap:.cghidEventTap)
+            try physicalPress(blank,"blank-first-click")
             Thread.sleep(forTimeInterval:0.35)
             guard same(try surface().1.rect,panel.rect) else { throw CheckError("blank_click_changed_panel_geometry") }
             record("blank-click-no-settings")
@@ -254,7 +265,22 @@ private struct Node {
                   let closeRect = overlayTestFrame(close as! AXUIElement) else { throw CheckError("settings_close_button_missing") }
             let closePoint = CGPoint(x:closeRect.midX,y:closeRect.midY)
             try pointer.move(closePoint)
-            try pointer.click(closePoint,pid:pid,windowID:settings.id,window:settings.rect,stage:"settings-close",output:output)
+            var closeHit:AXUIElement?, closePID:pid_t = -1
+            let closeResult = AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(),Float(closePoint.x),Float(closePoint.y),&closeHit)
+            let closeOwner = closeHit.map {AXUIElementGetPid($0,&closePID)}
+            let closeRole = closeHit.flatMap {ax($0,kAXRoleAttribute) as? String} ?? ""
+            let closeWindow = closeHit.flatMap {ax($0,kAXWindowAttribute)}
+            let closeWindowFrame = closeWindow.flatMap {CFGetTypeID($0) == AXUIElementGetTypeID() ? overlayTestFrame($0 as! AXUIElement) : nil}
+            record("settings-native-close-hit",["role":closeRole,"pid":closePID,"expectedWindowID":settings.id,
+                "target":["x":closePoint.x,"y":closePoint.y],"axWindowBounds":closeWindowFrame.map(rectJSON) ?? [:]])
+            // CG bounds order alone is not a mouse-hit result. Unlike the
+            // detached WebView, this native button supplies exact AXWindow
+            // identity; require it and the real close outcome below.
+            guard closeResult == .success, closeOwner == .success, closePID == pid, closeRole == kAXButtonRole,
+                  closeWindowFrame.map({same($0,settings.rect)}) == true else {
+                throw CheckError("settings_native_close_not_in_expected_ax_window")
+            }
+            try physicalPress(closePoint,"settings-close")
             try wait("settings-closed") { try !windows().contains(where:{$0.title == settingsTitle && $0.visible}) }
             try pointer.move(outside); Thread.sleep(forTimeInterval:0.6)
             try pair("settings-closed-quiet",toolbar:false,capsule:false,settingsAllowed:true)

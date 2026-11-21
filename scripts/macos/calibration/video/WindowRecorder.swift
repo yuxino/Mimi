@@ -63,6 +63,7 @@ private final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, @unche
                 AVVideoAverageBitRateKey: max(2_000_000, width * height * 12),
                 AVVideoMaxKeyFrameIntervalKey: 60, AVVideoAllowFrameReorderingKey: false],
         ])
+        input.mediaTimeScale = 1_000_000_000
         input.expectsMediaDataInRealTime = true
         guard writer.canAdd(input) else { throw RecordingError("video_writer_cannot_add_input") }
         writer.add(input)
@@ -228,6 +229,7 @@ private func finishLastPresentation(_ movie: URL, end: CMTime) async throws {
     let target = movie.deletingLastPathComponent().appendingPathComponent("capture-final.mov")
     let writer = try AVAssetWriter(outputURL: target, fileType: .mov)
     let input = AVAssetWriterInput(mediaType: .video, outputSettings: nil, sourceFormatHint: formats[0])
+    input.mediaTimeScale = 1_000_000_000
     writer.add(input)
     guard reader.startReading(), writer.startWriting() else { throw RecordingError("presentation_passthrough_start_failed") }
     writer.startSession(atSourceTime: .zero)
