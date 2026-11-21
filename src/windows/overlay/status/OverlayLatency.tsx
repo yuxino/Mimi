@@ -8,7 +8,7 @@ export type OverlayLatencySession = Pick<SessionStateEvent,
   "translationRecovery" | "isTranslationPending" | "isTranslationPreviewPending"
 > & { status: { kind: SessionStateEvent["status"]["kind"] } };
 
-/** The caption canvas keeps service work visible; measurements live in its controls. */
+/** The panel shows measurements. The canvas reveals ordinary work with its other hover controls. */
 export function OverlayLatency({ session, translationRequired = true, showMeasurements = true }: {
   session: OverlayLatencySession;
   translationRequired?: boolean;
@@ -31,7 +31,7 @@ export function OverlayLatency({ session, translationRequired = true, showMeasur
   const translationLabel = follow ? I18N.overlay.translationFollowLatency : I18N.overlay.translationLatency;
   const translationHelp = follow ? I18N.overlay.translationFollowLatencyHelp : I18N.overlay.translationLatencyHelp;
   return (
-    <div className="overlay-latency" data-testid="overlay-latency">
+    <div className={`overlay-latency${!showMeasurements && pending && !recovery ? " overlay-hover-control" : ""}`} data-testid="overlay-latency">
       {showApi && <span className="overlay-latency__measurement" title={`${I18N.overlay.apiLatencyHelp} ${api}`} aria-label={`${I18N.overlay.apiLatency}: ${api}`}>
         <span>{I18N.overlay.apiLatencyShort}</span><strong data-tone={latencyTone(session.apiLatencyMs, "api")}>{api}</strong>
       </span>}

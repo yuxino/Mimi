@@ -112,10 +112,13 @@
   .overlay-action-group + .mimi-tooltip-trigger::before { background: ButtonText; }
 }
 
-/* A translation request changes its label many times per sentence. Keep its
-   line outside the scrolling viewport for the lifetime of the live captions. */
+/* Reserve the status line while controls are visible so individual requests
+   cannot resize the viewport as a sentence streams. */
 .overlay-expanded-canvas:has(.overlay-status-row[data-translation-status-space],
-  .overlay-status-row :is([role="status"], [role="alert"], .overlay-return-to-live)) {
+  .overlay-status-row [role="status"]) {
+  --overlay-status-height: var(--overlay-detail-height, 20px);
+}
+.overlay-expanded-canvas:has(.overlay-action-feedback, .overlay-status-row .overlay-latency:not(.overlay-hover-control) [role="status"]) {
   --overlay-status-height: 20px;
 }
 
@@ -132,8 +135,10 @@
     pointer-events: none;
   }
 
-  /* The toolbar can give its space back independently of translation status. */
+  /* In quiet mode ordinary translation work gives both lines back to captions.
+     An actionable error or a session action still has its own visible line. */
   .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], [data-overlay-island-pinned], [data-overlay-keyboard-focus]:has(:focus-visible)) .overlay-expanded-canvas[data-overlay-has-captions] {
     --overlay-toolbar-height: 0px;
+    --overlay-detail-height: 0px;
   }
 }

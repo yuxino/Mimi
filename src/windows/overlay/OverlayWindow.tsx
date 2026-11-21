@@ -230,6 +230,13 @@ export function OverlayWindow() {
     setOverlaySize({ width, height });
   };
 
+  const returnToLive = readingHistory && blocks.length > 0 && !presentationCollapsed && (
+    <button type="button" className="overlay-return-to-live" onClick={() => {
+      setReadingHistory(false);
+      setFollowTailRequest(request => request + 1);
+    }}>{I18N.overlay.returnToLive}</button>
+  );
+
   const content = (
     <>
       <div ref={subtitleRootRef} className="h-full w-full" style={{ padding: OVERLAY_INSET }}>
@@ -275,24 +282,15 @@ export function OverlayWindow() {
   );
 
   function renderStatusLine() {
-    const returnToLive = readingHistory && blocks.length > 0 && !presentationCollapsed;
     const showTiming = session.isActive && !blendsWithBackground;
     const actionFailed = sessionAction.failed || controlAction.failed;
-    if (!showTiming && !pendingSessionLabel && !actionFailed && !returnToLive) return null;
+    if (!showTiming && !pendingSessionLabel && !actionFailed) return null;
     return <div className="overlay-status-row"
       data-translation-status-space={showTiming && settings.targetLanguage !== "original" && blocks.length > 0 ? "" : undefined}
       style={{ top: `calc(var(--overlay-toolbar-height, ${topChromeLayout.topBandHeight}px) + 3px)` }}>
-      <div className="overlay-status-row__leading">
-        {pendingSessionLabel || actionFailed ? <div role={pendingSessionLabel ? "status" : "alert"} className="overlay-action-feedback">
-          {pendingSessionLabel ?? actionFailureMessage}
-        </div> : showTiming ? <OverlayLatency session={session} translationRequired={settings.targetLanguage !== "original"} showMeasurements={false} /> : null}
-      </div>
-      <div className={`overlay-status-row__trailing${returnToLive ? " overlay-status-row__trailing--reading" : ""}`}>
-        {returnToLive && <button type="button" className="overlay-return-to-live" onClick={() => {
-          setReadingHistory(false);
-          setFollowTailRequest(request => request + 1);
-        }}>{I18N.overlay.returnToLive}</button>}
-      </div>
+      {pendingSessionLabel || actionFailed ? <div role={pendingSessionLabel ? "status" : "alert"} className="overlay-action-feedback">
+        {pendingSessionLabel ?? actionFailureMessage}
+      </div> : <OverlayLatency session={session} translationRequired={settings.targetLanguage !== "original"} showMeasurements={false} />}
     </div>;
   }
 
@@ -333,7 +331,7 @@ export function OverlayWindow() {
                 preserveLiveLineBreaks={streamingProvider}
                 blocks={blocks}
                 fontSize={settings.fontSize}
-              fontFamily={settings.subtitleFontFamily}
+                fontFamily={settings.subtitleFontFamily}
                 color={settings.subtitleColor}
                 alignment={settings.subtitleAlignment}
                 displayMode={settings.subtitleDisplayMode}
@@ -347,6 +345,7 @@ export function OverlayWindow() {
                 onReadingHistoryChange={setReadingHistory}
               />
             )}
+            {returnToLive}
           </div>
         </div>
       );
@@ -505,6 +504,7 @@ export function OverlayWindow() {
               onReadingHistoryChange={setReadingHistory}
             />
           )}
+          {returnToLive}
           </div>
         </div>
       </div>

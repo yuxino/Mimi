@@ -166,15 +166,13 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
           if (!element.contains(document.elementFromPoint(point.x, point.y))) throw new Error(`Caption control covered: ${selector}`);
           return point;
         }, { selector, text });
-        let point = await locate(), stable = false;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          await page.mouse.move(point.x, point.y);
-          await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-          const current = await locate();
-          if (Math.abs(current.x - point.x) <= 1 && Math.abs(current.y - point.y) <= 1) { stable = true; break; }
-          point = current;
+        const point = await locate();
+        await page.mouse.move(point.x, point.y);
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const hovered = await locate();
+        if (Math.abs(hovered.x - point.x) > 1 || Math.abs(hovered.y - point.y) > 1) {
+          throw new Error(`Caption control moved away from the first click: ${selector} ${JSON.stringify({ point, hovered })}`);
         }
-        if (!stable) throw new Error(`Caption control did not keep a stable pointer target: ${selector}`);
         await page.mouse.down();
         await page.mouse.up();
         await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -294,12 +292,12 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
     return page.evaluate(async () => {
       for (let frame = 0; frame < 4; frame++) await new Promise(requestAnimationFrame);
       const timeline = document.querySelector(".overlay-timeline");
-      const top = timeline.getBoundingClientRect().top;
+      const { top, bottom } = timeline.getBoundingClientRect();
       const first = [...timeline.children].find(row => row.getBoundingClientRect().bottom > top);
       const back = document.querySelector(".overlay-return-to-live");
       return {
-        top, id: first?.dataset.utteranceId, offset: first?.getBoundingClientRect().top - top,
-        backBottom: back?.getBoundingClientRect().bottom,
+        top, bottom, id: first?.dataset.utteranceId, offset: first?.getBoundingClientRect().top - top,
+        backTop: back?.getBoundingClientRect().top,
       };
     });
   }
@@ -319,7 +317,8 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
   if (!hoveredHistory.id || hoveredHistory.id !== quietHistory.id
     || Math.abs(hoveredHistory.offset - quietHistory.offset) > 2
     || hoveredHistory.top - quietHistory.top < 28
-    || quietHistory.backBottom === undefined || quietHistory.backBottom > quietHistory.top) {
+    || [hoveredHistory, quietHistory].some(view => view.backTop === undefined || view.backTop < view.bottom - 1)
+    || Math.abs(hoveredHistory.backTop - quietHistory.backTop) > 1) {
     throw new Error("Hiding tools moved the reading anchor or covered the return action: "
       + JSON.stringify({ hoveredHistory, quietHistory }));
   }
