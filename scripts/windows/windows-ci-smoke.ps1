@@ -897,7 +897,7 @@ try {
         # Pointer coverage includes a second, separate configuration-error scenario.
         $probeTimeoutMs = if ($OverlayInteraction -eq 'pointer') { 125000 } else { 95000 }
         try {
-            Invoke-OverlayInteractionProbe $process $settingsWindow $OverlayInteraction $probeTimeoutMs
+            Invoke-OverlayInteractionProbe $process $settingsWindow $OverlayInteraction $probeTimeoutMs -EvidencePath $EvidenceDirectory
         }
         finally {
             Remove-Item -LiteralPath $hoverSampleOptIn -Force -ErrorAction SilentlyContinue

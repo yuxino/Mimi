@@ -406,7 +406,7 @@ function Read-SmokeMarker([string]$Path) {
     }
 }
 
-function Write-HoverMetadata([ValidateSet('root-rehover', 'panel-exit')][string]$Phase) {
+function Write-HoverMetadata([ValidateSet('root-rehover', 'panel-exit', 'initial-calibration', 'calibration-passed')][string]$Phase) {
     if ($Interaction -ne 'pointer' -or [string]::IsNullOrEmpty($FrontendReadyDirectory)) { return }
     try {
         $optIn = Join-Path $FrontendReadyDirectory 'windows-hover-sample-enabled'
@@ -594,6 +594,37 @@ function Assert-HoverHandoff($Toolbar, $Capsule, $ToolbarReference, $CapsuleRefe
     Write-Output ('Native hover handoff: {0} samples ending at {1}ms (minimum exposure toolbar={2:F2}, capsule={3:F2}).' -f $sampleCount, $sampleStartedMs, $minimumToolbar, $minimumCapsule)
 }
 
+# Disposable read-only evidence after the original assertion has settled.
+# The pixels below are the original buffers; this does not recapture, move,
+# retry, relearn a reference, or change the deadline used by the assertion.
+function Write-HoverCalibrationEvidence([string]$Status, $Calibration, [IntPtr]$Controls) {
+    try {
+        if ([string]::IsNullOrEmpty($EvidenceDirectory)) { return }
+        $root = [System.Windows.Automation.AutomationElement]::FromHandle($Controls)
+        $buttons = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button))
+        $capsules = @($buttons | Where-Object {
+            ([string]$_.Current.Name).EndsWith('Open subtitle controls', [StringComparison]::Ordinal)
+        })
+        $current = @($capsules | ForEach-Object {
+            $box = $_.Current.BoundingRectangle
+            @{ bounds = @($box.X, $box.Y, $box.Width, $box.Height); empty = $box.IsEmpty
+                enabled = $_.Current.IsEnabled; offscreen = $_.Current.IsOffscreen }
+        })
+        $Calibration.status = $Status
+        $Calibration.currentCapsules = $current
+        $Calibration.nativeGeometry = [MimiPointerSmoke]::HoverGeometry($overlay, $Controls)
+        $Calibration.pointerOwnership = [MimiPointerSmoke]::PointerOwnership($overlay, $Controls)
+        [void][IO.Directory]::CreateDirectory($EvidenceDirectory)
+        [IO.File]::WriteAllText((Join-Path $EvidenceDirectory 'initial-hover-calibration.json'),
+            ($Calibration | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
+        Write-Output ('Initial hover calibration evidence status={0} cachedCapsule=({1}) currentCapsules={2} {3}' -f
+            $Status, ($Calibration.cachedCapsule -join ','), ($current | ConvertTo-Json -Compress -Depth 4), $Calibration.nativeGeometry)
+    }
+    catch { Write-Output "Initial hover calibration evidence unavailable status=$Status type=$($_.Exception.GetType().Name)." }
+}
+
 function Test-OverlayHoverHandoff([IntPtr]$Controls, [string]$MoreSettings) {
     $readBounds = @{ BoundsOnly = $true; WaitMs = 2500 }
     $waitForAction = @{ WaitMs = 2500 }
@@ -630,9 +661,23 @@ function Test-OverlayHoverHandoff([IntPtr]$Controls, [string]$MoreSettings) {
             $toolbarReference.ForegroundCount -ge 10 -and $capsuleReference.ForegroundCount -ge 10 -and
             $toolbarReference.Exposure($quietCheck.Toolbar) -le 0.12 -and $capsuleReference.Exposure($quietCheck.Capsule) -le 0.12 -and
             $toolbarReference.Exposure($previous.Toolbar) -ge 0.92 -and $capsuleReference.Exposure($previous.Capsule) -ge 0.92
+        $comparisonPrevious = $previous
         $previous = $visible
     } until ($calibrated -or $reveal.ElapsedMilliseconds -ge 1800)
+    $calibration = @{
+        cachedPause = @($pause.X, $pause.Y, $pause.Width, $pause.Height)
+        cachedCollapse = @($collapse.X, $collapse.Y, $collapse.Width, $collapse.Height)
+        cachedCapsule = @($island.X, $island.Y, $island.Width, $island.Height)
+        toolbarSample = @([int]($pause.X + $pause.Width / 2 - 8 * $toolbarScale), [int]($pause.Y + 4 * $toolbarScale), [int](16 * $toolbarScale), [int](16 * $toolbarScale))
+        capsuleSample = @([int]($island.Right - 32 * $capsuleScale), [int]($island.Y + 7 * $capsuleScale), [int](26 * $capsuleScale), [int](16 * $capsuleScale))
+        quiet = $quiet; quietCheck = $quietCheck; comparisonPrevious = $comparisonPrevious; visible = $visible
+        elapsedMs = $reveal.ElapsedMilliseconds
+        foreground = @{ toolbar = $toolbarReference.ForegroundCount; capsule = $capsuleReference.ForegroundCount }
+    }
     if (-not $calibrated) {
+        Write-HoverCalibrationEvidence 'failed' $calibration $Controls
+        Write-HoverMetadata 'initial-calibration'
+
         throw "The composed pixels did not establish distinct quiet and revealed controls with the cursor over the root toolbar (foreground toolbar=$($toolbarReference.ForegroundCount), capsule=$($capsuleReference.ForegroundCount))."
     }
     Write-Output "Native hover references separated: toolbar=$($toolbarReference.ForegroundCount) px, capsule=$($capsuleReference.ForegroundCount) px."
@@ -685,6 +730,9 @@ function Test-OverlayHoverHandoff([IntPtr]$Controls, [string]$MoreSettings) {
     # toolbar, as it did after the three Pause/Resume cycles.
     Move-OverControlBounds $overlay $pause 'Restore the original toolbar hover'
     Wait-CapsuleRevealed $capsule $capsuleReference 'the existing Settings check'
+    # All original handoff, panel and quiet assertions ran before these reads.
+    Write-HoverCalibrationEvidence 'passed' $calibration $Controls
+    Write-HoverMetadata 'calibration-passed'
 }
 
 function Close-SettingsForOverlayCheck {
