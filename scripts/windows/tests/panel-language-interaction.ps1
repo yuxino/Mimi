@@ -29,6 +29,27 @@ public static class MimiPanelKeyboard {
     [DllImport("user32.dll")] private static extern bool GetGUIThreadInfo(uint thread, ref GuiInfo info);
     [DllImport("user32.dll")] private static extern uint SendInput(uint count, Input[] inputs, int size);
 
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out Rect rect);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
+    public sealed class KeyObservation {
+        public long BeginWallMs, EndWallMs;
+        public int[] BeforeBounds, AfterBounds;
+        public uint Accepted;
+    }
+    private static bool observeNext;
+    public static KeyObservation LastObservedKey;
+    public static void ObserveNextKey() { observeNext = true; LastObservedKey = null; }
+    public static int[] Bounds(IntPtr controls) {
+        Rect rect;
+        return GetWindowRect(controls, out rect) ? new[] { rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top } : null;
+    }
+    public static void ResizeOnce(IntPtr controls) {
+        var bounds = Bounds(controls);
+        if (bounds == null || bounds[2] <= 0 || bounds[3] <= 0 ||
+            !SetWindowPos(controls, IntPtr.Zero, 0, 0, bounds[2], bounds[3] + 12, 0x0002u | 0x0004u | 0x0010u))
+            throw new InvalidOperationException("Could not apply the separate 12px native resize.");
+    }
+
     public static bool OwnsFocus(IntPtr controls) {
         var gui = new GuiInfo { Size = (uint)Marshal.SizeOf(typeof(GuiInfo)) };
         return GetAncestor(GetForegroundWindow(), 2) == controls && GetGUIThreadInfo(0, ref gui)
@@ -44,7 +65,15 @@ public static class MimiPanelKeyboard {
             new Input { Type = 1, Data = new InputData { Keyboard = new KeyboardInput { Key = key, Flags = extended } } }, up
         };
         int size = Marshal.SizeOf(typeof(Input));
+        var observation = observeNext ? new KeyObservation { BeforeBounds = Bounds(controls), BeginWallMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() } : null;
+        observeNext = false;
         uint sent = SendInput(2, inputs, size);
+        if (observation != null) {
+            observation.EndWallMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            observation.Accepted = sent;
+            observation.AfterBounds = Bounds(controls);
+            LastObservedKey = observation;
+        }
         if (sent == 1) SendInput(1, new[] { up }, size);
         if (sent != 2) throw new InvalidOperationException("Windows did not accept the panel keyboard input pair.");
     }
@@ -57,6 +86,75 @@ function Test-PanelLanguage($Controls, $Labels, $EvidencePath) {
     $typeProperty = [System.Windows.Automation.AutomationElement]::ControlTypeProperty
     $nameProperty = [System.Windows.Automation.AutomationElement]::NameProperty
     $preferencesPath = Join-Path $FixtureDirectory 'preferences.json'
+    $observation = @{ active = $false; key = $null; firstMenuRead = $null; firstReopen = $null; baselinePassed = $false; snapshots = [Collections.Generic.List[object]]::new() }
+
+    function Read-PanelFocusObservation([string]$Phase) {
+        $codes = Read-PanelLanguageCodes
+        $menu = Read-PanelLanguageMenu $Labels.target
+        $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
+        $target = Get-PanelLanguageField $Labels.target
+        $source = Get-PanelLanguageField $Labels.source
+        $focus = 'none'
+        $focusType = $null
+        $focusBox = $null
+        if ($null -ne $focused) {
+            $focusType = $focused.Current.ControlType.ProgrammaticName
+            $box = $focused.Current.BoundingRectangle
+            $focusBox = @($box.X, $box.Y, $box.Width, $box.Height)
+            $focus = if ($target -and $focused.Equals($target)) { 'target' }
+                elseif ($source -and $focused.Equals($source)) { 'source' }
+                elseif ([string]::Equals($focused.Current.Name, $Labels.searchLanguages, [StringComparison]::Ordinal)) { 'search' }
+                else { 'other-panel-element' }
+        }
+        $row = @{ phase = $Phase; wallMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+            sourceCode = $codes.source; targetCode = $codes.target; focus = $focus; focusType = $focusType; focusBounds = $focusBox
+            nativeOwnsFocus = [MimiPanelKeyboard]::OwnsFocus($controlsHandle)
+            childBounds = [MimiPanelKeyboard]::Bounds($controlsHandle); rootBounds = [MimiPanelKeyboard]::Bounds($overlay)
+            menu = $(if ($menu) { @{ present = $true; index = $menu.Index; options = $menu.Names.Count } } else { @{ present = $false } }) }
+        $observation.snapshots.Add($row)
+        return $row
+    }
+
+    function Save-PanelFocusObservation {
+        [void][IO.Directory]::CreateDirectory($EvidencePath)
+        $observation.key = [MimiPanelKeyboard]::LastObservedKey
+        [IO.File]::WriteAllText((Join-Path $EvidencePath 'ru-target-end-focus.json'),
+            ($observation | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
+    }
+
+    function Test-SeparatePanelResize {
+        $control = @{ separate = $true; started = $false; completed = $false }
+        $observation.controlledResize = $control
+        try {
+            $menu = Read-PanelLanguageMenu $Labels.target
+            if (-not $menu) {
+                $field = Get-PanelLanguageField $Labels.target
+                if (-not $field) { throw 'The separate resize has no available target trigger.' }
+                $box = $field.Current.BoundingRectangle
+                [MimiPointerSmoke]::ClickOverlay($controlsHandle, [int]($box.X + $box.Width / 2), [int]($box.Y + $box.Height / 2), 'Open a real search only after the untouched baseline')
+                $control.openMethod = 'physical-trigger-click'
+            } else { $control.openMethod = 'existing-menu' }
+            $null = Wait-PanelLanguageState 'separate-resize-open-menu' { Read-PanelLanguageMenu $Labels.target }
+            $before = Read-PanelFocusObservation 'separate-resize-before'
+            if ($before.focus -cne 'search' -or -not $before.nativeOwnsFocus -or -not $before.menu.present) {
+                throw 'The separate resize requires actual search focus in the owned menu.'
+            }
+            $control.started = $true
+            $control.beginWallMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+            [MimiPanelKeyboard]::ResizeOnce($controlsHandle)
+            $control.endWallMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+            $null = Wait-PanelLanguageState 'separate-resize-closed-menu' { -not (Read-PanelLanguageMenu $Labels.target) }
+            $after = Read-PanelFocusObservation 'separate-resize-after'
+            $control.completed = $true
+            $control.focusAfter = $after.focus
+            $control.focusTypeAfter = $after.focusType
+            $control.menuAfter = $after.menu.present
+            $control.targetCodeAfter = $after.targetCode
+        } catch {
+            $control.failureType = $_.Exception.GetType().Name
+            Write-Output 'The separate resize observation did not complete; original baseline outcome is retained.'
+        }
+    }
 
     function Wait-PanelLanguageState([string]$Phase, [scriptblock]$Observe) {
         $deadline = [Diagnostics.Stopwatch]::StartNew()
@@ -109,7 +207,16 @@ function Test-PanelLanguage($Controls, $Labels, $EvidencePath) {
             [System.Windows.Automation.PropertyCondition]::new($nameProperty, $Name),
             [System.Windows.Automation.PropertyCondition]::new($typeProperty, [System.Windows.Automation.ControlType]::List)))
         $list = $root.FindFirst($scope, $condition)
-        if ($null -eq $list -or $list.Current.IsOffscreen) { return }
+        $offscreen = $null -ne $list -and $list.Current.IsOffscreen
+        $recordThisRead = $observation.active -and $null -eq $observation.firstMenuRead
+        if ($recordThisRead) {
+            # No extra UIA query before the first physical key or its normal menu read.
+            $observation.firstMenuRead = @{ wallMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+                present = $null -ne $list; offscreen = $offscreen
+                childBounds = [MimiPanelKeyboard]::Bounds($controlsHandle)
+                nativeOwnsFocus = [MimiPanelKeyboard]::OwnsFocus($controlsHandle) }
+        }
+        if ($null -eq $list -or $offscreen) { return }
         $items = @()
         $selected = @()
         $itemCondition = [System.Windows.Automation.PropertyCondition]::new($typeProperty, [System.Windows.Automation.ControlType]::ListItem)
@@ -122,6 +229,11 @@ function Test-PanelLanguage($Controls, $Labels, $EvidencePath) {
             $index = $items.Count
             $items += $item.Current.Name
             if ($selection.Current.IsSelected) { $selected += $index }
+        }
+        if ($recordThisRead) {
+            $observation.firstMenuRead.readEndWallMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+            $observation.firstMenuRead.options = $items.Count
+            $observation.firstMenuRead.selectedIndices = @($selected)
         }
         if ($items.Count -gt 1 -and $items.Count -le 256 -and $selected.Count -eq 1) {
             return @{ Names = $items; Index = $selected[0]; Selected = $items[$selected[0]] }
@@ -203,6 +315,7 @@ function Test-PanelLanguage($Controls, $Labels, $EvidencePath) {
         return $details -join ' '
     }
 
+    try {
     $initialCodes = Wait-PanelLanguageState 'initial-preferences-readable' { Read-PanelLanguageCodes }
     if ($initialCodes.source -cne 'en' -or $initialCodes.target -cne 'zh_tw') {
         throw "The native language fixture must begin with en and zh_tw (locale=$($Labels.locale) source=$($initialCodes.source) target=$($initialCodes.target))."
@@ -258,10 +371,20 @@ function Test-PanelLanguage($Controls, $Labels, $EvidencePath) {
             }
             $previousCode = $savedCodes.$kind
             $previousName = $expectedName
+            if ($kind -eq 'target' -and $boundary -eq 'End') {
+                $observation.active = $true
+                [MimiPanelKeyboard]::ObserveNextKey()
+            }
             [MimiPanelKeyboard]::Key($controlsHandle, 0x28)
             $null = Wait-PanelLanguageState "$kind-selected-$boundary" {
                 $current = Read-PanelLanguageMenu $name
                 if ($current -and $current.Selected -ceq $expectedName) { $current }
+            }
+            if ($kind -eq 'target' -and $boundary -eq 'End') {
+                # Only after the original single-key selected-option assertion passes.
+                try { $observation.firstReopen = Read-PanelFocusObservation 'target-selected-End-passed' }
+                catch { $observation.firstReopenSnapshotFailure = $_.Exception.GetType().Name }
+                $observation.active = $false
             }
             [MimiPanelKeyboard]::Key($controlsHandle, 0x1B) # Escape closes only the menu.
             $null = Wait-PanelLanguageState "$kind-escape-$boundary" { Test-PanelLanguageClosed $name }
@@ -275,4 +398,17 @@ function Test-PanelLanguage($Controls, $Labels, $EvidencePath) {
         throw "The native language check did not restore its initial language pair (locale=$($Labels.locale) source=$($finalCodes.source) target=$($finalCodes.target))."
     }
     Write-Output "Native panel language passed locale=$($Labels.locale): physical selection, trigger refocus, keyboard reopen and Escape; Settings hidden."
+    $observation.baselinePassed = $true
+    } catch {
+        $observation.originalFailureType = $_.Exception.GetType().Name
+        throw
+    } finally {
+        # Preserve the untouched baseline, including its error, before separate input.
+        $observation.active = $false
+        try { $null = Read-PanelFocusObservation 'baseline-final' }
+        catch { $observation.finalSnapshotFailure = $_.Exception.GetType().Name }
+        try { Save-PanelFocusObservation } catch { Write-Output 'Could not save the original focus observation.' }
+        Test-SeparatePanelResize
+        try { Save-PanelFocusObservation } catch { Write-Output 'Could not save the separate resize observation.' }
+    }
 }

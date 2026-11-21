@@ -1,4 +1,4 @@
-name: Windows capsule calibration observation
+name: Windows Russian picker focus observation
 on:
   workflow_dispatch:
 permissions:
@@ -13,26 +13,31 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --prefer-offline --no-audit --no-fund
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: windows-ui-test-executable
-          run-id: 44897522655
+          run-id: 44898694618
           github-token: ${{ github.token }}
           path: candidate
       - name: Verify the unchanged Windows candidate
         shell: pwsh
         run: |
           $sha = (Get-FileHash -Algorithm SHA256 ./candidate/mimi.exe).Hash
-          if ($sha -cne '21D85A11E3BBA8B37B3119432F7668E0EDACC5214CDED412B36738C844E5771D') { throw 'Candidate executable differs from original run.' }
-          Write-Output "Unchanged candidate SHA-256: $sha (source=21bd148d, artifactRun=44897522655)."
-      - name: Observe the original physical pointer acceptance once
+          if ($sha -cne '63B682A18AB7C616F089635239305F0DB13E6DDAA5581D25BDDD3838D8894AD8') { throw 'Candidate executable differs from original run.' }
+          Write-Output "Unchanged candidate SHA-256: $sha (source=79e0c7ef, artifactRun=44898694618)."
+      - name: Observe the original Russian keyboard path once
         shell: pwsh
-        run: ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath ./candidate/mimi.exe -ExpectedArchitecture x64 -OverlayInteraction pointer -VerifyBothDragModes -EvidenceDirectory "$env:RUNNER_TEMP/capsule-calibration"
-      - name: Keep the original pixel references and final native geometry
+        run: ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath ./candidate/mimi.exe -ExpectedArchitecture x64 -OverlayInteraction panel-languages -EvidenceDirectory "$env:RUNNER_TEMP/russian-focus"
+      - name: Keep initial pictures and content-free focus and resize observations
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: windows-capsule-calibration
-          path: ${{ runner.temp }}/capsule-calibration
+          name: windows-russian-picker-focus
+          path: ${{ runner.temp }}/russian-focus
           if-no-files-found: error
           retention-days: 7

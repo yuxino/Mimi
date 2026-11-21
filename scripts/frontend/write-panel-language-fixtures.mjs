@@ -39,6 +39,7 @@ try {
       source: I18N.overlay.sourceLanguage,
       target: I18N.settings.translateTo,
       moreSettings: I18N.overlay.moreSettings,
+      searchLanguages: I18N.settings.searchLanguages,
       sourceValue: hasFixedLanguageNames ? sourceLanguageDisplayName("en", locale) : null,
       targetValue: hasFixedLanguageNames ? targetLanguageDisplayName("zh_tw", locale) : null,
       modes: SUBTITLE_DISPLAY_OPTIONS.map(option => option.shortLabel),
