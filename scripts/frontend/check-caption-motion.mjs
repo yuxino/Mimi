@@ -213,15 +213,23 @@ try {
   assert.deepEqual(errors, [], "Unexpected browser errors");
   console.log(JSON.stringify({ browser: (await devtools.command("Browser.getVersion")).product, ...result,
     modeChecked: modes.checked, subtitleModes: modes.subtitleModes }));
+} catch (error) {
+  // Preserve the assertion or launch error even if cleanup also fails.
+  console.error(error);
+  process.exitCode = 1;
 } finally {
-  devtools?.close();
   if (browser?.pid && browser.exitCode === null && browser.signalCode === null) {
     await new Promise(resolve => {
       const timer = setTimeout(() => browser.kill("SIGKILL"), 3000);
       browser.once("exit", () => { clearTimeout(timer); resolve(); });
-      browser.kill();
+      // Let Chrome flush the test profile and shut down its helpers before
+      // closing the pipe. A failed launch can still need a process signal.
+      if (devtools && !devtools.closedError) {
+        void devtools.command("Browser.close").catch(() => browser.kill());
+      } else browser.kill();
     });
   }
+  devtools?.close();
   await vite?.close();
-  if (temporary) await rm(temporary, { recursive: true, force: true });
+  if (temporary) await rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
