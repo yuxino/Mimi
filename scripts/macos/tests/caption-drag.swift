@@ -141,10 +141,11 @@ enum DragScene: String {
 @MainActor final class Pointer {
     let source: CGEventSource
     let pid: pid_t
+    let controlWindowID: CGWindowID
     var position: CGPoint
     static var pressed: Bool { CGEventSource.buttonState(.combinedSessionState, button: .left) }
 
-    init(pid: pid_t) throws {
+    init(pid: pid_t, controlWindowID: CGWindowID) throws {
         // A command-line observer needs an AppKit connection for windowNumber(at:).
         let app = NSApplication.shared
         if app.activationPolicy() != .prohibited, !app.setActivationPolicy(.prohibited) {
@@ -159,6 +160,7 @@ enum DragScene: String {
         }
         self.source = source
         self.pid = pid
+        self.controlWindowID = controlWindowID
         position = cursor.location
     }
 
@@ -196,10 +198,16 @@ enum DragScene: String {
                                y: screen.frame.maxY - (quartzCursor.y - display.minY))
         let hit = NSWindow.windowNumber(at: location, belowWindowWithWindowNumber: 0)
         let ax = AXHit(at: quartzCursor, expectedPID: pid)
-        guard hit == Int(root.id), ax.matches(pid: pid, frame: root.frame) else {
+        var windowMatches = ax.matches(pid: pid, frame: root.frame)
+        // The detached WebKit panel can return an owned AXWindow with no bounds.
+        // Verify its live window number, owner and frame independently in that case.
+        if root.id == controlWindowID, ax.windowFrame == nil, ax.elementPID == pid, ax.windowPID == pid {
+            windowMatches = try visibleWindows(of: pid).contains { $0.id == root.id && $0.frame == root.frame }
+        }
+        guard hit == Int(root.id), windowMatches else {
             throw DragCheckError("At \(quartzCursor) expected window \(root.id) \(root.frame), PID \(pid). AppKit hit \(hit), AX \(ax.description).")
         }
-        print("Hit at \(quartzCursor) verified window \(root.id), PID \(pid), frame \(root.frame).")
+        print("Hit at \(quartzCursor) verified AppKit window \(hit), PID \(pid), frame \(root.frame); AX \(ax.description).")
     }
 
     func hold(at point: CGPoint, in root: OwnedWindow, _ whileDown: () throws -> Void) throws {
@@ -255,7 +263,7 @@ private enum CaptionDrag {
         guard compact.root.frame.contains(compact.island.frame), compact.island.frame.height < compact.root.frame.height / 2 else {
             throw DragCheckError("The language island is not in its compact position: \(compact).")
         }
-        let pointer = try Pointer(pid: pid)
+        let pointer = try Pointer(pid: pid, controlWindowID: compact.island.id)
         let savedPointer = pointer.position
         defer { if !Pointer.pressed { try? pointer.post(.mouseMoved, at: savedPointer) } }
         let initial = scene == .panel
