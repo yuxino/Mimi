@@ -252,15 +252,18 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
         shell("cmd statusbar expand-settings")
         await { systemNode { it.viewIdResourceName?.endsWith("/tile_label") == true } != null }
         val name = label(R.string.shortcut_tile_label)
-        val metrics = context.resources.displayMetrics
-        for (page in 0..5) {
-            if (systemNode { it.text?.toString() == name } != null) {
-                tapSystem(name, image)
-                return
+        fun tileVisible() = systemNode { it.text?.toString() == name } != null
+        // SystemUI retains its last page. Navigate the actual pager and wait for each settled page.
+        for (direction in listOf(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)) {
+            while (!tileVisible()) {
+                val pager = systemNode { it.viewIdResourceName?.endsWith("/qs_pager") == true } ?: break
+                if (pager.actionList.none { it.id == direction }) break
+                fun page() = systemNode { it.viewIdResourceName?.endsWith("/footer_page_indicator") == true }?.contentDescription
+                val previous = page()
+                check(pager.performAction(direction)) { "Quick Settings refused to change page" }
+                await { page()?.let { it != previous } == true }
             }
-            shell("input swipe ${metrics.widthPixels * 4 / 5} ${metrics.heightPixels / 2} " +
-                "${metrics.widthPixels / 5} ${metrics.heightPixels / 2} 300")
-            SystemClock.sleep(300)
+            if (tileVisible()) return tapSystem(name, image)
         }
         error("installed tile is missing from Quick Settings")
     }
