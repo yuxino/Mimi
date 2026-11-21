@@ -4,9 +4,10 @@ on:
     inputs:
       revision: {description: Exact test revision, type: string, required: true}
       package: {description: Application to test, type: choice, options: [build, reuse, release], default: build}
-      package_run: {description: Run that built the captured executable, type: string}
-      release_tag: {description: Published Mac release tag, type: string, default: v1.7.4}
-      checks: {description: Native interactions, type: choice, options: [both, history, panels, mac-input-capability, mac-caption-drag, mac-appkit-control, mac-dev-drag, mac-follow], default: both}
+      package_run: {description: Run that produced the selected artifact, type: string}
+      release_tag: {description: Expected Mac release tag, type: string, default: v1.7.4}
+      checks: {description: Native interactions, type: choice, options: [both, history, panels, mac-input-capability, mac-caption-drag, mac-appkit-control, mac-dev-drag, mac-follow, mac-release-follow], default: both}
+      display_modes: {description: Also cycle all three subtitle display modes in the running Mac app, type: boolean, default: false}
       gesture: {description: macOS drag starting surface, type: choice, options: [caption, panel], default: caption}
 permissions:
   contents: read
@@ -65,12 +66,12 @@ jobs:
         if: ${{ !cancelled() && inputs.checks == 'mac-follow' && steps.candidate.outcome == 'success' }}
         env:
           EXPECTED_CERT: ${{ steps.candidate.outputs.identity_sha1 }}
-        run: bash scripts/macos/tests/run-translating-scroll.sh --dev "$EXPECTED_CERT" "$RUNNER_TEMP/caption-follow/off"
+        run: bash scripts/macos/tests/run-translating-scroll.sh --dev "$EXPECTED_CERT" ${{ inputs.display_modes && '--display-modes' || '' }} "$RUNNER_TEMP/caption-follow/off"
       - name: Follow the same caption with animation on
         if: ${{ !cancelled() && inputs.checks == 'mac-follow' && steps.candidate.outcome == 'success' }}
         env:
           EXPECTED_CERT: ${{ steps.candidate.outputs.identity_sha1 }}
-        run: bash scripts/macos/tests/run-translating-scroll.sh --dev "$EXPECTED_CERT" --animation "$RUNNER_TEMP/caption-follow/on"
+        run: bash scripts/macos/tests/run-translating-scroll.sh --dev "$EXPECTED_CERT" --animation ${{ inputs.display_modes && '--display-modes' || '' }} "$RUNNER_TEMP/caption-follow/on"
       - name: Save caption coordinates and synthetic window images
         if: ${{ !cancelled() && inputs.checks == 'mac-follow' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -232,3 +233,144 @@ jobs:
           path: ${{ runner.temp }}/caption-drag
           if-no-files-found: ignore
           retention-days: 7
+
+  mac-release-follow:
+    if: ${{ inputs.checks == 'mac-release-follow' }}
+    runs-on: macos-15
+    timeout-minutes: 12
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ inputs.revision }}
+          persist-credentials: false
+      - name: Verify the exact formal tag run and ARM64 artifact provenance
+        id: provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_RUN: ${{ inputs.package_run }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCE_SHA: ${{ inputs.revision }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RUNNER_ENVIRONMENT" == github-hosted && "$(uname -m)" == arm64 ]]
+          [[ "$RELEASE_RUN" =~ ^[1-9][0-9]*$ && "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ && "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_SHA" && ! -e /Applications/mimi.app ]]
+          if pgrep -x mimi >/dev/null; then echo 'The hosted test desktop is already in use.' >&2; exit 1; fi
+          read -r object_type object_sha < <(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" --jq '.object | [.type, .sha] | @tsv')
+          for depth in 1 2 3; do
+            [[ "$object_type" == tag ]] || break
+            read -r object_type object_sha < <(gh api "repos/$GITHUB_REPOSITORY/git/tags/$object_sha" --jq '.object | [.type, .sha] | @tsv')
+          done
+          [[ "$object_type" == commit && "$object_sha" == "$SOURCE_SHA" ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN" > "$RUNNER_TEMP/formal-run.json"
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN/jobs?filter=latest&per_page=100" > "$RUNNER_TEMP/formal-jobs.json"
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN/artifacts?per_page=100" > "$RUNNER_TEMP/formal-artifacts.json"
+          mkdir -p "$RUNNER_TEMP/caption-release"
+          python3 - <<'PY'
+          import json, os, pathlib, re
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          run = json.loads((root / 'formal-run.json').read_text())
+          expected = int(os.environ['RELEASE_RUN'])
+          sha, tag, repo = (os.environ[k] for k in ('SOURCE_SHA', 'RELEASE_TAG', 'GITHUB_REPOSITORY'))
+          assert run['id'] == expected and run['event'] == 'push', 'Not the expected push run'
+          assert run['name'] == 'ci' and run['path'] == '.github/workflows/ci.yml', 'Not formal CI'
+          assert run['repository']['full_name'] == repo and run['head_repository']['full_name'] == repo, 'Wrong repository'
+          assert run['head_sha'] == sha and run['head_branch'] == tag, 'Run does not match tag and source'
+          assert run['status'] in ('in_progress', 'completed'), 'Run is not active/completed'
+          assert run['status'] != 'completed' or run['conclusion'] == 'success', 'Completed tag CI failed'
+          jobs = [j for page in json.loads((root / 'formal-jobs.json').read_text()) for j in page['jobs']]
+          jobs = [j for j in jobs if j['name'].startswith('release-macos (arm64,')]
+          assert len(jobs) == 1 and jobs[0]['status'] == 'completed' and jobs[0]['conclusion'] == 'success', 'ARM64 release verification did not pass'
+          artifacts = [a for page in json.loads((root / 'formal-artifacts.json').read_text()) for a in page['artifacts']]
+          artifacts = [a for a in artifacts if a['name'] == 'mimi-release-macos-arm64']
+          assert len(artifacts) == 1 and not artifacts[0]['expired'], 'Expected one unexpired ARM64 artifact'
+          artifact = artifacts[0]
+          assert artifact['workflow_run']['id'] == expected and artifact['workflow_run']['head_sha'] == sha, 'Artifact source differs'
+          digest = artifact.get('digest') or ''
+          assert re.fullmatch(r'sha256:[0-9a-f]{64}', digest), 'Artifact SHA-256 digest unavailable'
+          artifact_id = artifact['id']
+          assert isinstance(artifact_id, int) and artifact_id > 0, 'Invalid artifact ID'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'artifact_id={artifact_id}\nartifact_sha256={digest[7:]}\n')
+          evidence = dict(run=expected, runAttempt=run['run_attempt'], tag=tag, revision=sha,
+                          releaseJob=jobs[0]['id'], artifact=artifact_id, artifactDigest=digest)
+          (root / 'caption-release' / 'provenance.json').write_text(json.dumps(evidence, indent=2) + '\n')
+          print(json.dumps(evidence))
+          PY
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
+      - name: Download, verify and install the unchanged signed archive
+        id: install
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.provenance.outputs.artifact_id }}
+          ARTIFACT_SHA256: ${{ steps.provenance.outputs.artifact_sha256 }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCE_SHA: ${{ inputs.revision }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          assets="$RUNNER_TEMP/formal-macos-arm64"
+          mkdir "$assets"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > "$RUNNER_TEMP/formal-macos-arm64.zip"
+          printf '%s  %s\n' "$ARTIFACT_SHA256" "$RUNNER_TEMP/formal-macos-arm64.zip" | shasum -a 256 --check
+          python3 - <<'PY'
+          import os, pathlib, shutil, stat, zipfile
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          expected = {'mimi.app.tar.gz', 'mimi.app.tar.gz.sig', f"mimi_{os.environ['RELEASE_TAG'][1:]}_aarch64.dmg"}
+          with zipfile.ZipFile(root / 'formal-macos-arm64.zip') as archive:
+              files = archive.infolist()
+              assert len(files) == len(expected) and {f.filename for f in files} == expected, 'Unexpected release artifact files'
+              for info in files:
+                  assert not info.is_dir() and not stat.S_ISLNK(info.external_attr >> 16), 'Unexpected artifact entry type'
+                  with archive.open(info) as source, (root / 'formal-macos-arm64' / info.filename).open('xb') as target:
+                      shutil.copyfileobj(source, target)
+          PY
+          public_key="$(python3 -c 'import json; print(json.load(open("src-tauri/tauri.conf.json"))["plugins"]["updater"]["pubkey"])')"
+          cargo run --release --locked --manifest-path scripts/updates/updater-signature-verifier/Cargo.toml -- \
+            "$public_key" "$assets/mimi.app.tar.gz.sig" "$assets/mimi.app.tar.gz"
+          python3 scripts/macos/extract-macos-updater.py "$assets/mimi.app.tar.gz" "$RUNNER_TEMP/formal-macos-extracted"
+          app="$RUNNER_TEMP/formal-macos-extracted/mimi.app"
+          certificate_prefix="$RUNNER_TEMP/mimi-follow-public-cert-"
+          codesign --display --extract-certificates="$certificate_prefix" "$app"
+          fingerprint="$(shasum -a 1 "${certificate_prefix}0" | cut -d ' ' -f 1 | tr '[:lower:]' '[:upper:]')"
+          [[ "$fingerprint" == "$(tr -d '[:space:]' < scripts/macos/macos-release-identity.txt)" ]]
+          # This is only the pinned PUBLIC certificate, as in formal tag CI.
+          # No signing identity, private key, draft API or TCC grant is used.
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain "${certificate_prefix}0"
+          touch "$RUNNER_TEMP/mimi-follow-public-cert-trusted"
+          bash scripts/macos/verify-macos-release.sh "$app" "$assets/mimi_${RELEASE_TAG#v}_aarch64.dmg"
+          bash scripts/macos/verify-macos-release-source.sh "$app" "$SOURCE_SHA" "${RELEASE_TAG#v}" arm64
+          [[ ! -e /Applications/mimi.app ]]
+          ditto "$app" /Applications/mimi.app
+          bash scripts/macos/verify-macos-release-source.sh /Applications/mimi.app "$SOURCE_SHA" "${RELEASE_TAG#v}" arm64
+          shasum -a 256 "$assets/mimi.app.tar.gz" /Applications/mimi.app/Contents/MacOS/mimi | tee "$RUNNER_TEMP/caption-release/verified-sha256.txt"
+      - name: Replay the formal app with animation off
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: bash scripts/macos/tests/run-translating-scroll.sh ${{ inputs.display_modes && '--display-modes' || '' }} "$RUNNER_TEMP/caption-release/off"
+      - name: Replay the formal app with animation on
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: bash scripts/macos/tests/run-translating-scroll.sh --animation ${{ inputs.display_modes && '--display-modes' || '' }} "$RUNNER_TEMP/caption-release/on"
+      - name: Save formal artifact provenance and synthetic caption evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: macos-release-caption-follow
+          path: ${{ runner.temp }}/caption-release
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Remove runner-only public certificate trust
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "$RUNNER_TEMP/mimi-follow-public-cert-trusted" ]]; then
+            sudo -n python3 - "$RUNNER_TEMP/mimi-follow-public-cert-0" <<'PY'
+          import subprocess, sys
+          try:
+              subprocess.run(['/usr/bin/security', 'remove-trusted-cert', '-d', sys.argv[1]], check=False, timeout=15)
+          except subprocess.TimeoutExpired:
+              print('Public certificate trust cleanup timed out; the disposable VM will be discarded.')
+          PY
+          fi
