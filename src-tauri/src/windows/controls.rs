@@ -195,7 +195,7 @@ impl OverlayControlState {
 /// use AppKit's key-window operation directly: Tao's `set_focus` also activates
 /// the application and can pull the media app out of its full-screen Space.
 /// A WKWebView click alone does not reliably make a nonactivating panel key.
-pub(super) fn focus_overlay_control(window: &tauri::WebviewWindow) {
+fn focus_overlay_control(window: &tauri::WebviewWindow) {
     #[cfg(not(target_os = "macos"))]
     let _ = window.set_focus();
 

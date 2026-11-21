@@ -33,7 +33,10 @@ ownership and button release: outline dragging can defer all movement until
 release, and a short click or cancelled drag can produce no Moved event. This
 observer exists only for that gesture. On completion, return keyboard ownership
 to the same control only if the owning root is still foreground. Settings or
-another application's foreground dismisses without reactivating Mimi.
+another application's foreground dismisses without reactivating Mimi. Attempt
+ordinary Win32 foreground restoration once; do not use Tao's force-focus retry
+(which can inject Alt). A refusal leaves the compact entry, not an unfocused
+expanded panel. Explicitly opening controls retains its existing focus path.
 
 A stationary short press has a separate native boundary: the physical release
 can precede the root acquiring capture. The hosted WinEvent trace observed the

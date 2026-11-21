@@ -43,14 +43,13 @@ mod native {
     use super::{
         drag_finished, focus_after_drag, forward_released_button, FocusAfterDrag, Foreground,
     };
-    use crate::windows::controls::focus_overlay_control;
     use crate::windows::{OverlayControlState, OverlayControlWindowManager};
     use ::windows::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
     use ::windows::Win32::Graphics::Gdi::ScreenToClient;
     use ::windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
     use ::windows::Win32::UI::WindowsAndMessaging::{
         GetCursorPos, GetForegroundWindow, GetGUIThreadInfo, GetWindowThreadProcessId, IsWindow,
-        PostMessageW, GUITHREADINFO, GUI_INMOVESIZE, WM_LBUTTONUP,
+        PostMessageW, SetForegroundWindow, GUITHREADINFO, GUI_INMOVESIZE, WM_LBUTTONUP,
     };
     use std::time::Duration;
     use tauri::{AppHandle, Manager, WebviewWindow};
@@ -102,7 +101,16 @@ mod native {
                     return;
                 }
                 match focus_after_drag(self.foreground()) {
-                    FocusAfterDrag::RestoreControl => focus_overlay_control(&control),
+                    FocusAfterDrag::RestoreControl => {
+                        // Tao's explicit set_focus retries with synthetic Alt
+                        // input. Recovery must respect a concurrent external
+                        // activation instead of taking that force-focus path.
+                        if !unsafe { SetForegroundWindow(HWND(self.control as *mut _)) }.as_bool()
+                            && self.foreground() != Foreground::Control
+                        {
+                            OverlayControlWindowManager::dismiss_panel(&current_app);
+                        }
+                    }
                     FocusAfterDrag::KeepControl => {}
                     FocusAfterDrag::Dismiss => {
                         OverlayControlWindowManager::dismiss_panel(&current_app);
