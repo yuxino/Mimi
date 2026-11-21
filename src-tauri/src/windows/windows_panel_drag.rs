@@ -17,10 +17,10 @@ fn drag_finished(saw_move: bool, moving: bool, left_down: bool, foreground: Fore
 fn forward_released_button(
     moving: bool,
     captured: bool,
-    left_down: bool,
+    released: bool,
     foreground: Foreground,
 ) -> bool {
-    moving && captured && !left_down && foreground == Foreground::Root
+    moving && captured && released && foreground == Foreground::Root
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -43,14 +43,15 @@ mod native {
     use super::{
         drag_finished, focus_after_drag, forward_released_button, FocusAfterDrag, Foreground,
     };
+    use crate::windows::windows_panel_drag_release::{ReleasePointLease, ScreenPoint};
     use crate::windows::{OverlayControlState, OverlayControlWindowManager};
-    use ::windows::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
+    use ::windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
     use ::windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
     use ::windows::Win32::UI::WindowsAndMessaging::{
-        GetCursorPos, GetForegroundWindow, GetGUIThreadInfo, GetWindowThreadProcessId, IsWindow,
-        PostMessageW, SetForegroundWindow, GUITHREADINFO, GUI_INMOVESIZE, WM_LBUTTONUP,
+        GetForegroundWindow, GetGUIThreadInfo, GetWindowThreadProcessId, IsWindow, PostMessageW,
+        SetForegroundWindow, GUITHREADINFO, GUI_INMOVESIZE, WM_CANCELMODE, WM_LBUTTONUP,
     };
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
     use tauri::{AppHandle, Manager, WebviewWindow};
 
     pub(crate) struct PanelDrag {
@@ -58,6 +59,7 @@ mod native {
         root: isize,
         control: isize,
         root_thread: u32,
+        release: ReleasePointLease,
     }
 
     impl PanelDrag {
@@ -75,10 +77,9 @@ mod native {
         }
 
         fn finish(self, app: &AppHandle) {
+            self.release.stop();
             let app = app.clone();
             let current_app = app.clone();
-            // Serialize the current foreground check with focus restoration;
-            // an external application or Settings must never be reactivated over.
             let _ = app.run_on_main_thread(move || {
                 let Some(state) = current_app.try_state::<OverlayControlState>() else {
                     return;
@@ -101,9 +102,8 @@ mod native {
                 }
                 match focus_after_drag(self.foreground()) {
                     FocusAfterDrag::RestoreControl => {
-                        // Tao's explicit set_focus retries with synthetic Alt
-                        // input. Recovery must respect a concurrent external
-                        // activation instead of taking that force-focus path.
+                        // Recovery must respect an external activation, rather
+                        // than Tao's explicit set_focus retry with synthetic Alt.
                         if !unsafe { SetForegroundWindow(HWND(self.control as *mut _)) }.as_bool()
                             && self.foreground() != Foreground::Control
                         {
@@ -112,7 +112,7 @@ mod native {
                     }
                     FocusAfterDrag::KeepControl => {}
                     FocusAfterDrag::Dismiss => {
-                        OverlayControlWindowManager::dismiss_panel(&current_app);
+                        OverlayControlWindowManager::dismiss_panel(&current_app)
                     }
                 }
             });
@@ -122,11 +122,73 @@ mod native {
             self.finish(app);
         }
 
+        async fn post_end(&self, app: &AppHandle, release: Option<ScreenPoint>) -> bool {
+            let (sender, receiver) = tokio::sync::oneshot::channel();
+            let current_app = app.clone();
+            let token = self.token;
+            let root = self.root;
+            let thread = self.root_thread;
+            if app
+                .run_on_main_thread(move || {
+                    let same_root = current_app
+                        .get_webview_window("overlay")
+                        .and_then(|window| window.hwnd().ok())
+                        .is_some_and(|window| window.0 as isize == root);
+                    let posted = same_root
+                        && current_app
+                            .try_state::<OverlayControlState>()
+                            .is_some_and(|state| {
+                                state.with_current_panel_drag(token, || {
+                                    let window = HWND(root as *mut _);
+                                    if unsafe { GetForegroundWindow() } != window {
+                                        return false;
+                                    }
+                                    let mut gui = GUITHREADINFO {
+                                        cbSize: std::mem::size_of::<GUITHREADINFO>() as u32,
+                                        ..Default::default()
+                                    };
+                                    if unsafe { GetGUIThreadInfo(thread, &mut gui) }.is_err()
+                                        || gui.flags.0 & GUI_INMOVESIZE.0 == 0
+                                        || gui.hwndMoveSize != window
+                                    {
+                                        return false;
+                                    }
+                                    let (message, position) = if let Some(point) = release {
+                                        if gui.hwndCapture != window {
+                                            return false;
+                                        }
+                                        // This active move loop consumes screen coordinates.
+                                        // Use the actual first up, never the later cursor or
+                                        // client-relative coordinates (which committed 0,0).
+                                        let position =
+                                            ((point.y as u16 as u32) << 16) | point.x as u16 as u32;
+                                        (WM_LBUTTONUP, LPARAM(position as isize))
+                                    } else {
+                                        (WM_CANCELMODE, LPARAM(0))
+                                    };
+                                    unsafe {
+                                        PostMessageW(Some(window), message, WPARAM(0), position)
+                                    }
+                                    .is_ok()
+                                })
+                            });
+                    let _ = sender.send(posted);
+                })
+                .is_err()
+            {
+                return false;
+            }
+            receiver.await.unwrap_or(false)
+        }
+
         pub(crate) fn observe(self, app: &AppHandle) {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
                 let mut saw_move = false;
                 let mut release_forwarded = false;
+                let mut startup_expired = false;
+                let mut native_capture_ready = false;
+                let started = Instant::now();
                 loop {
                     if !app
                         .try_state::<OverlayControlState>()
@@ -134,8 +196,7 @@ mod native {
                     {
                         return;
                     }
-                    // Keep native pointer-bearing structures out of the
-                    // async task state across the timer await.
+                    // Pointer-bearing native structs do not cross the await.
                     let sample = {
                         let root = HWND(self.root as *mut _);
                         let control = HWND(self.control as *mut _);
@@ -150,52 +211,44 @@ mod native {
                                 .is_ok()
                                 && gui.flags.0 & GUI_INMOVESIZE.0 != 0
                                 && gui.hwndMoveSize == root;
+                            let captured = gui.hwndCapture == root;
                             let left_down = unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) } < 0;
-                            let foreground = self.foreground();
-                            if !release_forwarded
-                                && forward_released_button(
-                                    moving,
-                                    gui.hwndCapture == root,
-                                    left_down,
-                                    foreground,
-                                )
-                            {
-                                // A cross-WebView press can release before the
-                                // root acquires capture. Its active move loop
-                                // consumes screen points: client-relative input
-                                // committed the outline to (0, 0) in native QA.
-                                // Preserve the real release point, including a
-                                // quick move; cancelling would discard it.
-                                let mut point = POINT::default();
-                                if unsafe { GetCursorPos(&mut point) }.is_ok() {
-                                    let position =
-                                        ((point.y as u16 as u32) << 16) | point.x as u16 as u32;
-                                    release_forwarded = unsafe {
-                                        PostMessageW(
-                                            Some(root),
-                                            WM_LBUTTONUP,
-                                            WPARAM(0),
-                                            LPARAM(position as isize),
-                                        )
-                                    }
-                                    .is_ok();
-                                }
-                            }
-                            Some((moving, left_down, foreground))
+                            Some((moving, captured, left_down, self.foreground()))
                         } else {
                             None
                         }
                     };
-                    let Some((moving, left_down, foreground)) = sample else {
+                    let Some((moving, captured, left_down, foreground)) = sample else {
                         break;
                     };
-                    if drag_finished(saw_move, moving, left_down, foreground) {
+                    if drag_finished(saw_move, moving, left_down, foreground)
+                        || (startup_expired && !moving)
+                    {
                         break;
                     }
+                    // Once the root owns capture while held, Windows receives
+                    // its normal up. No hook is needed for a long/native drag.
+                    if moving && captured && left_down && self.release.tracking() {
+                        self.release.stop();
+                        native_capture_ready = true;
+                    }
+                    let release = self.release.point();
+                    if !release_forwarded
+                        && forward_released_button(moving, captured, release.is_some(), foreground)
+                    {
+                        release_forwarded = self.post_end(&app, release).await;
+                    }
+                    // Bound only startup without native capture. Long drags
+                    // already disarmed above keep normal Windows behavior.
+                    if !native_capture_ready
+                        && !startup_expired
+                        && started.elapsed() >= Duration::from_secs(30)
+                    {
+                        self.release.stop();
+                        startup_expired = true;
+                        let _ = self.post_end(&app, None).await;
+                    }
                     saw_move |= moving;
-                    // This task exists only for one panel-authored gesture.
-                    // Outline drags may produce no Moved event until release;
-                    // a click or a cancelled/short drag may produce none at all.
                     tokio::time::sleep(Duration::from_millis(20)).await;
                 }
                 self.finish(&app);
@@ -207,26 +260,47 @@ mod native {
         (unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) }) < 0
     }
 
-    pub(crate) fn prepare_panel_drag(app: &AppHandle, root: &WebviewWindow) -> Option<PanelDrag> {
-        let control = app.get_webview_window("overlay-control")?;
-        let root = root.hwnd().ok()?.0 as isize;
-        let control = control.hwnd().ok()?.0 as isize;
-        // Only a gesture from the currently focused panel owns the temporary
-        // internal handoff. Ordinary root/click-away focus policy is unchanged.
-        if unsafe { GetForegroundWindow() }.0 as isize != control {
-            return None;
+    pub(crate) fn prepare_panel_drag(
+        app: &AppHandle,
+        root: &WebviewWindow,
+    ) -> Result<Option<PanelDrag>, ()> {
+        let Some(control) = app.get_webview_window("overlay-control") else {
+            return Ok(None);
+        };
+        let root = root.hwnd().map_err(|_| ())?.0 as isize;
+        let control = control.hwnd().map_err(|_| ())?.0 as isize;
+        if unsafe { GetForegroundWindow() }.0 as isize != control || !panel_drag_button_down() {
+            return Ok(None);
         }
         let root_thread = unsafe { GetWindowThreadProcessId(HWND(root as *mut _), None) };
         if root_thread == 0 {
-            return None;
+            return Err(());
         }
-        let token = app.try_state::<OverlayControlState>()?.begin_panel_drag()?;
-        Some(PanelDrag {
+        let Some(state) = app.try_state::<OverlayControlState>() else {
+            return Ok(None);
+        };
+        let Some(token) = state.begin_panel_drag() else {
+            return Ok(None);
+        };
+        let release = match ReleasePointLease::install(
+            app,
+            token,
+            HWND(root as *mut _),
+            HWND(control as *mut _),
+        ) {
+            Ok(Some(release)) => release,
+            result => {
+                state.finish_panel_drag(token);
+                return result.map(|_| None);
+            }
+        };
+        Ok(Some(PanelDrag {
             token,
             root,
             control,
             root_thread,
-        })
+            release,
+        }))
     }
 }
 
@@ -266,22 +340,27 @@ mod tests {
 
     #[test]
     fn only_an_owned_native_move_can_receive_the_already_released_button() {
-        assert!(forward_released_button(true, true, false, Foreground::Root));
-        assert!(!forward_released_button(true, true, true, Foreground::Root));
+        assert!(forward_released_button(true, true, true, Foreground::Root));
         assert!(!forward_released_button(
-            false,
+            true,
             true,
             false,
             Foreground::Root
         ));
         assert!(!forward_released_button(
+            false,
+            true,
+            true,
+            Foreground::Root
+        ));
+        assert!(!forward_released_button(
             true,
             false,
-            false,
+            true,
             Foreground::Root
         ));
         for foreground in [Foreground::Control, Foreground::External, Foreground::None] {
-            assert!(!forward_released_button(true, true, false, foreground));
+            assert!(!forward_released_button(true, true, true, foreground));
         }
     }
 

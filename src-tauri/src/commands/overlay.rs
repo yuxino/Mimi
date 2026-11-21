@@ -161,9 +161,29 @@ pub fn overlay_move_start(
             return Ok(());
         }
         #[cfg(target_os = "windows")]
-        let panel_drag = from_panel
-            .then(|| crate::windows::prepare_panel_drag(&app, &target))
-            .flatten();
+        let panel_drag = {
+            // A new native move intent cannot inherit a previous gesture's up
+            // or deferred focus restoration, even while Panel mode stays open.
+            let retired = OverlayControlWindowManager::retire_panel_drag(&app);
+            if retired && !from_panel {
+                OverlayControlWindowManager::schedule_dismiss(&app);
+            }
+            if from_panel {
+                match crate::windows::prepare_panel_drag(&app, &target) {
+                    Ok(Some(drag)) => Some(drag),
+                    Ok(None) => {
+                        OverlayWindowManager::move_cancel(&state.overlay);
+                        return Ok(());
+                    }
+                    Err(()) => {
+                        OverlayWindowManager::move_cancel(&state.overlay);
+                        return Err("Could not start overlay drag.".to_string());
+                    }
+                }
+            } else {
+                None
+            }
+        };
         if target.start_dragging().is_err() {
             #[cfg(target_os = "windows")]
             if let Some(drag) = panel_drag {

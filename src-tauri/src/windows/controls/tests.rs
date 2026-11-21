@@ -443,3 +443,26 @@ fn zoomed_controls_fit_css_content_without_changing_monitor_bounds() {
         }
     }
 }
+
+#[test]
+fn a_new_native_intent_retires_old_release_messages_without_closing_the_panel() {
+    let state = OverlayControlState::default();
+    state.set_mode(OverlayControlMode::Panel);
+    let old = state.begin_panel_drag().unwrap();
+    assert!(state.retire_panel_drag());
+    assert_eq!(state.mode(), OverlayControlMode::Panel);
+    let current = state.begin_panel_drag().unwrap();
+    assert_ne!(old, current);
+    assert!(!state.with_current_panel_drag(old, || panic!("stale native release")));
+    assert!(!state.finish_panel_drag(old));
+    let mut messages = 0;
+    assert!(state.with_current_panel_drag(current, || {
+        messages += 1;
+        true
+    }));
+    assert_eq!(messages, 1);
+    state.set_mode(OverlayControlMode::Hidden);
+    assert!(!state.with_current_panel_drag(current, || panic!("release after hide")));
+    assert!(!state.dismiss_panel());
+    assert_eq!(state.mode(), OverlayControlMode::Hidden);
+}

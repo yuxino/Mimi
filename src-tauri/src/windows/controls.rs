@@ -126,6 +126,24 @@ impl OverlayControlState {
     }
 
     #[cfg(any(target_os = "windows", test))]
+    pub(super) fn retire_panel_drag(&self) -> bool {
+        let mut state = self.0.lock().unwrap();
+        if state.panel_drag.take().is_none() {
+            return false;
+        }
+        state.generation = state.generation.wrapping_add(1);
+        true
+    }
+
+    #[cfg(any(target_os = "windows", test))]
+    pub(super) fn with_current_panel_drag(&self, token: u64, post: impl FnOnce() -> bool) -> bool {
+        let state = self.0.lock().unwrap();
+        // The caller only reads native metadata and queues a message. Never
+        // focus a window or wait for a native callback under this state lock.
+        state.mode == OverlayControlMode::Panel && state.panel_drag == Some(token) && post()
+    }
+
+    #[cfg(any(target_os = "windows", test))]
     pub(super) fn begin_panel_drag(&self) -> Option<u64> {
         let mut state = self.0.lock().unwrap();
         if state.mode != OverlayControlMode::Panel || state.panel_drag.is_some() {
@@ -441,6 +459,12 @@ impl OverlayControlWindowManager {
         if state.dismiss_panel() {
             Self::apply_mode(app, OverlayControlMode::Island, false);
         }
+    }
+
+    #[cfg(target_os = "windows")]
+    pub(crate) fn retire_panel_drag(app: &AppHandle) -> bool {
+        app.try_state::<OverlayControlState>()
+            .is_some_and(|state| state.retire_panel_drag())
     }
 
     /// Delayed focus-loss handling avoids a hide/show race when a click inside

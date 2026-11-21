@@ -84,6 +84,20 @@ function Test-PanelDragInteraction([IntPtr]$Controls,[string]$EvidencePath) {
         $metadata.shortGesture=Assert-PanelDragPosition 48
         $null=Wait-PanelLanguageState 'panel-refocus-after-short-gesture' { [MimiPanelKeyboard]::OwnsFocus($Controls) }
         [MimiPointerSmoke]::AssertCaptionMoveEnded($overlay)
+        $point=Get-PanelBlankPoint
+        [MimiPointerSmoke]::MoveOverWindow($Controls,$point.X,$point.Y,'Release the panel then immediately move the pointer')
+        $metadata.releaseAway=@{releasedAt=@($point.X,$point.Y);movedAfterReleaseTo=@(($point.X+30),$point.Y)}
+        try {
+            [MimiCaptionDragDesktop]::SetLeftButton($true)
+            Start-Sleep -Milliseconds 15
+        } finally {
+            [MimiCaptionDragDesktop]::SetLeftButton($false)
+            [MimiPointerSmoke]::MoveAndVerify(($point.X+30),$point.Y)
+        }
+        Start-Sleep -Milliseconds 400
+        $metadata.releaseAway.position=Assert-PanelDragPosition 48
+        $null=Wait-PanelLanguageState 'panel-refocus-after-release-away' { [MimiPanelKeyboard]::OwnsFocus($Controls) }
+        [MimiPointerSmoke]::AssertCaptionMoveEnded($overlay)
         $offset=48;$metadata.quickMoves=@()
         foreach ($distance in @(3,48)) {
             $point=Get-PanelBlankPoint
@@ -109,7 +123,7 @@ function Test-PanelDragInteraction([IntPtr]$Controls,[string]$EvidencePath) {
         $null=Wait-PanelLanguageState 'panel-focus-after-ordinary-click' { [MimiPanelKeyboard]::OwnsFocus($Controls) }
         [MimiPointerSmoke]::AssertCaptionMoveEnded($overlay)
         $metadata.passed=$true
-        Write-Host 'Native panel middle drag passed: same HWNDs, +48px, expanded sizes/anchor retained; stationary/quick gestures, ordinary click and native refocus passed. Continuing original language selections.'
+        Write-Host 'Native panel middle drag passed: same HWNDs, +48px, expanded sizes/anchor retained; stationary/quick gestures, release-away, ordinary click and native refocus passed. Continuing original language selections.'
     } catch { $metadata.passed=$false;$metadata.failure=[string]$_;throw }
     finally {
         [MimiCaptionDragDesktop]::SetLeftButton($false)

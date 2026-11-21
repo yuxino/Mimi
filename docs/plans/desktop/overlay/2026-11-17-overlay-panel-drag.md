@@ -45,11 +45,23 @@ the already-released button once to the original root, while it is foreground,
 owns capture and is still in its native move modal. That modal consumes the
 actual screen point: a client-relative point committed the outline to (0, 0),
 while the screen-point control preserved 0, 3 and 48 pixels respectively.
-Never synthesize system input or cancel a real outline displacement. A queued
+Polling the cursor after up is insufficient: moving it 30 pixels immediately
+after a stationary release moved the window those extra 30 pixels. The gesture
+therefore holds a release-point lease only while the primary button is held and
+native root capture is not established. It reads the first owned up and removes
+the hook immediately, without reading other mouse payloads. Target WebView2
+input is in another process, so the app's own window message queue does not
+cover this boundary. Cancellation, a new move intent and teardown retire the
+lease; a startup still without native capture expires after 30 seconds. Native
+end messages are queued on the main thread under the current gesture token,
+so a closed or subsequent gesture cannot consume an earlier release.
+
+Normal release preserves outline displacement without synthesizing system input. A queued
 panel press whose physical button is already released must not start a new OS
 move. Continue to wait for native completion before restoring panel focus.
 Keep the original long-drag and 15ms stationary-press assertions, plus quick
-3-pixel and 48-pixel moves and an ordinary blank click.
+3-pixel and 48-pixel moves, immediate pointer movement after release, and an
+ordinary blank click.
 
 Mode changes, lock, collapse, Stop and explicit dismissal retire gesture
 ownership. A late completion must not reopen a closed or newly opened panel.
