@@ -69,6 +69,8 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
   const saveSettings = useStore((state) => state.saveSettings);
   const showSettings = useStore((state) => state.showSettings);
   const [mode, setMode] = useOverlayControlMode(initialPreviewMode);
+  useEffect(() => { (window as Window & { __MIMI_CAPSULE_PROBE_STAGE__?: (stage: string, value?: string) => void }).__MIMI_CAPSULE_PROBE_STAGE__?.("child-committed"); }, []);
+  useEffect(() => { (window as Window & { __MIMI_CAPSULE_PROBE_STAGE__?: (stage: string, value?: string) => void }).__MIMI_CAPSULE_PROBE_STAGE__?.("mode", mode); }, [mode]);
   // Match native recovery, which temporarily lifts the saved lock.
   const lockedPresentation = settings.isOverlayLocked && sessionStatusKind !== "error";
   const visibleMode = lockedPresentation && mode === "panel" ? "island" : mode;

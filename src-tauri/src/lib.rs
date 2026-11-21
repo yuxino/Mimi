@@ -12,6 +12,7 @@ mod apple_translation;
 #[path = "apple/translation_support.rs"]
 mod apple_translation_support;
 mod audio;
+mod language_probe;
 #[cfg(test)]
 #[path = "development/probes/audio3_benchmark.rs"]
 mod audio3_benchmark;

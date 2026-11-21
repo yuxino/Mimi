@@ -266,6 +266,17 @@ impl OverlayControlWindowManager {
                 .shadow(false)
                 .focused(false)
                 .visible(false);
+        let builder = if crate::language_probe::enabled(app) {
+            crate::language_probe::native_start(app);
+            builder.initialization_script(include_str!("language_observe.js")).on_page_load(|window, load| {
+                let url = load.url();
+                let page = if matches!(url.path(), "/" | "/index.html") { "index" } else { "other" };
+                let scheme = match url.scheme() { "tauri" => "tauri", "about" => "about", _ => "other" };
+                let _ = crate::language_probe::record(&window, serde_json::json!({
+                    "kind": "native-page", "page": page, "scheme": scheme, "load": format!("{:?}", load.event())
+                }));
+            })
+        } else { builder };
         #[cfg(not(target_os = "windows"))]
         let builder = builder.visible_on_all_workspaces(true);
         #[cfg(target_os = "windows")]
