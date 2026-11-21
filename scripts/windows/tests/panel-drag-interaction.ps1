@@ -3,8 +3,8 @@
 # can extend across it, so pixel and actionable-hit checks remain independent.
 function Test-PanelDragInteraction([IntPtr]$Controls,[string]$EvidencePath) {
     if (-not ('MimiCaptionDragDesktop' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot 'CaptionDragDesktop.cs') }
-    . (Join-Path $PSScriptRoot 'panel-drag-observation.ps1')
-    $observation=Start-PanelDragObservation $overlay $Controls $EvidencePath
+    Add-Type -Path (Join-Path $PSScriptRoot 'PanelDragObservation.cs')
+    $observation=@{Observer=[MimiPanelDragObservation]::new($overlay,$Controls)}
     $main=[MimiPointerSmoke]::ReadBounds($overlay);$child=[MimiPointerSmoke]::ReadBounds($Controls)
     $scale=$child.Width/280.0
     $metadata=@{rootBefore=@($main.Left,$main.Top,$main.Width,$main.Height);controlBefore=@($child.Left,$child.Top,$child.Width,$child.Height);fullWindows=[MimiCaptionDragDesktop]::FullWindows()}
@@ -104,7 +104,7 @@ function Test-PanelDragInteraction([IntPtr]$Controls,[string]$EvidencePath) {
         foreach ($distance in @(3,48)) {
             $point=Get-PanelBlankPoint
             [MimiPointerSmoke]::MoveOverWindow($Controls,$point.X,$point.Y,'Check a quick native panel move')
-            $observation.Observer.Mark(('quick-'+$distance+'-before-input'))
+            $observation.Observer.SetStage(('quick-'+$distance+'-before-input'))
             $downStarted=[Diagnostics.Stopwatch]::GetTimestamp()
             try {
                 [MimiCaptionDragDesktop]::SetLeftButton($true)
@@ -119,7 +119,7 @@ function Test-PanelDragInteraction([IntPtr]$Controls,[string]$EvidencePath) {
                 $upReturned=[Diagnostics.Stopwatch]::GetTimestamp()
             }
             $metadata.quickInputTimes+=@{distance=$distance;frequency=[Diagnostics.Stopwatch]::Frequency;downStarted=$downStarted;downReturned=$downReturned;moveReturned=$moveReturned;upStarted=$upStarted;upReturned=$upReturned}
-            $observation.Observer.Mark(('quick-'+$distance+'-released'))
+            $observation.Observer.SetStage(('quick-'+$distance+'-released'))
             Start-Sleep -Milliseconds 400
             $offset+=$distance
             $position=Assert-PanelDragPosition $offset
@@ -146,6 +146,7 @@ function Test-PanelDragInteraction([IntPtr]$Controls,[string]$EvidencePath) {
     finally {
         [MimiCaptionDragDesktop]::SetLeftButton($false)
         [IO.File]::WriteAllText((Join-Path $EvidencePath 'en-panel-drag.json'),($metadata|ConvertTo-Json -Depth 6),[Text.UTF8Encoding]::new($false))
-        Stop-PanelDragObservation $observation
+        [IO.File]::WriteAllText((Join-Path $EvidencePath 'native-events.json'),(@{frequency=$observation.Observer.Frequency;samples=$observation.Observer.Snapshot();dropped=$observation.Observer.DroppedSamples}|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
+        $observation.Observer.Dispose()
     }
 }

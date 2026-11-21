@@ -1,5 +1,5 @@
 name: Windows blank panel drag QA
-run-name: Native short-gesture focus trace — exact 42da7a53 quick-gesture observation
+run-name: Native short-gesture focus trace — 42da7a53 quick gestures — three bounded native-only samples
 on:
   workflow_dispatch:
 permissions:
@@ -53,19 +53,6 @@ jobs:
           $source | Set-Content -LiteralPath $parse -Encoding utf8NoBOM
           powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $parse
           if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell parser failed.' }
-      - name: Prepare pinned QA-only video encoder
-        shell: pwsh
-        run: |
-          $archive=Join-Path $env:RUNNER_TEMP 'ffmpeg-qa.zip'
-          Invoke-WebRequest -Uri 'https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-gpl-shared-9.0.zip' -OutFile $archive
-          if ((Get-FileHash -Algorithm SHA256 $archive).Hash -cne 'E20801968256E40CF2EDD0D3A0B7F5E7C9394C96691530A86A42F1F35807B49F') { throw 'Pinned QA encoder archive identity changed.' }
-          $destination=Join-Path $env:RUNNER_TEMP 'ffmpeg-qa'
-          Expand-Archive -LiteralPath $archive -DestinationPath $destination
-          $encoder=@(Get-ChildItem $destination -Recurse -File -Filter 'ffmpeg.exe')
-          if($encoder.Count -ne 1){throw 'Exactly one pinned QA encoder required.'}
-          $encoder[0].FullName | ForEach-Object { "MIMI_QA_FFMPEG=$_" } | Out-File -LiteralPath $env:GITHUB_ENV -Append -Encoding utf8
-          & $encoder[0].FullName -version
-          if($LASTEXITCODE -ne 0){throw 'Pinned QA encoder could not initialize.'}
       - name: Exact long and short physical gestures with native trace
         shell: pwsh
         run: |
@@ -74,11 +61,16 @@ jobs:
           $executable=$files[0].FullName
           $sha=(Get-FileHash -Algorithm SHA256 $executable).Hash
           if($sha -cne '990187FE925F8E8930872C14FDCE327DB33BB89D643EBCB5050D5A5263819243'){throw 'Exact candidate executable bytes changed.'}
-          $evidence=Join-Path $env:RUNNER_TEMP 'panel-short-evidence'
-          New-Item -ItemType Directory -Path $evidence | Out-Null
-          @{source='42da7a53396b4f96a7f2dc7c953e4535721ad6d1';sourceRun=44924800548;artifact=14715014975;executableSha256=$sha} |
-            ConvertTo-Json | Set-Content (Join-Path $evidence 'executable-identity.json') -Encoding utf8NoBOM
-          ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath $executable -ExpectedArchitecture x64 -OverlayInteraction panel-languages -EvidenceDirectory $evidence
+          $failed=@()
+          foreach($sample in @(1,2,3)) {
+            $evidence=Join-Path $env:RUNNER_TEMP ('panel-short-evidence/sample-'+$sample)
+            New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+            @{source='42da7a53396b4f96a7f2dc7c953e4535721ad6d1';sourceRun=44924800548;artifact=14715014975;executableSha256=$sha;sample=$sample;plannedSamples=3;video=$false} |
+              ConvertTo-Json | Set-Content (Join-Path $evidence 'executable-identity.json') -Encoding utf8NoBOM
+            & pwsh -NoProfile -File ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath $executable -ExpectedArchitecture x64 -OverlayInteraction panel-languages -EvidenceDirectory $evidence
+            if($LASTEXITCODE -ne 0){$failed+=$sample}
+          }
+          if($failed.Count){throw "Native-only fixed samples failed: $($failed -join ','). All sample results retained; no retry to acceptance."}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:

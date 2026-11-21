@@ -110,6 +110,7 @@ public sealed class MimiPanelDragObservation : IDisposable
         Rect a,b;GetWindowRect(root,out a);GetWindowRect(control,out b);Point p;bool hasPointer=GetCursorPos(out p);uint leafProcess=0;uint leafThread=0;if(id==0&&hasPointer)leafThread=GetWindowThreadProcessId(WindowFromPoint(p),out leafProcess);long now=Stopwatch.GetTimestamp();
         lock(sync){if(samples.Count>=2048){DroppedSamples++;return;}samples.Add(new Sample{HostTicks=now,UtcTicks=DateTime.UtcNow.Ticks,SystemTickMs=GetTickCount64(),ElapsedMs=(now-started)*1000.0/Stopwatch.Frequency,Event=id,EventTickMs=time,Stage=stage,Target=target,Foreground=Category(GetForegroundWindow()),Focus=Category(gui.Focus),Capture=Category(gui.Capture),LeftDown=(GetAsyncKeyState(1)&0x8000)!=0,RootMoveModal=(gui.Flags&2)!=0&&gui.MoveSize==root,Root=a,Control=b,PointerX=p.X,PointerY=p.Y,PointerLeafSameProcess=leafThread==0?(bool?)null:leafProcess==processId,PointerLeafOnRootThread=leafThread==0?(bool?)null:leafThread==rootThread});}
     }
+    public void SetStage(string value){lock(sync)stage=value;}
     public void Mark(string value){lock(sync)stage=value;Record(0,0,"mark");}
     public Sample[] Snapshot(){lock(sync)return samples.ToArray();}
     public IntPtr BackgroundWindow { get { return backplate; } }
