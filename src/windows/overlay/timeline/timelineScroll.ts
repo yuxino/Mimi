@@ -136,13 +136,12 @@ export class TimelineScroll {
       return;
     }
     if (this.pointerInterruptedGlide || this.userScrolling?.kind === "scrollbar") return;
-    // A compact bilingual lane reserves blank space as well as actual text.
-    // Start at the newest sentence after a mode change so its original is
-    // visible; bottom-pinning can hide that original behind the reserved space.
+    // Keep the newest sentence's original in view after a display-mode change.
+    // New content resumes ordinary tail following.
     const latest = element.lastElementChild as HTMLElement | null;
     const top = this.modeAnchor && latest ? this.top(element, latest) : element.scrollHeight;
-    // New rows settle from their provisional compact budgets to measured
-    // heights. Retarget the glide instead of snapping it to the final tail.
+    // Wrapping and lane-budget changes can resize rows during a glide.
+    // Retarget it instead of snapping to the final tail.
     if (this.atTail(element)) this.smoothFollowing = false;
     this.move(element, top, this.smoothFollowing ? "smooth" : "instant");
   }

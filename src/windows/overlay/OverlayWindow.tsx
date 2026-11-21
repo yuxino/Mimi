@@ -280,7 +280,8 @@ export function OverlayWindow() {
     const actionFailed = sessionAction.failed || controlAction.failed;
     if (!showTiming && !pendingSessionLabel && !actionFailed && !returnToLive) return null;
     return <div className="overlay-status-row"
-      style={{ top: `var(--overlay-status-top, ${topChromeLayout.topBandHeight + 3}px)` }}>
+      data-translation-status-space={showTiming && settings.targetLanguage !== "original" && blocks.length > 0 ? "" : undefined}
+      style={{ top: `calc(var(--overlay-toolbar-height, ${topChromeLayout.topBandHeight}px) + 3px)` }}>
       <div className="overlay-status-row__leading">
         {pendingSessionLabel || actionFailed ? <div role={pendingSessionLabel ? "status" : "alert"} className="overlay-action-feedback">
           {pendingSessionLabel ?? actionFailureMessage}
@@ -437,9 +438,7 @@ export function OverlayWindow() {
           <div
             className={`flex min-h-0 flex-col${hasSessionError ? " overlay-session-error-content" : ""}`}
             style={{
-              // Reserve room for visible controls and use that room for
-              // captions while the chrome is quiet. Keep one timeline mounted.
-              paddingTop: `var(--overlay-caption-inset, ${topBandHeight}px)`,
+              paddingTop: `calc(var(--overlay-toolbar-height, ${topBandHeight}px) + var(--overlay-status-height, 0px))`,
               height: "100%",
             }}
           >
