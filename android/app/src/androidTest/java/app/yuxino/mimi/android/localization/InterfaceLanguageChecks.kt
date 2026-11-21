@@ -98,6 +98,7 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
                 onUi { check(WindowInspector.getGlobalWindowViews().any { containsText(it, "Русский") }) }
                 capture("picker-$theme")
                 instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+                if (Build.VERSION.SDK_INT >= 33) checkSystemLanguageChange()
                 onUi { openCaptionStyles(settings!!) }
                 stage = "normal_preview_created"
                 context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_UI_PREVIEW))
@@ -158,6 +159,19 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
     }
 
     private fun picker() = checkNotNull(settings).findViewById<Spinner>(R.id.interface_language)
+
+    @android.annotation.TargetApi(33)
+    private fun checkSystemLanguageChange() {
+        stage = "system_language_change_with_picker_visible"
+        select("zh-Hans")
+        val previous = settings
+        val manager = context.getSystemService(android.app.LocaleManager::class.java)
+        onUi { manager.applicationLocales = android.os.LocaleList.forLanguageTags("zh-Hant") }
+        await { settings !== previous && settings?.hasWindowFocus() == true }
+        instrumentation.waitForIdleSync()
+        assertLanguage("zh-Hant")
+        check(manager.applicationLocales.toLanguageTags() == "zh-Hant") { "Mimi restored the old system app language" }
+    }
 
     private fun assertControlBounds() = onUi {
         for (id in listOf(R.id.tab_caption, R.id.tab_service, R.id.tab_general)) {

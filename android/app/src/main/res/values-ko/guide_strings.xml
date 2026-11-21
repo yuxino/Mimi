@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="guide_open">시작 안내</string>
+    <string name="guide_open">사용 가이드</string>
     <string name="guide_intro">번역 서비스 선택</string>
     <string name="guide_saved_hint">서비스 인증 정보를 이 휴대전화에 암호화하여 저장합니다. 저장만으로는 서비스에 접속하거나 인증을 확인하지 않습니다.</string>
     <string name="guide_saved">인증 정보 저장됨 · 체험 중 연결 확인</string>

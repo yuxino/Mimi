@@ -4,7 +4,7 @@
     <string name="settings_language_system">시스템 설정 따르기</string>
     <string name="settings_language_failed">화면 언어를 변경하지 못했습니다. 다시 시도하세요.</string>
     <string name="settings_back">뒤로</string>
-    <string name="settings_advanced">고급 설정</string>
+    <string name="more_help_and_about">도움말 및 정보</string>
     <string name="settings_font">자막 크기</string>
     <string name="settings_color">자막 색상</string>
     <string name="settings_opacity">자막 불투명도</string>

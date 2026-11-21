@@ -4,7 +4,7 @@
     <string name="settings_language_system">跟随系统</string>
     <string name="settings_language_failed">无法更改界面语言，请重试。</string>
     <string name="settings_back">返回</string>
-    <string name="settings_advanced">高级设置</string>
+    <string name="more_help_and_about">帮助与关于</string>
     <string name="settings_font">字幕字号</string>
     <string name="settings_color">字幕颜色</string>
     <string name="settings_opacity">字幕不透明度</string>

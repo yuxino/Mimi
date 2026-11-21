@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.text.Layout
 import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
@@ -30,6 +31,8 @@ internal class AppUpdateControls(
     private var toast: Toast? = null
     @Suppress("DEPRECATION")
     private val installedVersion = activity.packageManager.getPackageInfo(activity.packageName, 0).versionName.orEmpty()
+    private val version = ServiceSettingsUi.label(activity, activity.getString(R.string.app_update_version, installedVersion), 16f)
+        .apply { tag = "app-update-version" }
     private val status = ServiceSettingsUi.label(activity, "", 16f).apply {
         tag = "app-update-status"
         visibility = View.GONE
@@ -39,6 +42,8 @@ internal class AppUpdateControls(
         tag = "app-update-check"
         setText(R.string.app_update_check)
         isAllCaps = false
+        isSingleLine = false
+        minimumHeight = ServiceSettingsUi.dp(activity, 48)
         setOnClickListener { checkForUpdate() }
     }
     private val download = MaterialButton(activity, null, com.google.android.material.R.attr.borderlessButtonStyle).apply {
@@ -52,9 +57,29 @@ internal class AppUpdateControls(
     init {
         orientation = VERTICAL
         tag = "app-updates"
-        addView(ServiceSettingsUi.label(activity, activity.getString(R.string.app_update_version, installedVersion), 16f)
-            .apply { tag = "app-update-version" }, LayoutParams(-1, -2))
-        addView(check, LayoutParams(-2, -2).apply { gravity = Gravity.END })
+        val header = object : LinearLayout(activity) {
+            init { gravity = Gravity.CENTER_VERTICAL }
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                check.measure(MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
+                    MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+                val available = MeasureSpec.getSize(widthMeasureSpec) - paddingLeft - paddingRight
+                val fits = Layout.getDesiredWidth(version.text, version.paint) + check.measuredWidth +
+                    ServiceSettingsUi.dp(activity, 16) <= available
+                orientation = if (fits) HORIZONTAL else VERTICAL
+                (version.layoutParams as LayoutParams).apply {
+                    width = if (fits) 0 else LayoutParams.MATCH_PARENT
+                    weight = if (fits) 1f else 0f
+                }
+                (check.layoutParams as LayoutParams).apply {
+                    width = if (fits) LayoutParams.WRAP_CONTENT else LayoutParams.MATCH_PARENT
+                    gravity = Gravity.END
+                }
+                super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+            }
+        }
+        header.addView(version, LayoutParams(0, -2, 1f))
+        header.addView(check, LayoutParams(-2, -2))
+        addView(header, LayoutParams(-1, -2))
         addView(status, LayoutParams(-1, -2))
         addView(download, LayoutParams(-2, -2).apply { gravity = Gravity.END })
         activity.lifecycle.addObserver(LifecycleEventObserver { _, event ->

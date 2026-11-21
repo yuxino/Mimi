@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_heading">Caption shortcuts</string>
+    <string name="shortcut_help">The edge button tucks against the screen after three seconds. Tap it to bring it back. The notification lets you start captions while they’re off. Android asks before a new system-audio session.</string>
+    <string name="shortcut_edge_label">Floating edge button</string>
+    <string name="shortcut_notification_label">Notification when captions are off</string>
+    <string name="shortcut_add_tile">Add to Quick Settings</string>
+    <string name="shortcut_tile_label">Mimi captions</string>
+    <string name="shortcut_tile_manual">Open Quick Settings, tap Edit, then add Mimi captions.</string>
+    <string name="shortcut_tile_already_added">The tile is already in Quick Settings.</string>
+    <string name="shortcut_captions_off">Captions are off</string>
+    <string name="shortcut_notifications_blocked">Allow notifications to use this shortcut.</string>
+    <string name="shortcut_open_settings">Settings</string>
+    <string name="shortcut_settings_unavailable">System settings are unavailable.</string>
+    <string name="caption_edge_move">Move to the opposite edge</string>
+    <string name="shortcut_reveal_edge">Show caption button</string>
+    <string name="shortcut_resume_captions">Continue captions</string>
+    <string name="shortcut_captions_paused">Captions paused</string>
+    <string name="shortcut_resume_after_unlock">Locking your phone stopped screen sharing.</string>
+</resources>

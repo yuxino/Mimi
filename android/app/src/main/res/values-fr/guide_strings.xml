@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="guide_open">Premiers pas</string>
+    <string name="guide_open">Guide d’utilisation</string>
     <string name="guide_intro">Choisir un service de traduction</string>
     <string name="guide_saved_hint">Enregistrez les identifiants du service dans le stockage chiffré du téléphone. L’enregistrement ne contacte pas le service et ne vérifie pas l’authentification.</string>
     <string name="guide_saved">Identifiants enregistrés · connexion vérifiée pendant l’essai</string>
