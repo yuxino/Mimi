@@ -171,9 +171,10 @@ duration covers a successful nonempty current preview or final text request,
 including retries but excluding ASR and queue work. The legacy
 end-to-end client measures matching source-final to translation-final receipt
 as translation wait; a translation received first has zero additional wait.
-Active work displays a pending or translating label rather than an unexplained
-dash; MT recovery displays a short explicit rate-limit/retry status. Unsupported
-or inactive observations show an em dash. Timings are
+Hover or keyboard focus reveals active translation and one measured time next
+to the tools, with the API round trip taking precedence. The expanded panel
+identifies each available measurement. MT recovery displays a short explicit
+rate-limit or retry status. Missing observations are omitted. Timings are
 content-free and clear across inactive/paused/error/reconnecting or stale
 generations; original-only mode has no translation sample. Immersive mode
 hides the API and translation timing row. It retains explicit control-action

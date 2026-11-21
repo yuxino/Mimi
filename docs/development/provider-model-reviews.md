@@ -4,6 +4,10 @@
 每轮记录核对日期、源码、官方来源、范围、结论及下一步；实际模型对比结果
 另入[集成实测记录](integration-runs.md)。本页不保存媒体、译文或账户信息。
 
+## 2026-11-21 · v1.7.6 桌面悬停读数
+
+OpenAI 同传的输出字幕按增量事件返回。桌面可以据已接收的当前译稿显示进度。Mimi 的这条路线已有接口往返计时，未提供逐句翻译耗时样本。此次修复只消费已有会话状态。沿用当日其他供应商的核对记录，模型及调用方式保持原配置。[实时翻译事件](https://developers.openai.com/api/docs/guides/realtime-translation) · [当前模型](https://developers.openai.com/api/docs/models/gpt-realtime-translate)
+
 ## 2026-11-21 — 豆包同传与 11 月 20 日到期项
 
 从 11 月 18 日的 `06f51c27` 到 `c134bd3b`，共享运行时和服务预设没有变化。本轮核对公开文档，未调用供应商或读取账户配置。

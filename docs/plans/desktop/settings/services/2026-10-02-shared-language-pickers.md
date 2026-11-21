@@ -27,6 +27,12 @@ Keep the same focus through both events. If the reconnect interrupts a focused
 search field, close the menu and return focus to its trigger in the active
 window. An explicit move to another control takes precedence.
 
+Resizing the window or scrolling the field's container also closes its fixed
+menu. If the search input owned focus, return it to the field without scrolling
+so one arrow key reopens the saved choice. Switching windows or focusing
+another control leaves the user's focus there. Scrolling the menu's results
+or a sibling caption timeline keeps the menu open.
+
 All pickers use explicit source selection: choosing Chinese preserves the
 selected target, and leaving Chinese with Original selected keeps Original.
 Remove the old Chinese shortcut's implicit target rewriting; otherwise the six

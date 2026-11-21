@@ -112,6 +112,76 @@ fn adapt(event: TranscriptEvent) -> LiveTranslateServerEvent {
 mod tests {
     use super::*;
 
+    #[test]
+    fn openai_translation_activity_projection_tracks_deltas_final_and_clear() {
+        use crate::core::lifecycle::session::TranslationSessionController;
+
+        let mut stream = OpenAITranscriptPairCommitter::new(320, Some("en".into()));
+        let mut controller = TranslationSessionController::default();
+        controller.begin_session();
+        controller.did_connect();
+        for chunk in ["Hello", " world"] {
+            for event in stream.append_source_delta(chunk, None) {
+                controller.handle(event);
+            }
+        }
+        for (chunk, accumulated) in [("你好", "你好"), ("世界", "你好世界")] {
+            for event in stream.append_translation_delta(chunk, None) {
+                controller.handle(event);
+            }
+            let preview = controller
+                .state
+                .subtitles
+                .realtime_preview
+                .as_ref()
+                .unwrap();
+            assert_eq!(preview.source.text, "Hello world");
+            assert_eq!(preview.translation.text, accumulated);
+            assert!(!preview.translation.is_final);
+            // The production OpenAI adapter emits drafts without a separate
+            // TranslationStarted; presentation must use the current projection.
+            assert!(!controller.state.is_translation_pending);
+            assert!(!controller.state.is_translation_preview_pending);
+        }
+        for event in stream.append_source_delta(".", None) {
+            controller.handle(event);
+        }
+        for event in stream.append_translation_delta("。", None) {
+            controller.handle(event);
+        }
+        assert!(controller.state.subtitles.realtime_preview.is_none());
+        assert!(controller.state.subtitles.display_pair_final);
+        assert_eq!(controller.state.subtitles.translation.text, "你好世界。");
+
+        for event in stream.append_source_delta("Next", None) {
+            controller.handle(event);
+        }
+        let preview = controller
+            .state
+            .subtitles
+            .realtime_preview
+            .as_ref()
+            .unwrap();
+        assert_eq!(preview.source.text, "Next");
+        assert!(preview.translation.text.is_empty());
+        for event in stream.append_translation_delta("下一句", None) {
+            controller.handle(event);
+        }
+        assert!(!controller
+            .state
+            .subtitles
+            .realtime_preview
+            .as_ref()
+            .unwrap()
+            .translation
+            .text
+            .is_empty());
+        stream.reset();
+        controller.clear_subtitles();
+        assert!(controller.state.subtitles.realtime_preview.is_none());
+        assert!(stream.finish().is_empty());
+    }
+
     fn translation_at(
         stream: &mut OpenAITranscriptPairCommitter,
         milliseconds: u64,

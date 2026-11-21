@@ -20,8 +20,18 @@ animation=false
 if [[ ${1:-} == --animation ]]; then animation=true; shift; fi
 display_modes=false
 if [[ ${1:-} == --display-modes ]]; then display_modes=true; shift; fi
+readout=false
+if [[ ${1:-} == --status-readout ]]; then
+  [[ $identifier == app.yuxino.mimi.dev && $animation == false && $display_modes == false ]] || {
+    echo "The status readout uses its own signed development scene and default subtitles." >&2
+    exit 2
+  }
+  readout=true
+  shift
+fi
 if [[ $# -ne 1 || -z $1 || $1 == -* ]]; then
   echo "Usage: $0 [--dev CERTIFICATE_SHA1] [--animation] [--display-modes] EVIDENCE_DIR" >&2
+  echo "       $0 --dev CERTIFICATE_SHA1 --status-readout EVIDENCE_DIR" >&2
   exit 2
 fi
 evidence=$1
@@ -39,7 +49,7 @@ else
 fi
 mkdir -p "$evidence"
 {
-  echo "Verified identifier=$identifier certificatePinSHA1=$signer subtitleAnimation=$animation"
+  echo "Verified identifier=$identifier certificatePinSHA1=$signer"
   shasum -a 256 "$app/Contents/MacOS/mimi"
 } | tee "$evidence/translating-scroll.log"
 scene=$(mktemp -d "${TMPDIR%/}/mimi-ui-test-translating.XXXXXX")
@@ -53,12 +63,21 @@ cleanup() {
 }
 trap cleanup EXIT
 mkdir "$scene/ready"
-cat > "$scene/preferences.json" <<JSON
+layout_scene=1
+if [[ $readout == true ]]; then
+  # Localize only the interface. Use product defaults for the audio, languages,
+  # subtitle mode, animation, opacity, font and saved-session options.
+  printf '%s\n' '{"ui_language":"zh"}' > "$scene/preferences.json"
+  layout_scene=status-readout
+else
+  cat > "$scene/preferences.json" <<JSON
 {"ui_language":"en","source_language":"en","target_language":"zh","audio_input":"system","subtitle_display_mode":"bilingual","font_size":16,"subtitle_animation":$animation,"subtitle_background_opacity":100,"retain_session_history":false,"record_session_audio":false}
 JSON
-xcrun swiftc "$suite/translating-scroll.swift" "$suite/DisplayModes.swift" "$suite/OverlayHoverControls.swift" "$suite/Capture.swift" -o "$scene/check-translating-scroll"
+fi
+cp "$scene/preferences.json" "$evidence/fixture-preferences.json"
+xcrun swiftc "$suite/translating-scroll.swift" "$suite/DisplayModes.swift" "$suite/OverlayHoverControls.swift" "$suite/StatusReadout.swift" "$suite/Capture.swift" -o "$scene/check-translating-scroll"
 MIMI_UI_TEST=1 MIMI_AUTO_START=1 MIMI_UI_TEST_STANDARD_OVERLAY=1 \
-  MIMI_UI_TEST_TRANSLATION_LAYOUT=1 MIMI_UI_TEST_PREFERENCES_DIR="$scene" \
+  MIMI_UI_TEST_TRANSLATION_LAYOUT="$layout_scene" MIMI_UI_TEST_PREFERENCES_DIR="$scene" \
   MIMI_UI_TEST_FRONTEND_READY_DIR="$scene/ready" MIMI_UI_TEST_SESSION_STATE_FILE="$scene/session" \
   MIMI_UI_TEST_SETTINGS_ACTIVATION_FILE="$scene/settings-activation" \
   "$app/Contents/MacOS/mimi" >"$scene/app.log" 2>&1 &
@@ -76,6 +95,7 @@ ready || { echo "Signed UI-test windows and listening state were not ready in 30
 [[ ! -e "$scene/settings-activation" ]]
 check_args=("$pid" "$identifier" "$scene" "$evidence")
 if [[ $display_modes == true ]]; then check_args+=(--display-modes); fi
+if [[ $readout == true ]]; then check_args+=(--status-readout); fi
 "$scene/check-translating-scroll" "${check_args[@]}" 2>&1 | tee -a "$evidence/translating-scroll.log"
 kill -0 "$pid"
 ready && [[ ! -e "$scene/settings-activation" ]]

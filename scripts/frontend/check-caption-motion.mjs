@@ -104,7 +104,12 @@ function captionPage(devtools, sessionId) {
   };
   let buttons = 0;
   let position = { x: 0, y: 0 };
-  const move = (x, y) => { position = { x, y }; return cdp("Input.dispatchMouseEvent", { type: "mouseMoved", ...position, buttons }); };
+  const move = (x, y) => {
+    position = { x, y };
+    // Chromium uses the active button to deliver a drag to the captured
+    // handle. The buttons bitmask alone delivers the move beneath the pointer.
+    return cdp("Input.dispatchMouseEvent", { type: "mouseMoved", ...position, button: buttons ? "left" : "none", buttons });
+  };
   const page = {
     cdp, evaluate,
     async goto(url) {
@@ -201,6 +206,22 @@ try {
     const cases = result.subtitleMotion.filter(item => item.hovered === hovered && item.motion === motion);
     assert.equal(cases.length, 1, "Missing or duplicate caption motion case");
     assert.ok(cases[0].frames > 0, "Caption geometry was not sampled");
+    assert.equal(cases[0].latencyVisibility.length, 14, "Missing actual latency/status states");
+    assert.ok(cases[0].latencyVisibility.every(state => state.ready && state.frames > 0 && state.maxShift <= 2),
+      "Latency/status visibility or caption geometry was not verified");
+  }
+  const readouts = await verify(page, { baseUrl, readoutLayoutOnly: true, widths: [360, 580], themes: ["dark"] });
+  assert.equal(readouts.checked, 18, "Expected nine locales at narrow and ordinary overlay widths");
+  for (const width of [360, 580]) for (const language of ["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th", "ru"]) {
+    const cases = readouts.readoutLayout.filter(item => item.width === width && item.language === language);
+    assert.equal(cases.length, 1, "Missing or duplicate localized readout layout");
+    assert.deepEqual(cases[0].exposures.map(item => item.hovered), [false, true, false], "Missing physical hover/leave sequence");
+    for (const exposure of cases[0].exposures) {
+      assert.deepEqual(exposure.states.map(state => state.pending), [true, false], "Pending/clear was not exercised");
+      assert.ok(exposure.states.every(state => state.ready && state.frames > 0 && state.maxShift <= 2), "Localized readout moved captions or was not visible");
+      if (exposure.hovered) assert.ok(exposure.states.every(state => state.placement?.placement === (width === 580 ? "beside" : "below")),
+        "Readout did not use the expected toolbar placement");
+    }
   }
   const modes = await verify(page, { baseUrl, subtitleModesOnly: true });
   assert.equal(modes.checked, 24, "Expected four representative routes, each switching all three modes twice");
@@ -210,9 +231,16 @@ try {
     assert.ok(cases.every(item => item.frames > 0 && item.pendingShift <= 2 && item.historyShift <= 2
       && item.targetLanguage === "zh" && !/openai/i.test(item.provider)), "Unverified route or caption geometry");
   }
+  const history = await verify(page, { baseUrl, subtitleHistoryOnly: true });
+  assert.equal(history.checked, 1, "Expected one real scrollbar last-move/release case");
+  assert.ok(history.subtitleHistory.release?.trusted && history.subtitleHistory.released.ready
+    && history.subtitleHistory.appended.ready && history.subtitleHistory.newContent,
+  "Scrollbar release or the next complete caption did not restore following");
   assert.deepEqual(errors, [], "Unexpected browser errors");
   console.log(JSON.stringify({ browser: (await devtools.command("Browser.getVersion")).product, ...result,
-    modeChecked: modes.checked, subtitleModes: modes.subtitleModes }));
+    readoutChecked: readouts.checked, readoutLayout: readouts.readoutLayout,
+    modeChecked: modes.checked, subtitleModes: modes.subtitleModes,
+    historyChecked: history.checked, subtitleHistory: history.subtitleHistory }));
 } catch (error) {
   // Preserve the assertion or launch error even if cleanup also fails.
   console.error(error);

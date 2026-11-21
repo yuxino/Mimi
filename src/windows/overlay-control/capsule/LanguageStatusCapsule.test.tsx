@@ -7,6 +7,8 @@ import { useStore } from "../../../lib/store";
 import { LanguageStatusCapsule } from "./LanguageStatusCapsule";
 import { audioInputLabel } from "../../../lib/audio/audioInput";
 import { recordingStatusLabel } from "../../../lib/audio/recordingStatus";
+import { capsuleLabels } from "./capsuleLabels";
+import { OVERLAY_ACTIVITY_PHASES } from "../../../lib/types";
 
 it.each(["zh", "zh-TW", "en", "ja", "ko", "fr", "de", "ru", "th"] as const)("names the expanded %s controls without repeating the language choices and retains status and collapse", async language => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -77,12 +79,61 @@ it("keeps actual recording feedback in the existing control and replaces duplica
       expect(host.querySelector("[data-recording-status]")?.getAttribute("data-recording-status")).toBe(audioRecording);
       if (audioRecording === "paused") {
         expect(host.querySelector(".overlay-control-island__phase")).toBeNull();
-        expect(host.textContent).toContain("录音暂停");
+        expect(host.querySelector(".recording-indicator__label")).toBeNull();
+        expect(host.querySelector("[data-recording-status]")?.getAttribute("aria-label")).toBe(label);
       }
     }
   } finally {
     await act(async () => root.unmount());
     host.remove(); setStoredUiLanguage("system"); vi.unstubAllGlobals();
+  }
+});
+
+it.each(["zh", "zh-TW", "en", "ja", "ko", "fr", "de", "ru", "th"] as const)("keeps the %s language entry free of duplicate translation progress and retains the opening cue", async language => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+  setStoredUiLanguage(language);
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  const onToggle = vi.fn();
+  const settings = { ...useStore.getState().settings, sourceLanguage: "auto" as const, targetLanguage: "zh" as const };
+  const props = { settings, status: { source: "Auto", separator: "→", target: "Chinese" },
+    isPaused: false, isWaitingForFinalTranslation: false, expanded: false, onToggle,
+  };
+  try {
+    await act(async () => root.render(<LanguageStatusCapsule {...props} phase="listening" />));
+    const languageRow = host.querySelector(".overlay-control-island__summary")!;
+    const labels = capsuleLabels(settings, "translating", language);
+    expect(languageRow.textContent).toBe(`${labels.source}→${labels.target}`);
+    const pulse = host.querySelector("[data-pulse-style]");
+    expect(pulse).not.toBeNull();
+    expect(host.querySelector(".overlay-control-island > svg")).not.toBeNull();
+    for (const phase of ["translating", "listening", "translating"] as const) {
+      await act(async () => root.render(<LanguageStatusCapsule {...props} phase={phase} />));
+      expect(host.querySelector(".overlay-control-island__summary")).toBe(languageRow);
+      expect(languageRow.textContent).toBe(`${labels.source}→${labels.target}`);
+      expect(host.querySelector("[data-pulse-style]")).toBe(pulse);
+      expect(host.querySelector(".overlay-control-island__phase")).toBeNull();
+      expect(host.querySelector(".overlay-control-island__detail, .overlay-control-island__progress")).toBeNull();
+      if (phase === "translating") {
+        expect(host.querySelector("button")?.getAttribute("aria-label")).toContain(OVERLAY_ACTIVITY_PHASES.translating.accessibilityLabel);
+      }
+    }
+    await act(async () => host.querySelector("button")!.click());
+    expect(onToggle).toHaveBeenCalledOnce();
+    await act(async () => root.render(<LanguageStatusCapsule {...props} phase="listening" isWaitingForFinalTranslation />));
+    expect(host.querySelector(".overlay-control-island__phase")).toBeNull();
+    const longSettings = { ...settings, sourceLanguage: "fr" as const, targetLanguage: "zh_tw" as const };
+    const longLabels = capsuleLabels(longSettings, null, language);
+    await act(async () => root.render(<LanguageStatusCapsule {...props} settings={longSettings}
+      status={{ source: longLabels.source, separator: "→", target: longLabels.target }} phase="listening" />));
+    expect(host.querySelector(".overlay-control-island__summary")?.textContent).toBe(`${longLabels.source}→${longLabels.target}`);
+    expect(host.querySelector("button")?.getAttribute("aria-label")).toContain(`${longLabels.source} → ${longLabels.target}`);
+    await act(async () => root.render(<LanguageStatusCapsule {...props} phase="translating" expanded />));
+    expect(host.querySelector(".overlay-control-header .overlay-control-island__phase")?.textContent).toBe(labels.phase);
+  } finally {
+    await act(async () => root.unmount()); host.remove();
+    setStoredUiLanguage("system"); vi.unstubAllGlobals();
   }
 });
 

@@ -257,6 +257,10 @@ impl SessionManager {
             event.translation_latency_ms = translation_latency_ms;
             event.translation_latency_kind = translation_latency_kind;
         }
+        #[cfg(feature = "development-debugger")]
+        if self.is_ui_test() {
+            Self::apply_ui_test_status_samples(&mut event);
+        }
         event.debug_snapshot_id = crate::core::development::development_debug::record_snapshot(
             generation,
             &event.subtitles,

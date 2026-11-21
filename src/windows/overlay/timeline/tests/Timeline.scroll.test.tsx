@@ -353,6 +353,77 @@ it("returns to live on window pointerup before the final scrollbar scroll event"
   expect(reading).toHaveBeenLastCalledWith(false);
 });
 
+async function releaseAt(clientX: number, clientY: number) {
+  await act(() => {
+    const event = new MouseEvent("pointerup", { bubbles: true, button: 0, buttons: 0, clientX, clientY });
+    Object.defineProperties(event, { pointerType: { value: "mouse" }, isPrimary: { value: true } });
+    timeline.dispatchEvent(event);
+  });
+}
+
+it("follows the next caption when a fast thumb release precedes the native move to the bottom", async () => {
+  const reading = await mountHistoryReader();
+  await pressTimeline();
+  await nativeScroll(80);
+  await releaseAt(298, 78);
+  expect(reading).toHaveBeenLastCalledWith(true);
+  // The compositor applies the final movement after both pointerup and mouseup.
+  await nativeScroll(94);
+  expect(reading).toHaveBeenLastCalledWith(true);
+  await nativeScroll(120);
+  expect(reading).toHaveBeenLastCalledWith(false);
+  scrollHeight = 320;
+  await render("translation", [...blocks, nextAfterScrollbar], 0, reading);
+  expect(scrollTop).toBe(240);
+});
+
+it.each([[298, 24], [298, 8], [150, 78], [310, 78], [298, 95]])(
+  "keeps reading if release at (%i, %i) was stationary, upward or outside the gutter", async (x, y) => {
+    const reading = await mountHistoryReader();
+    await pressTimeline();
+    await nativeScroll(80);
+    await releaseAt(x, y);
+    await nativeScroll(120);
+    expect(reading).toHaveBeenLastCalledWith(true);
+  },
+);
+
+it.each(["scrollend", "reflow", "blur", "upward", "wheel"])(
+  "discards a released thumb's remaining movement after %s", async reason => {
+    const reading = await mountHistoryReader();
+    await pressTimeline();
+    await nativeScroll(55);
+    await releaseAt(298, 52);
+    await nativeScroll(72);
+    if (reason === "scrollend") await act(() => timeline.dispatchEvent(new Event("scrollend")));
+    if (reason === "reflow") await act(() => resizeRow(timeline));
+    if (reason === "blur") await act(() => window.dispatchEvent(new Event("blur")));
+    if (reason === "upward") await nativeScroll(55);
+    if (reason === "wheel") await act(() => timeline.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -20 })));
+    await nativeScroll(120);
+    expect(reading).toHaveBeenLastCalledWith(true);
+  },
+);
+
+it.each([true, false])("handles a delayed final thumb movement with native scrollend support %s", async supportsScrollEnd => {
+  const reading = await mountHistoryReader();
+  const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "onscrollend");
+  if (!supportsScrollEnd) Reflect.deleteProperty(HTMLElement.prototype, "onscrollend");
+  const clock = vi.spyOn(performance, "now");
+  try {
+    expect("onscrollend" in timeline).toBe(supportsScrollEnd);
+    await pressTimeline();
+    await nativeScroll(80);
+    await releaseAt(298, 78);
+    clock.mockReturnValue(performance.now() + 1000);
+    await nativeScroll(120);
+    expect(reading).toHaveBeenLastCalledWith(!supportsScrollEnd);
+  } finally {
+    clock.mockRestore();
+    if (!supportsScrollEnd && descriptor) Object.defineProperty(HTMLElement.prototype, "onscrollend", descriptor);
+  }
+});
+
 it.each(["pointerup", "pointercancel", "blur"])("ignores unrelated scrolls after a scrollbar gesture ends (%s)", async end => {
   const reading = await mountHistoryReader();
   await pressTimeline();

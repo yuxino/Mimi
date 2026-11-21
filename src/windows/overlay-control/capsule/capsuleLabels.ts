@@ -9,6 +9,9 @@ const labels = {
   zh: { bilingual: "中英互译", auto: "自动", serviceDefault: "服务默认", zh: "中文", en: "英语", ja: "日语", ko: "韩语", original: "原文", error: "错误", idle: "待机", paused: "暂停", translating: "翻译中", connecting: "连接中", stopping: "停止中" },
   ja: { bilingual: "中国語 ↔ 英語", auto: "自動", serviceDefault: "サービス既定", zh: "中国語", en: "英語", ja: "日本語", ko: "韓国語", original: "原文", error: "エラー", idle: "待機", paused: "一時停止", translating: "翻訳中", connecting: "接続中", stopping: "終了中" },
   ...supplemental.capsuleLabels_labels,
+  // The capsule uses a conventional short form; accessible language status
+  // still carries the full localized automatic-detection label.
+  de: { ...supplemental.capsuleLabels_labels.de, auto: "Auto" },
 };
 
 export function capsuleLabels(settings: Pick<SettingsSnapshot, "sourceLanguage" | "targetLanguage"> & Partial<Pick<SettingsSnapshot, "profiles" | "activeProfileId">>, phase: "error" | "idle" | "paused" | "translating" | "connecting" | "stopping" | null, language = effectiveUiLanguage()) {

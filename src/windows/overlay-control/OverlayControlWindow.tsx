@@ -23,6 +23,7 @@ import {
 } from "../../lib/store";
 import {
   computeActivityPhaseFromSignals,
+  currentTranslationDraftActivity,
   isWaitingForFinalTranslation,
   languageStatus,
   pendingSourceTranslation,
@@ -58,6 +59,7 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
   );
   const sourceTranslationPending = useStore(state => pendingSourceTranslation(state.session.subtitles, state.settings));
   const isTranslationPreviewPending = useStore((state) => state.session.isTranslationPreviewPending);
+  const hasTranslationDraft = useStore(state => currentTranslationDraftActivity(state.session, state.settings));
   const hasRecognizingSourceDraft = useStore(
     selectHasRecognizingSourceDraft,
   );
@@ -93,7 +95,7 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
       unlisten?.();
     };
   }, [embedded, updateNativePointer]);
-  const quietIsland = isTauri && visibleMode === "island" && sessionStatusKind !== "error" &&
+  const quietIsland = (isTauri || embedded) && visibleMode === "island" && sessionStatusKind !== "error" &&
     !collapsed && !settings.subtitleBlendsWithBackground &&
     (!audioRecording || audioRecording === "off");
 
@@ -183,6 +185,7 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
       isTranslationPending,
       sourceTranslationPending,
       isTranslationPreviewPending,
+      hasTranslationDraft,
       hasRecognizingSourceDraft,
     },
     settings,

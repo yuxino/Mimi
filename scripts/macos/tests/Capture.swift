@@ -116,7 +116,7 @@ private func readWindow(_ windowID: CGWindowID, _ frame: CGRect, isolateAttached
     return image
 }
 
-private func pixelRect(_ crop: CGRect, _ frame: CGRect, _ image: CGImage) throws -> CGRect {
+func pixelRect(_ crop: CGRect, _ frame: CGRect, _ image: CGImage) throws -> CGRect {
     guard !crop.isNull, crop.width > 0, crop.height > 0, frame.contains(crop) else {
         throw CaptionCaptureError.failed("caption_crop_outside_target_window")
     }
@@ -281,11 +281,9 @@ struct GlyphWitness {
     }
 }
 
-/// Inspect the requested window alone, including a detached child. AX supplies
-/// the crop, but only contrasting neutral glyph pixels count as painted content.
-/// A completely transparent child can be returned as a trimmed 1x1 image; keep
-/// that original evidence rather than substituting its opaque parent or screen.
-func captureGlyphWitness(windowID: CGWindowID, frame: CGRect, crop: CGRect, output: URL, stage: String) throws -> GlyphWitness {
+/// Keep the original single-window pixels, including a transparent child that
+/// macOS may trim to 1x1. The parent and desktop must never enter its evidence.
+func captureIsolatedWindow(windowID: CGWindowID, frame: CGRect, output: URL, stage: String) throws -> CGImage {
     let image = try readWindowImage(windowID, frame, isolateAttachedWindows: true)
     guard stage.range(of: "^[A-Za-z0-9_-]{1,64}$", options: .regularExpression) != nil,
           let destination = CGImageDestinationCreateWithURL(output.appendingPathComponent(stage + ".png") as CFURL,
@@ -294,6 +292,11 @@ func captureGlyphWitness(windowID: CGWindowID, frame: CGRect, crop: CGRect, outp
     }
     CGImageDestinationAddImage(destination, image, nil)
     guard CGImageDestinationFinalize(destination) else { throw CaptionCaptureError.failed("control_witness_write_failed") }
+    return image
+}
+
+func captureGlyphWitness(windowID: CGWindowID, frame: CGRect, crop: CGRect, output: URL, stage: String) throws -> GlyphWitness {
+    let image = try captureIsolatedWindow(windowID: windowID, frame: frame, output: output, stage: stage)
     return try glyphWitness(in: image, frame: frame, crop: crop)
 }
 
@@ -306,6 +309,15 @@ func glyphWitness(in image: CGImage, frame: CGRect, crop: CGRect) throws -> Glyp
     }
     // Only transparency explains an accepted size mismatch. An opaque or
     // partly painted cropped window must fail instead of being called hidden.
+    guard try !windowHasPaintedPixels(image) else {
+        throw CaptionCaptureError.failed("control_witness_nontransparent_scale_mismatch")
+    }
+    return GlyphWitness(point: nil, neighborPixels: 0, background: 0, maxAlpha: 0, width: image.width, height: image.height)
+}
+
+/// WindowServer can trim transparent margins. Whole-window visibility does
+/// not need to assume any mapping between these pixels and the logical frame.
+func windowHasPaintedPixels(_ image: CGImage) throws -> Bool {
     var rgba = [UInt8](repeating: 0, count: image.width * image.height * 4)
     try rgba.withUnsafeMutableBytes { bytes in
         guard let context = CGContext(data: bytes.baseAddress, width: image.width, height: image.height, bitsPerComponent: 8,
@@ -315,8 +327,5 @@ func glyphWitness(in image: CGImage, frame: CGRect, crop: CGRect) throws -> Glyp
         }
         context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
     }
-    guard stride(from: 3, to: rgba.count, by: 4).allSatisfy({ rgba[$0] == 0 }) else {
-        throw CaptionCaptureError.failed("control_witness_nontransparent_scale_mismatch")
-    }
-    return GlyphWitness(point: nil, neighborPixels: 0, background: 0, maxAlpha: 0, width: image.width, height: image.height)
+    return stride(from: 3, to: rgba.count, by: 4).contains { rgba[$0] != 0 }
 }

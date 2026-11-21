@@ -22,7 +22,9 @@ Keep the capsule visible during recording and while the overlay is locked.
 The locked capsule exposes one-click unlock while the subtitle canvas remains
 click-through. An error temporarily restores the regular recovery controls.
 Devices without fine hover keep the controls visible. Hidden controls stay
-reachable by keyboard and release their pointer targets. Live subtitles
+reachable by keyboard and release their pointer targets. On an embedded
+surface, the button's transparent sizing wrapper also passes pointer hits
+through to feedback and captions underneath. Live subtitles
 reclaim the control and progress rows when quiet. Session actions, failures and
 translation recovery retain a short status line. While reading history, Back to
 live stays below the captions, within reach as the controls appear. The listening
@@ -73,8 +75,12 @@ over the controls behind them.
 
 Show the actual service route and measured timings below the panel's current
 configuration. The details subscribe to the settings and session observations
-they render. The subtitle canvas shows the status needed to keep reading,
-including translation recovery and Back to live. Hover or focus on the service
+they render. Hovering over the expanded subtitle canvas reveals a single-line
+language selector and a readout beside the right-hand tools. Translation
+progress and one timing share that readout. Prefer the API round trip when
+available, then the measured translation time. At narrow widths the readout
+sits below the tools. Translation recovery and
+Back to live remain visible while needed. Hover or focus on the service
 reveals the full route, and clicking opens the active configuration in Settings
 through the panel's guarded action.
 

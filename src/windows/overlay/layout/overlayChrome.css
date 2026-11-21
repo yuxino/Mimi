@@ -49,10 +49,7 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 2px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  background: rgba(30, 30, 30, 0.9);
+  padding: 3px;
 }
 
 /* Separators use the existing gaps, preserving the 160px toolbar reservation. */
@@ -73,11 +70,11 @@
 .overlay-action-group + .mimi-tooltip-trigger::before {
   content: "";
   position: absolute;
-  top: 6px;
-  bottom: 6px;
+  top: 8px;
+  bottom: 8px;
   left: -2px;
   width: 1px;
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.22);
   pointer-events: none;
 }
 
@@ -86,7 +83,12 @@
   border-color: transparent;
   border-radius: 6px;
   background: transparent;
+  color: rgba(255, 255, 255, 0.79);
   font-size: 11px;
+}
+
+.overlay-expanded-canvas[data-low-opacity] .overlay-action-strip .overlay-control-button svg {
+  filter: drop-shadow(0 0 1px #222) drop-shadow(0 1px 1px #222);
 }
 
 .overlay-action-strip .overlay-control-button:focus-visible {
@@ -107,15 +109,14 @@
 }
 
 @media (forced-colors: active) {
-  .overlay-action-strip { border-color: ButtonText; background: Canvas; }
+  .overlay-action-strip { background: Canvas; }
+  .overlay-expanded-canvas[data-low-opacity] .overlay-action-strip .overlay-control-button svg { filter: none; }
   .overlay-action-group + .overlay-action-group::before,
   .overlay-action-group + .mimi-tooltip-trigger::before { background: ButtonText; }
 }
 
-/* Reserve the status line while controls are visible so individual requests
-   cannot resize the viewport as a sentence streams. */
-.overlay-expanded-canvas:has(.overlay-status-row[data-translation-status-space],
-  .overlay-status-row [role="status"]) {
+/* A first timing sample or a new request must not displace captions under a stationary pointer. */
+.overlay-expanded-canvas:has(.overlay-status-row[data-session-details-space], .overlay-status-row[data-placement="below"] .overlay-latency) {
   --overlay-status-height: var(--overlay-detail-height, 20px);
 }
 .overlay-expanded-canvas:has(.overlay-action-feedback, .overlay-status-row .overlay-latency:not(.overlay-hover-control) [role="status"]) {

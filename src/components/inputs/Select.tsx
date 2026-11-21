@@ -180,24 +180,31 @@ export function Select({ label, value, options, disabled = false, busy = false, 
       if (!trigger.current?.contains(node) && !menu.current?.contains(node)) setPopup(null);
     };
     const dismiss = () => setPopup(null);
+    const dismissMovedMenu = () => {
+      // Removing a focused search input otherwise sends the next key to the page.
+      if (input.current && document.activeElement === input.current && document.hasFocus()) {
+        trigger.current?.focus({ preventScroll: true });
+      }
+      dismiss();
+    };
     const scroll = (event: Event) => {
       const target = event.target;
       if (target instanceof Node && menu.current?.contains(target)) return;
       // Embedded controls share a document with the live caption timeline.
       // Only a scrolling ancestor can move this trigger away from its menu.
       if (target instanceof Element && !target.contains(trigger.current)) return;
-      dismiss();
+      dismissMovedMenu();
     };
     document.addEventListener("pointerdown", outside, true);
     document.addEventListener("focusin", outside);
     window.addEventListener("scroll", scroll, true);
-    window.addEventListener("resize", dismiss);
+    window.addEventListener("resize", dismissMovedMenu);
     window.addEventListener("blur", dismiss);
     return () => {
       document.removeEventListener("pointerdown", outside, true);
       document.removeEventListener("focusin", outside);
       window.removeEventListener("scroll", scroll, true);
-      window.removeEventListener("resize", dismiss);
+      window.removeEventListener("resize", dismissMovedMenu);
       window.removeEventListener("blur", dismiss);
     };
   }, [open]);

@@ -85,5 +85,43 @@ it("does not subscribe to caption text or unchanged status snapshots", async () 
   });
   expect(render).not.toHaveBeenCalled();
   await act(async () => useStore.setState(state => ({ session: { ...state.session, isTranslationPending: true } })));
-  expect(host.querySelector('[role="status"]')?.textContent).toBe("Translating");
+  expect(render).not.toHaveBeenCalled();
+  expect(host.querySelector('[role="status"]')).toBeNull();
+  expect([...host.querySelectorAll(".overlay-latency__measurement strong")].map(node => node.textContent)).toEqual(["120 ms", "700 ms"]);
+});
+
+it("leaves streamed translation activity to the panel header", async () => {
+  useStore.setState(state => ({
+    settings: { ...state.settings, sourceLanguage: "auto", profiles: [{
+      id: "sample", name: "Realtime", provider: "openAIRealtime", textTranslation: "followService", credentialState: "present",
+    }] },
+    session: { ...state.session, apiLatencyMs: null, translationLatencyMs: null,
+      translationLatencyKind: null, detectedLanguage: "en", isTranslationPending: false,
+      isTranslationPreviewPending: false, subtitles: {
+        source: { text: "Hello world", isFinal: false }, translation: { text: "", isFinal: false }, history: [],
+      },
+    },
+  }));
+  const render = vi.fn();
+  await act(async () => root.render(<Profiler id="stream-details" onRender={render}>
+    <OverlaySessionDetails onOpenProfile={() => {}} disabled={false} />
+  </Profiler>));
+  expect(host.querySelector('[role="status"]')).toBeNull();
+  const update = (text: string) => useStore.setState(state => ({ session: { ...state.session,
+    subtitles: { ...state.session.subtitles, realtimePreview: {
+      source: state.session.subtitles.source, translation: { text, isFinal: false },
+    } },
+  } }));
+  await act(async () => update("你好"));
+  expect(host.querySelector('[role="status"]')).toBeNull();
+  expect(host.textContent).not.toContain("ms");
+  render.mockClear();
+  await act(async () => update("你好世界"));
+  expect(render).not.toHaveBeenCalled();
+  await act(async () => useStore.setState(state => ({ session: { ...state.session,
+    subtitles: { ...state.session.subtitles, realtimePreview: null,
+      source: { text: "Hello world", isFinal: true }, translation: { text: "你好世界", isFinal: true },
+    },
+  } })));
+  expect(host.querySelector('[role="status"]')).toBeNull();
 });

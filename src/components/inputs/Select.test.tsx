@@ -635,6 +635,32 @@ it.each([
   expect(visibleLabels()).toHaveLength(languages.length);
 });
 
+it.each(["resize", "scroll"] as const)("can reopen a focused search with the keyboard after %s closes it", async change => {
+  await renderSearch("pt");
+  await act(() => trigger().click());
+  expect(document.activeElement).toBe(input());
+
+  const source = change === "resize" ? window : host;
+  await act(() => source.dispatchEvent(new Event(change)));
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
+  expect(document.activeElement).toBe(trigger());
+
+  await act(() => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+  expect(document.activeElement).toBe(input());
+  expect(document.querySelector('[role="option"][aria-selected="true"]')?.textContent).toBe("葡萄牙语");
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+it("leaves an inactive window alone when a resize dismisses its search", async () => {
+  await renderSearch();
+  await act(() => trigger().click());
+  vi.spyOn(document, "hasFocus").mockReturnValue(false);
+  const focusTrigger = vi.spyOn(trigger(), "focus");
+  await act(() => window.dispatchEvent(new Event("resize")));
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
+  expect(focusTrigger).not.toHaveBeenCalled();
+});
+
 it("leaves text editing and IME Enter alone, and dismisses on an outside pointer", async () => {
   await renderSearch();
   await act(() => trigger().click());

@@ -110,6 +110,13 @@ release, use the final position to show live captions or keep the reader in
 history. Moving the thumb away from the bottom before release keeps the same
 reading layout throughout.
 
+Chromium can deliver a mouse release before it applies the thumb's final
+movement. A downward drag released inside the same scrollbar can finish on
+the next native scrolls. Resume only when they reach the actual bottom at the
+same scroll range. Scroll end, reversal, new input or layout changes discard
+the remaining gesture. A short expiry bounds this state on engines that omit
+scroll end.
+
 Copy is synchronized in Chinese, English, and Japanese: “回到实时”, “Back to
 live”, and “リアルタイムへ”. There is no automatic jump on resume and no new mode.
 

@@ -6,7 +6,12 @@ use super::{
     StatusPayload, TranslationSessionController, UtteranceRole,
 };
 use serde::Serialize;
-use std::{io::Write, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    io::Write,
+    path::PathBuf,
+    sync::{Arc, LazyLock},
+    time::Duration,
+};
 
 const INITIAL_CAPTIONS: usize = 6;
 const DRAFT_ID: u64 = 10_001;
@@ -21,10 +26,15 @@ const REQUESTS: [&str; 5] = [
     "translation-layout-step-5",
 ];
 const FIXTURE_FAILED: &str = "ui_test_translation_layout_fixture_failed";
+static SCENE: LazyLock<Option<String>> =
+    LazyLock::new(|| std::env::var("MIMI_UI_TEST_TRANSLATION_LAYOUT").ok());
 
 pub(super) fn requested_directory() -> Result<Option<PathBuf>, String> {
-    if std::env::var("MIMI_UI_TEST_TRANSLATION_LAYOUT").as_deref() != Ok("1") {
-        return Ok(None);
+    match SCENE.as_deref() {
+        Some("1") => {}
+        #[cfg(feature = "development-debugger")]
+        Some("status-readout") => {}
+        _ => return Ok(None),
     }
     // This entry is called only after the credential-free UI-test start gate.
     // Startup validates this same directory with load_ui_test_preferences:
@@ -45,6 +55,8 @@ struct TranslationLayout {
 struct FixtureState {
     step: usize,
     pending: bool,
+    preview_pending: bool,
+    streaming_translation: bool,
     phase: &'static str,
     history_count: usize,
     has_translation: bool,
@@ -93,6 +105,12 @@ impl TranslationLayout {
         FixtureState {
             step: self.step,
             pending: event.is_translation_pending,
+            preview_pending: event.is_translation_preview_pending,
+            streaming_translation: event.subtitles.realtime_preview.as_ref().is_some_and(
+                |current| {
+                    current.translation.text == DRAFT_TRANSLATION && !current.translation.is_final
+                },
+            ),
             phase: match event.status {
                 StatusPayload::Idle => "idle",
                 StatusPayload::Connecting => "connecting",
@@ -184,6 +202,21 @@ fn seed(controller: &mut TranslationSessionController) {
 }
 
 impl SessionManager {
+    /// The signed offline scene has no provider clients. Give only that scene
+    /// known samples so a native screenshot can distinguish both measurements.
+    #[cfg(feature = "development-debugger")]
+    pub(in crate::session_manager) fn apply_ui_test_status_samples(event: &mut SessionStateEvent) {
+        if SCENE.as_deref() == Some("status-readout")
+            && matches!(event.status, StatusPayload::Listening)
+            && !event.is_paused
+        {
+            event.api_latency_ms = Some(186);
+            event.translation_latency_ms = Some(427);
+            event.translation_latency_kind =
+                Some(crate::core::diagnostics::latency::TranslationLatencyKind::Request);
+        }
+    }
+
     pub(super) fn start_ui_test_translation_layout(
         self: &Arc<Self>,
         directory: PathBuf,
@@ -298,6 +331,7 @@ mod tests {
             DRAFT_TRANSLATION
         );
         assert!(!controller.state.subtitles.translation.is_final);
+        assert!(scene.state(&controller).streaming_translation);
         assert_eq!(
             controller.state.subtitles.source.utterance_id,
             controller.state.subtitles.translation.utterance_id
@@ -322,6 +356,7 @@ mod tests {
         assert_eq!(state.step, 5);
         assert!(state.has_translation);
         assert!(state.confirmed);
+        assert!(!state.streaming_translation);
         assert_eq!(controller.archive().page("", 0).total, 0);
     }
 

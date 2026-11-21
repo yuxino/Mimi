@@ -91,6 +91,22 @@ function visibleLanes(): string[] {
     });
 }
 
+it("pairs streamed OpenAI translation activity with the existing API time until the draft finishes", async () => {
+  const source = { text: "The train is arriving.", isFinal: false };
+  const translation = { text: "列车即将", isFinal: false };
+  const draft = { ...empty, source, translation, realtimePreview: { source, translation } };
+  const observations = { apiLatencyMs: 205, isTranslationPending: false, isTranslationPreviewPending: false };
+  await mount(empty, "bilingual", { profiles: [{ id: "live", name: "Realtime", provider: "openAIRealtime",
+    credentialState: "present" }], activeProfileId: "live" });
+  await publish(draft, observations);
+  const hoverRow = () => host.querySelector(".overlay-status-row .overlay-hover-control");
+  expect(hoverRow()?.querySelector('[role="status"]')?.textContent).toBe(I18N.overlay.translating);
+  expect([...hoverRow()!.querySelectorAll(".overlay-latency__measurement strong")].map(node => node.textContent)).toEqual(["205 ms"]);
+  await publish({ ...empty, history: [{ source: source.text, translation: "列车即将到站。", createdAt: 1 }] }, observations);
+  expect(hoverRow()?.querySelector('[role="status"]')).toBeNull();
+  expect(hoverRow()?.querySelector("strong")?.textContent).toBe("205 ms");
+});
+
 it.each(["zh", "en", "ja"] as const)("uses one status line for a pending or failed control action in %s", async (language) => {
   setStoredUiLanguage(language);
   let reject!: (error: Error) => void;
@@ -98,7 +114,7 @@ it.each(["zh", "en", "ja"] as const)("uses one status line for a pending or fail
     .mockResolvedValue(undefined);
   useStore.setState({ togglePaused });
   await mount(empty);
-  expect(host.querySelector('.overlay-latency [role="status"]')?.textContent).toBe(I18N.overlay.translating);
+  expect(host.querySelector('.overlay-status-row [role="status"]')).toBeNull();
   expect(host.querySelector(".overlay-latency__measurement")).toBeNull();
   const pause = host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.overlay.pause}"]`)!;
   await act(async () => pause.click());
@@ -110,7 +126,7 @@ it.each(["zh", "en", "ja"] as const)("uses one status line for a pending or fail
   await act(async () => host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.overlay.pause}"]`)!.click());
   expect(togglePaused).toHaveBeenCalledTimes(2);
   expect(host.querySelector(".overlay-action-feedback")).toBeNull();
-  expect(host.querySelector('.overlay-latency [role="status"]')?.textContent).toBe(I18N.overlay.translating);
+  expect(host.querySelector('.overlay-status-row [role="status"]')).toBeNull();
   expect(host.querySelector(".overlay-latency__measurement")).toBeNull();
 });
 

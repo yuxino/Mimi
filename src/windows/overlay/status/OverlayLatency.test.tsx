@@ -21,8 +21,9 @@ beforeEach(() => {
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); setStoredUiLanguage("system"); });
-async function render(overrides: Partial<SessionStateEvent> = {}, translationRequired = true) {
-  await act(async () => root.render(<OverlayLatency session={{ ...session, ...overrides }} translationRequired={translationRequired} />));
+async function render(overrides: Partial<SessionStateEvent> = {}, translationRequired = true, surface: "canvas" | "panel" = "panel") {
+  const translating = Boolean(overrides.isTranslationPending || overrides.isTranslationPreviewPending);
+  await act(async () => root.render(<OverlayLatency session={{ ...session, ...overrides }} translating={translating} translationRequired={translationRequired} surface={surface} />));
 }
 const measured = { apiLatencyMs: 120, translationLatencyMs: 700, translationLatencyKind: "request" as const };
 
@@ -75,28 +76,41 @@ describe("overlay timing observations", () => {
   });
   it("shows actual translation work as status, even when that realtime service has no translation measurement", async () => {
     for (const work of [{ isTranslationPending: true }, { isTranslationPreviewPending: true }]) {
-      await render(work);
+      await render(work, true, "canvas");
       expect(host.querySelector('[role="status"]')?.textContent).toBe("Translating");
       expect(host.textContent).not.toContain("Translation wait");
       expect(host.querySelector(".overlay-latency__separator")).toBeNull();
     }
+    await render({ ...measured, isTranslationPreviewPending: true }, true, "canvas");
+    expect(host.textContent).toBe("Translating·120 ms");
     await render({ ...measured, isTranslationPreviewPending: true });
-    expect(host.querySelectorAll("strong")[1].textContent).toBe("Translating");
-    expect(host.querySelectorAll("strong")[1].dataset.tone).toBe("neutral");
-    await render(measured); expect(host.textContent).toContain("Translation700 ms");
+    expect(host.textContent).toBe("API120 ms·Translation700 ms");
   });
-  it("keeps work and recovery on the caption canvas without routine measurements", async () => {
-    for (const work of [
-      { isTranslationPending: true },
-      { translationRecovery: { reason: "rateLimited" as const, retryAfterMs: 600, retryScheduled: true } },
-    ]) {
-      await act(async () => root.render(<OverlayLatency session={{ ...session, ...measured, ...work }} showMeasurements={false} />));
-      expect(host.querySelector('[role="status"]')).not.toBeNull();
-      expect(host.textContent).not.toContain("ms");
-      expect(host.querySelector(".overlay-latency__measurement")).toBeNull();
+  it("keeps one named measurement on hover while translation starts and finishes", async () => {
+    for (const translating of [false, true, false]) {
+      await act(async () => root.render(<OverlayLatency session={{ ...session, ...measured }} translating={translating} surface="canvas" />));
+      const readout = host.querySelector(".overlay-hover-control")!;
+      expect([...readout.querySelectorAll(".overlay-latency__measurement strong")].map(node => node.textContent))
+        .toEqual(["120 ms"]);
+      expect(readout.querySelector(".overlay-latency__measurement")?.getAttribute("aria-label")).toBe(`${I18N.overlay.apiLatency}: 120 ms`);
+      expect(readout.querySelector('[role="status"]')?.textContent)
+        .toBe(translating ? "Translating" : undefined);
     }
-    await act(async () => root.render(<OverlayLatency session={{ ...session, ...measured }} showMeasurements={false} />));
-    expect(host.firstElementChild).toBeNull();
+  });
+  it("uses a measured translation time when there is no API sample and prefers a measured API zero", async () => {
+    await render({ ...measured, apiLatencyMs: null, translationLatencyKind: "follow" }, true, "canvas");
+    const measurement = () => host.querySelector(".overlay-latency__measurement");
+    expect(measurement()?.textContent).toBe("700 ms");
+    expect(measurement()?.getAttribute("aria-label")).toBe("Translation wait: 700 ms");
+    await render({ ...measured, apiLatencyMs: 0 }, true, "canvas");
+    expect(measurement()?.textContent).toBe("0 ms");
+    expect(host.querySelectorAll(".overlay-latency__measurement")).toHaveLength(1);
+  });
+  it("keeps an actionable recovery visible on the quiet canvas even with previous samples", async () => {
+    const translationRecovery = { reason: "rateLimited" as const, retryAfterMs: 600, retryScheduled: true };
+    await act(async () => root.render(<OverlayLatency session={{ ...session, ...measured, translationRecovery }} translating surface="canvas" />));
+    expect(host.querySelector('[role="status"]')?.textContent).toBe("Rate limited; retrying");
+    expect(host.querySelector(".overlay-hover-control, .overlay-latency__measurement, .overlay-latency__separator")).toBeNull();
   });
   it("retains rate-limit and retry states without labeling them as measured translation duration", async () => {
     for (const [reason, retryScheduled, text] of [
@@ -133,7 +147,7 @@ describe("overlay timing observations", () => {
     await render({ ...measured, translationLatencyKind: "follow" });
     expect(host.textContent).toContain(I18N.overlay.translationFollowLatency);
     expect(host.querySelectorAll("[aria-label]")).toHaveLength(2);
-    await render({ apiLatencyMs: 0, isTranslationPending: true });
+    await render({ apiLatencyMs: 0, isTranslationPending: true }, true, "canvas");
     expect(host.querySelector('[role="status"]')?.textContent).toBe(I18N.overlay.translating);
     await render(); expect(host.firstElementChild).toBeNull();
   });

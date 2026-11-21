@@ -171,7 +171,9 @@ it.each(["hidden", "island", "panel"] as const)("does not rebuild embedded contr
   expect(overlaySessionChromeLayout).toHaveBeenCalledTimes(50);
   expect(overlayControlPanelModel).toHaveBeenCalledTimes(0);
   expect(document.querySelector(".mimi-select__menu")).toBe(menu);
-  expect(host.querySelector(".overlay-expanded-canvas .overlay-latency__measurement")).toBeNull();
+  const canvasSample = host.querySelector(".overlay-expanded-canvas .overlay-hover-control .overlay-latency__measurement");
+  if (mode === "panel") expect(canvasSample).toBeNull();
+  else expect(canvasSample?.textContent).toContain("49 ms");
   if (targetPicker) {
     expect(panel?.querySelector(".overlay-session-details .overlay-latency__measurement")?.textContent).toContain("49 ms");
     await act(async () => targetPicker.click());

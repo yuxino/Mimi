@@ -37,6 +37,28 @@
   min-width: 0;
 }
 .overlay-status-row .overlay-latency { max-width: 100%; }
+.overlay-status-row:not([data-placement="feedback"]) {
+  left: auto;
+  right: 12px;
+  justify-content: flex-end;
+}
+.overlay-status-row[data-placement="toolbar"] { height: 30px; }
+.overlay-status-row:not([data-placement="feedback"]) .overlay-latency {
+  flex: none;
+  gap: 5px;
+  color: #ccc;
+  font-size: 11px;
+  line-height: 14px;
+}
+.overlay-status-row:not([data-placement="feedback"]) .overlay-latency strong { font-weight: 400; }
+.overlay-expanded-canvas[data-low-opacity] .overlay-status-row .overlay-latency {
+  color: #f5f5f5;
+  text-shadow: 0 0 2px #222, 0 1px 1px #222;
+}
+.overlay-status-row .overlay-latency > .overlay-latency__measurement {
+  align-items: center;
+  white-space: nowrap;
+}
 .overlay-return-to-live {
   align-self: flex-end;
   flex: none;
