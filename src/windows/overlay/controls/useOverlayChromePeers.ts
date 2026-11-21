@@ -84,7 +84,7 @@ export function useOverlayChromePeers(
     };
 
     const publish = (kind: HoverMessage["kind"] = "visibility", force = false) => {
-      const keyboardVisible = document.hasFocus() && element.querySelector(":focus-visible") !== null;
+      const keyboardVisible = document.hasFocus() && element.querySelector(":focus-visible:not(.overlay-timeline)") !== null;
       element.toggleAttribute("data-overlay-keyboard-focus", keyboardVisible);
       if (!unlisten) return;
       const visible = fineHover.matches && (pointerVisible || keyboardVisible);
