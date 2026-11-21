@@ -53,6 +53,9 @@ cleanup() {
     kill -TERM "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
   fi
+  if [[ -f "$scene/language-surface.jsonl" ]]; then
+    cp "$scene/language-surface.jsonl" "$evidence/language-surface.jsonl"
+  fi
   rm -rf "$scene"
 }
 trap cleanup EXIT
@@ -63,7 +66,7 @@ JSON
 python3 "$tools/build-hover-input.py" "$suite" "$scene/check-hover"
 scene_flag=MIMI_UI_TEST_TRANSLATION_LAYOUT=1
 if [[ $mode == history ]]; then scene_flag=MIMI_UI_TEST_CAPTION_HISTORY=1; fi
-env MIMI_UI_TEST=1 MIMI_AUTO_START=1 MIMI_UI_TEST_STANDARD_OVERLAY=1 "$scene_flag" \
+env MIMI_UI_TEST=1 MIMI_UI_TEST_LANGUAGE_PROBE=1 MIMI_AUTO_START=1 MIMI_UI_TEST_STANDARD_OVERLAY=1 "$scene_flag" \
   MIMI_UI_TEST_PREFERENCES_DIR="$scene" MIMI_UI_TEST_FRONTEND_READY_DIR="$scene/ready" \
   MIMI_UI_TEST_SESSION_STATE_FILE="$scene/session" MIMI_UI_TEST_SETTINGS_ACTIVATION_FILE="$scene/settings-activation" \
   "$app/Contents/MacOS/mimi" > "$scene/app.log" 2>&1 &

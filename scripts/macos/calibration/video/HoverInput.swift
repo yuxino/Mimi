@@ -136,7 +136,7 @@ private enum HoverInput {
         defer { try? save() }
         func mark(_ name: String, _ s: Sample? = nil, _ more: [String: Any] = [:]) {
             let p = CGEvent(source: nil)?.location ?? .zero
-            var m: [String: Any] = ["name": name, "time": now, "pointer": ["x": p.x, "y": p.y]]
+            var m: [String: Any] = ["name": name, "time": now, "wallMs": Date().timeIntervalSince1970 * 1000, "pointer": ["x": p.x, "y": p.y]]
             if let s {
                 m["AXSampleStart"] = s.started; m["AXSampleEnd"] = s.finished
                 m["lanes"] = s.lanes.mapValues(\.json)
@@ -197,7 +197,7 @@ private enum HoverInput {
                 let file = out.appendingPathComponent(stage + ".png")
                 let shot = Process()
                 shot.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-                shot.arguments = ["-x", "-o", "-l\(island.id)", file.path]
+                shot.arguments = ["-x", "-o", "-a", "-l\(island.id)", file.path]
                 shot.standardOutput = FileHandle.nullDevice
                 shot.standardError = FileHandle.nullDevice
                 let done = DispatchSemaphore(value: 0)
