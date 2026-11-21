@@ -11,7 +11,9 @@ private struct RecordingError: Error, CustomStringConvertible {
 
 private func hostSeconds() -> Double { CMTimeGetSeconds(CMClockGetTime(CMClockGetHostTimeClock())) }
 private func timeJSON(_ value: CMTime) -> [String: Any] {
-    ["value": value.value, "timescale": value.timescale, "seconds": CMTimeGetSeconds(value)]
+    var result: [String: Any] = ["value": value.value, "timescale": value.timescale, "flags": value.flags.rawValue]
+    if value.isNumeric { result["seconds"] = CMTimeGetSeconds(value) }
+    return result
 }
 private func rectJSON(_ value: CGRect) -> [String: Double] {
     ["x": value.minX, "y": value.minY, "width": value.width, "height": value.height]
@@ -41,8 +43,12 @@ private final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, @unche
     var firstClock: [String: Any]?
     var lastClock: [String: Any]?
     var frames: [[String: Any]] = []
+    var observations: [[String: Any]] = []
+    var firstDisplayTime: CMTime?
+    var endVideoTime: CMTime?
     var statuses: [String: Int] = [:]
     var missingImage = 0
+    var unusableComplete = 0
     var backpressure = 0
     var invalidPTS = 0
     var failure: String?
@@ -75,31 +81,34 @@ private final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, @unche
         let attachment = attachments?.first ?? [:]
         let status = (attachment[.status] as? NSNumber)?.intValue ?? -1
         statuses[String(status), default: 0] += 1
+        let pts = CMSampleBufferGetPresentationTimeStamp(buffer)
+        let ticks = (attachment[.displayTime] as? NSNumber)?.uint64Value
+        observations.append(["callbackSystemUptime": callbackUptime, "callbackHostClockSeconds": callbackHost,
+            "nativePTS": timeJSON(pts), "status": status, "hasImage": CMSampleBufferGetImageBuffer(buffer) != nil])
         guard CMSampleBufferIsValid(buffer), CMSampleBufferDataIsReady(buffer),
               let image = CMSampleBufferGetImageBuffer(buffer),
               status == SCFrameStatus.complete.rawValue || status == SCFrameStatus.idle.rawValue || status == SCFrameStatus.started.rawValue else {
             missingImage += 1
+            if status == SCFrameStatus.complete.rawValue { unusableComplete += 1 }
             return
         }
         guard CVPixelBufferGetWidth(image) == dimensions.width, CVPixelBufferGetHeight(image) == dimensions.height else {
             failure = "native_frame_dimensions_differ_from_fixed_crop"
             return
         }
-        let pts = CMSampleBufferGetPresentationTimeStamp(buffer)
         guard pts.isNumeric, lastPTS.map({ CMTimeCompare(pts, $0) > 0 }) ?? true else { invalidPTS += 1; return }
+        guard let ticks, ticks > 0 else { failure = "native_display_clock_missing"; return }
         guard input.isReadyForMoreMediaData else { backpressure += 1; return }
         if firstPTS == nil { writer.startSession(atSourceTime: pts) }
         guard input.append(buffer) else { failure = "native_sample_append_failed"; return }
-        let ticks = (attachment[.displayTime] as? NSNumber)?.uint64Value
         var clock: [String: Any] = ["callbackSystemUptime": callbackUptime, "callbackHostClockSeconds": callbackHost,
                                   "nativePTS": timeJSON(pts), "status": status,
                                   "pixelWidth": CVPixelBufferGetWidth(image), "pixelHeight": CVPixelBufferGetHeight(image)]
-        if let ticks {
-            clock["displayMachTicks"] = ticks
-            clock["displayHostClockSeconds"] = CMTimeGetSeconds(CMClockMakeHostTimeFromSystemUnits(ticks))
-        }
+        clock["displayMachTicks"] = ticks
+        clock["displayHostClockSeconds"] = CMTimeGetSeconds(CMClockMakeHostTimeFromSystemUnits(ticks))
         if firstPTS == nil {
             firstPTS = pts
+            firstDisplayTime = CMClockMakeHostTimeFromSystemUnits(ticks)
             firstClock = clock
             do { try writeJSON(clock, output.appendingPathComponent("ready")) }
             catch { failure = "ready_marker_write_failed" }
@@ -115,22 +124,30 @@ private final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, @unche
         queue.sync {
             var result: [String: Any] = ["firstFrame": firstClock ?? [:], "lastFrame": lastClock ?? [:],
                 "nativeSamplesWritten": frames.count, "frames": frames, "nativeStatuses": statuses,
+                "nativeObservations": observations,
                 "samplesWithoutUsableImage": missingImage, "encoderBackpressureDrops": backpressure,
+                "completeSamplesWithoutUsableImage": unusableComplete,
                 "invalidTimestampDrops": invalidPTS]
             if let failure { result["captureFailure"] = failure }
+            if let endVideoTime { result["endVideoTime"] = timeJSON(endVideoTime) }
             return result
         }
     }
 
-    func finish() async throws {
+    func finish(atHostTime stop: CMTime) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             queue.async {
-                guard let last = self.lastPTS else {
+                guard let last = self.lastPTS, let first = self.firstPTS, let display = self.firstDisplayTime else {
                     self.writer.cancelWriting()
                     continuation.resume(throwing: RecordingError("no_native_video_frames"))
                     return
                 }
-                self.writer.endSession(atSourceTime: CMTimeAdd(last, CMTime(value: 1, timescale: 60)))
+                let end = CMTimeAdd(first, CMTimeSubtract(stop, display))
+                guard CMTimeCompare(end, last) > 0 else {
+                    continuation.resume(throwing: RecordingError("stop_clock_precedes_last_native_frame")); return
+                }
+                self.endVideoTime = CMTimeSubtract(end, first)
+                self.writer.endSession(atSourceTime: end)
                 self.input.markAsFinished()
                 self.writer.finishWriting {
                     self.queue.async {
@@ -155,9 +172,34 @@ private func inspectMovie(_ path: URL) async throws -> [String: Any] {
     let output = AVAssetReaderTrackOutput(track: video[0], outputSettings: nil)
     reader.add(output)
     guard reader.startReading() else { throw RecordingError("recorded_video_read_failed") }
+    var buffers: [[String: Any]] = []
     var times: [Double] = []
-    while let sample = output.copyNextSampleBuffer() { times.append(CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample))) }
+    var timing: [[String: Any]] = []
+    var zeroSampleBuffers = 0
+    var mediaEnd = 0.0
+    while let buffer = output.copyNextSampleBuffer() {
+        let count = CMSampleBufferGetNumSamples(buffer)
+        let index = buffers.count
+        buffers.append(["bufferIndex": index, "sampleCount": count, "bytes": CMSampleBufferGetTotalSampleSize(buffer),
+            "pts": timeJSON(CMSampleBufferGetPresentationTimeStamp(buffer)), "dts": timeJSON(CMSampleBufferGetDecodeTimeStamp(buffer))])
+        // AVAssetReader also returns zero-sample segment boundary buffers.
+        // Preserve their raw times above; they are not encoded video frames.
+        if count == 0 { zeroSampleBuffers += 1; continue }
+        for sampleIndex in 0..<count {
+            var info = CMSampleTimingInfo()
+            guard CMSampleBufferGetSampleTimingInfo(buffer, at: sampleIndex, timingInfoOut: &info) == noErr,
+                  info.presentationTimeStamp.isNumeric else { throw RecordingError("recorded_video_frame_timestamp_invalid") }
+            times.append(CMTimeGetSeconds(info.presentationTimeStamp))
+            if info.duration.isNumeric { mediaEnd = max(mediaEnd, CMTimeGetSeconds(CMTimeAdd(info.presentationTimeStamp, info.duration))) }
+            timing.append(["bufferIndex": index, "sampleIndex": sampleIndex,
+                "pts": timeJSON(info.presentationTimeStamp), "dts": timeJSON(info.decodeTimeStamp), "duration": timeJSON(info.duration)])
+        }
+    }
     guard reader.status == .completed, times.count >= 2 else { throw RecordingError("recorded_video_samples_unavailable") }
+    let decodeOrderTimes = times
+    // Compressed buffers may be delivered in decode order. Measure every frame
+    // in presentation order, without deduplication or removal of any samples.
+    times.sort()
     let intervals = zip(times.dropFirst(), times).map(-)
     guard intervals.allSatisfy({ $0 > 0 }) else { throw RecordingError("recorded_video_timestamp_order_invalid") }
     let sorted = intervals.sorted()
@@ -168,7 +210,94 @@ private func inspectMovie(_ path: URL) async throws -> [String: Any] {
             "lastVideoPTS": times.last!, "measuredFramesPerSecond": fps, "maximumGapSeconds": sorted.last!,
             "p95GapSeconds": p95, "gapsOver34ms": intervals.filter { $0 > 0.034 }.count,
             "cadenceAtLeastAbout30FPS": fps >= 29 && p95 <= 0.035,
-            "encodedSamplePTSSeconds": times]
+            "readerBufferCount": buffers.count, "zeroSampleBufferCount": zeroSampleBuffers,
+            "movieDurationSeconds": CMTimeGetSeconds(try await asset.load(.duration)), "codedMediaEndSeconds": mediaEnd,
+            "readerBuffers": buffers, "encodedSampleTimingInReaderOrder": timing,
+            "encodedPTSInReaderOrder": decodeOrderTimes, "encodedSamplePTSSeconds": times]
+}
+
+// Preserve every original coded frame/PTS. Only its final presentation duration
+// extends through the actual stop clock; a longer empty movie edit is not proof.
+private func finishLastPresentation(_ movie: URL, end: CMTime) async throws {
+    let asset = AVURLAsset(url: movie)
+    let tracks = try await asset.loadTracks(withMediaType: .video)
+    let formats = try await tracks[0].load(.formatDescriptions)
+    let reader = try AVAssetReader(asset: asset)
+    let read = AVAssetReaderTrackOutput(track: tracks[0], outputSettings: nil)
+    reader.add(read)
+    let target = movie.deletingLastPathComponent().appendingPathComponent("capture-final.mov")
+    let writer = try AVAssetWriter(outputURL: target, fileType: .mov)
+    let input = AVAssetWriterInput(mediaType: .video, outputSettings: nil, sourceFormatHint: formats[0])
+    writer.add(input)
+    guard reader.startReading(), writer.startWriting() else { throw RecordingError("presentation_passthrough_start_failed") }
+    writer.startSession(atSourceTime: .zero)
+    func append(_ buffer: CMSampleBuffer) async throws {
+        while !input.isReadyForMoreMediaData {
+            guard writer.status == .writing else { throw RecordingError("presentation_passthrough_failed") }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        guard input.append(buffer) else { throw RecordingError("presentation_passthrough_append_failed") }
+    }
+    var last: CMSampleBuffer?
+    while let buffer = read.copyNextSampleBuffer() {
+        if CMSampleBufferGetNumSamples(buffer) == 0 { continue } // Retained by the raw movie inspector.
+        guard CMSampleBufferGetNumSamples(buffer) == 1 else { throw RecordingError("unexpected_coded_sample_batch") }
+        if let previous = last {
+            guard CMTimeCompare(CMSampleBufferGetPresentationTimeStamp(buffer), CMSampleBufferGetPresentationTimeStamp(previous)) > 0 else {
+                throw RecordingError("unexpected_reordered_capture_encoder_frames")
+            }
+            try await append(previous)
+        }
+        last = buffer
+    }
+    guard reader.status == .completed, let last else { throw RecordingError("presentation_passthrough_read_failed") }
+    var timing = CMSampleTimingInfo()
+    guard CMSampleBufferGetSampleTimingInfo(last, at: 0, timingInfoOut: &timing) == noErr,
+          CMTimeCompare(end, timing.presentationTimeStamp) > 0 else { throw RecordingError("presentation_stop_clock_invalid") }
+    timing.duration = CMTimeSubtract(end, timing.presentationTimeStamp)
+    var final: CMSampleBuffer?
+    guard CMSampleBufferCreateCopyWithNewTiming(allocator: kCFAllocatorDefault, sampleBuffer: last,
+        sampleTimingEntryCount: 1, sampleTimingArray: &timing, sampleBufferOut: &final) == noErr, let final else {
+        throw RecordingError("last_presentation_timing_copy_failed")
+    }
+    try await append(final)
+    writer.endSession(atSourceTime: end)
+    input.markAsFinished()
+    await writer.finishWriting()
+    guard writer.status == .completed else { throw RecordingError("presentation_passthrough_finalize_failed") }
+    try FileManager.default.moveItem(at: movie, to: movie.deletingLastPathComponent().appendingPathComponent("capture-raw.mov"))
+    try FileManager.default.moveItem(at: target, to: movie)
+}
+
+private func phaseCoverage(_ directory: URL, native: [String: Any], movie: [String: Any]) throws -> [[String: Any]] {
+    let data = try Data(contentsOf: directory.appendingPathComponent("phases.json"))
+    guard let document = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+          document["clock"] as? String == "systemUptime", let phases = document["phases"] as? [[String: Any]], !phases.isEmpty,
+          let first = native["firstFrame"] as? [String: Any],
+          let uptime = first["callbackSystemUptime"] as? Double, let host = first["callbackHostClockSeconds"] as? Double,
+          let display = first["displayHostClockSeconds"] as? Double,
+          let observations = native["nativeObservations"] as? [[String: Any]],
+          let images = movie["encodedSamplePTSSeconds"] as? [Double],
+          let mediaEnd = movie["codedMediaEndSeconds"] as? Double else { throw RecordingError("phase_timebase_or_native_observations_missing") }
+    return try phases.map { phase in
+        guard let name = phase["name"] as? String, let start = phase["start"] as? Double,
+              let end = phase["end"] as? Double, end > start else { throw RecordingError("invalid_phase_interval") }
+        let a = start + host - uptime - display, b = end + host - uptime - display
+        let observed = observations.filter {
+            let time = $0["callbackSystemUptime"] as! Double
+            return time >= start && time <= end
+        }
+        let frameTimes = images.filter { $0 >= a && $0 <= b }
+        let preceding = images.lastIndex(where: { $0 <= a })
+        let following = images.firstIndex(where: { $0 >= b })
+        let bracket = Array(images[(preceding ?? 0)...(following ?? (images.count - 1))])
+        let gaps = zip(bracket.dropFirst(), bracket).map(-)
+        return ["name": name, "expectation": phase["expectation"] ?? "unknown", "startVideoSeconds": a, "endVideoSeconds": b,
+            "nativeCallbacks": observed.count, "nativeIdleCallbacks": observed.filter { $0["status"] as? Int == SCFrameStatus.idle.rawValue }.count,
+            "imageFrames": frameTimes.count, "imageFramesPerPhaseSecond": Double(frameTimes.count) / (end - start),
+            "maximumBracketingImageIntervalSeconds": gaps.max() ?? 0,
+            "covered": a >= 0 && b <= mediaEnd + 0.002 && preceding != nil && !observed.isEmpty]
+    }
 }
 
 @main
@@ -193,7 +322,7 @@ private enum WindowRecorder {
         let output = URL(fileURLWithPath: args[4], isDirectory: true)
         let resources = try output.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
         guard resources.isDirectory == true, resources.isSymbolicLink != true,
-              ["ready", "stop", "capture.mov", "metadata.json"].allSatisfy({ !FileManager.default.fileExists(atPath: output.appendingPathComponent($0).path) }) else {
+              ["ready", "stop", "capture.mov", "capture-raw.mov", "capture-final.mov", "metadata.json"].allSatisfy({ !FileManager.default.fileExists(atPath: output.appendingPathComponent($0).path) }) else {
             throw RecordingError("existing_caller_owned_empty_output_directory_required")
         }
         let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
@@ -281,7 +410,10 @@ private enum WindowRecorder {
             metadata["stopCaptureFailure"] = String(describing: error)
             try? stream.removeStreamOutput(recorder, type: .screen)
         }
-        do { try await recorder.finish() }
+        let stoppedHost = CMClockGetTime(CMClockGetHostTimeClock())
+        metadata["captureStoppedHostClock"] = timeJSON(stoppedHost)
+        metadata["captureStoppedSystemUptime"] = ProcessInfo.processInfo.systemUptime
+        do { try await recorder.finish(atHostTime: stoppedHost) }
         catch {
             metadata.merge(recorder.summary()) { _, new in new }
             metadata["finalizationFailure"] = String(describing: error)
@@ -292,18 +424,46 @@ private enum WindowRecorder {
         metadata["finishedSystemUptime"] = ProcessInfo.processInfo.systemUptime
         metadata["finishedHostClockSeconds"] = hostSeconds()
         let movie: [String: Any]
-        do { movie = try await inspectMovie(output.appendingPathComponent("capture.mov")) }
+        do {
+            let raw = try await inspectMovie(output.appendingPathComponent("capture.mov"))
+            metadata["rawEncodedVideo"] = raw
+            let end = recorder.queue.sync { recorder.endVideoTime! }
+            try await finishLastPresentation(output.appendingPathComponent("capture.mov"), end: end)
+            movie = try await inspectMovie(output.appendingPathComponent("capture.mov"))
+            guard raw["encodedSamplePTSSeconds"] as? [Double] == movie["encodedSamplePTSSeconds"] as? [Double],
+                  abs((movie["codedMediaEndSeconds"] as! Double) - CMTimeGetSeconds(end)) <= 0.002 else {
+                throw RecordingError("passthrough_changed_frame_pts_or_did_not_extend_last_presentation")
+            }
+            metadata["lastFramePresentationFinalization"] = "H264 passthrough, original frames and PTS, final sample duration only"
+        }
         catch {
             metadata["videoInspectionFailure"] = String(describing: error)
             try writeJSON(metadata, output.appendingPathComponent("metadata.json"))
             throw error
         }
         metadata["encodedVideo"] = movie
+        let sourceFrames = metadata["frames"] as! [[String: Any]]
+        let nativeTimes = sourceFrames.map { ($0["nativePTS"] as! [String: Any])["seconds"] as! Double }
+        let encodedTimes = movie["encodedSamplePTSSeconds"] as! [Double]
+        let alignment = nativeTimes.count == encodedTimes.count
+            ? zip(nativeTimes, encodedTimes).map { abs($0 - nativeTimes[0] - $1) }.max()! : Double.greatestFiniteMagnitude
+        metadata["maximumNativeEncodedPTSAlignmentErrorSeconds"] = alignment
+        let coverage: [[String: Any]]
+        do { coverage = try phaseCoverage(output, native: metadata, movie: movie) }
+        catch {
+            metadata["phaseCoverageFailure"] = String(describing: error)
+            try writeJSON(metadata, output.appendingPathComponent("metadata.json"))
+            throw error
+        }
+        metadata["phaseCoverage"] = coverage
+        metadata["cadencePolicy"] = "Disclose per-phase native image/idle samples; no uniform FPS requirement during static content. Pixel interpretation is separate."
         try writeJSON(metadata, output.appendingPathComponent("metadata.json"))
         guard stopReason == "stop-marker", metadata["captureFailure"] == nil, metadata["stopCaptureFailure"] == nil,
               movie["videoSampleCount"] as? Int == metadata["nativeSamplesWritten"] as? Int,
-              movie["cadenceAtLeastAbout30FPS"] as? Bool == true else {
-            throw RecordingError("video_or_30fps_cadence_not_qualified_see_metadata")
+              metadata["encoderBackpressureDrops"] as? Int == 0, metadata["invalidTimestampDrops"] as? Int == 0,
+              metadata["completeSamplesWithoutUsableImage"] as? Int == 0, alignment <= 0.000_001,
+              coverage.allSatisfy({ $0["covered"] as? Bool == true }) else {
+            throw RecordingError("video_phase_coverage_or_lossless_native_pts_alignment_failed_see_metadata")
         }
         print("window_video_finalized native_frames=\(metadata["nativeSamplesWritten"] ?? 0) actual_fps=\(movie["measuredFramesPerSecond"] ?? 0) audio_tracks=0")
     }

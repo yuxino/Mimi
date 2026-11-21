@@ -6,7 +6,7 @@ on:
       package: {description: Application to test, type: choice, options: [build, reuse, release], default: build}
       package_run: {description: Run that produced the selected artifact, type: string}
       release_tag: {description: Expected Mac release tag, type: string, default: v1.7.4}
-      checks: {description: Native interactions, type: choice, options: [both, history, panels, mac-input-capability, mac-caption-drag, mac-appkit-control, mac-dev-drag, mac-follow, mac-release-follow, mac-hover-video], default: both}
+      checks: {description: Native interactions, type: choice, options: [both, history, panels, mac-input-capability, mac-caption-drag, mac-appkit-control, mac-dev-drag, mac-follow, mac-release-follow, mac-hover-video, linux-hover-input], default: both}
       display_modes: {description: Also cycle all three subtitle display modes in the running Mac app, type: boolean, default: false}
       strict_hover: {description: Require the original quiet button target to accept its first click, type: boolean, default: false}
       gesture: {description: macOS drag starting surface, type: choice, options: [caption, panel], default: caption}
@@ -14,6 +14,25 @@ permissions:
   contents: read
   actions: read
 jobs:
+  linux-hover-input:
+    if: ${{ inputs.checks == 'linux-hover-input' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - run: cp scripts/frontend/calibration/linux-hover-check.py "$RUNNER_TEMP/linux-hover-check.py"
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ inputs.revision }}
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: xvfb-run -a python3 "$RUNNER_TEMP/linux-hover-check.py"
   signed-candidate:
     if: ${{ inputs.checks == 'mac-dev-drag' || inputs.checks == 'mac-follow' || inputs.checks == 'mac-hover-video' }}
     runs-on: macos-15

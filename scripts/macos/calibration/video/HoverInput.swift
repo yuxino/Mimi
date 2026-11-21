@@ -141,7 +141,7 @@ private enum HoverInput {
             m.merge(more) { _, new in new }
             events.append(m)
         }
-        func phase(_ name: String, _ expectation: String, _ controls: String, pendingPaint: String? = nil, delay: Double = 0.35, _ operation: () throws -> Void = {}) throws {
+        func phase(_ name: String, _ expectation: String, _ controls: String, pendingPaint: String? = nil, delay: Double = 0.35, _ operation: @MainActor () throws -> Void = {}) throws {
             guard recorder.isRunning else { throw LayoutError("recorder_exited_before_\(name)") }
             let start = now
             mark("begin-" + name)
@@ -179,7 +179,100 @@ private enum HoverInput {
             }
         }
         func still(_ name: String, _ controls: String) throws { try phase(name, "stationary", controls, delay: 0.50) }
+        func islandPicture(_ stage: String) throws {
+            let start = now
+            try captureFrame(windowID: island.id, frame: island.bounds, crop: island.bounds, output: out, stage: stage)
+            var hit: AXUIElement?
+            var owner: pid_t = -1
+            let probe = center(island.bounds)
+            var details: [String: Any] = ["windowID": island.id, "bounds": rect(island.bounds), "started": start,
+                "finished": now, "orderedFrontFirst": try windows(pid: pid).map(\.id).filter { $0 == root.id || $0 == island.id }]
+            if AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(probe.x), Float(probe.y), &hit) == .success,
+               let hit, AXUIElementGetPid(hit, &owner) == .success, owner == pid {
+                details["hitRole"] = attribute(hit, kAXRoleAttribute) as? String ?? ""
+                if let parent = attribute(hit, kAXWindowAttribute), CFGetTypeID(parent) == AXUIElementGetTypeID(),
+                   let hitFrame = frame(of: parent as! AXUIElement) { details["hitWindowBounds"] = rect(hitFrame) }
+            }
+            mark(stage + "-single-window-capture", nil, details)
+        }
+        // The recording has a frozen two-window crop. Check the real expandable
+        // island afterwards, so its enlarged native panel is captured in full.
+        var checkedPanel = false
+        func inspectLanguagePanel() throws {
+            checkedPanel = true
+            _ = try current()
+            func surface() throws -> Window {
+                let own = try windows(pid: pid)
+                guard own.contains(where: { $0.id == root.id && equal($0.bounds, root.bounds) }),
+                      !own.contains(where: { $0.title == settingsTitle }),
+                      !FileManager.default.fileExists(atPath: fixture.appendingPathComponent("settings-activation").path),
+                      let child = own.first(where: { $0.id == island.id }) else { throw LayoutError("panel_root_or_settings_changed") }
+                return child
+            }
+            func physical(_ point: CGPoint, expected: CGRect, stage: String) throws {
+                try move(point)
+                var hit: AXUIElement?
+                var owner: pid_t = -1
+                guard expected.contains(point),
+                      AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(point.x), Float(point.y), &hit) == .success,
+                      let hit, AXUIElementGetPid(hit, &owner) == .success, owner == pid else { throw LayoutError("panel_pointer_hit_another_app") }
+                var info: [String: Any] = ["role": attribute(hit, kAXRoleAttribute) as? String ?? ""]
+                if let window = attribute(hit, kAXWindowAttribute), CFGetTypeID(window) == AXUIElementGetTypeID(),
+                   let bounds = frame(of: window as! AXUIElement) { info["actualAXWindow"] = rect(bounds) }
+                mark(stage + "-physical-down", nil, info)
+                try pointer(.leftMouseDown, point)
+                Thread.sleep(forTimeInterval: 0.07)
+                try pointer(.leftMouseUp, point)
+                mark(stage + "-physical-up")
+            }
+            try move(center(island.bounds))
+            Thread.sleep(forTimeInterval: 0.3)
+            try islandPicture("island-before-open")
+            try physical(center(island.bounds), expected: island.bounds, stage: "open-language-panel")
+            var expanded: Window?, collapse: CGRect?
+            let deadline = now + 4
+            repeat {
+                let w = try surface()
+                if w.bounds.height > island.bounds.height + 50,
+                   let ax = (attribute(app, kAXWindowsAttribute) as? [AXUIElement] ?? []).first(where: { frame(of: $0).map { equal($0, w.bounds) } == true }) {
+                    var nodes = [ax], seen = 0, fields = Set<String>()
+                    while let e = nodes.popLast(), seen < 700 {
+                        seen += 1
+                        let labels = [kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute].compactMap { attribute(e, $0) as? String }
+                        let role = attribute(e, kAXRoleAttribute) as? String
+                        if let b = frame(of: e), w.bounds.intersects(b) {
+                            fields.formUnion(labels.filter { ["Recognize", "Translate To"].contains($0) })
+                            if role == kAXButtonRole, labels.contains(where: { $0.hasSuffix("Collapse subtitle controls") }) { collapse = b }
+                        }
+                        nodes.append(contentsOf: attribute(e, kAXChildrenAttribute) as? [AXUIElement] ?? [])
+                    }
+                    if fields.count == 2, collapse != nil { expanded = w; break }
+                }
+                Thread.sleep(forTimeInterval: 0.05)
+            } while now < deadline
+            let postClick = try surface()
+            try captureFrame(windowID: island.id, frame: postClick.bounds, crop: postClick.bounds, output: out, stage: "language-panel-after-physical-click")
+            outcome["openedLanguagePanel"] = expanded != nil
+            outcome["islandPostClickWindowBounds"] = rect(postClick.bounds)
+            guard let expanded, let collapse else { throw LayoutError("physical_island_click_did_not_open_verified_language_controls") }
+            mark("language-panel-both-fields-visible", nil, ["windowID": expanded.id, "fields": ["Recognize", "Translate To"], "bounds": rect(expanded.bounds)])
+            try physical(center(collapse), expected: expanded.bounds, stage: "collapse-language-panel")
+            let closeDeadline = now + 4
+            while !equal(try surface().bounds, island.bounds), now < closeDeadline { Thread.sleep(forTimeInterval: 0.05) }
+            _ = try current()
+            try islandPicture("island-restored-after-panel")
+            outcome["collapsedLanguagePanel"] = true
+            print("language panel opened from the physical island; both language fields verified; same window returned to its compact bounds")
+        }
+        defer {
+            if !checkedPanel {
+                if !finalized { _ = finishRecorder(); finalized = true }
+                do { try inspectLanguagePanel() }
+                catch { outcome["languagePanelDiagnostic"] = String(describing: error); print("Language panel diagnostic: \(error)") }
+            }
+        }
         try still("quiet-before-input", "hidden")
+        try islandPicture("island-quiet")
         if layout {
             // Save the same root-only patch even when WebKit retains a visually
             // hidden status in its accessibility tree. The video is the paint evidence.
@@ -205,11 +298,13 @@ private enum HoverInput {
         let bodyKey = layout ? "source" : "t19"
         try phase("pointer-enters-caption", "free", "ignore") { try move(lanePoint(bodyKey)) }
         try still("caption-hover", "visible")
+        try islandPicture("island-from-caption-hover")
         let pausePoint = try lanePoint("pause")
         let toolbarPoint = (try current()).lanes["toolbar"].map { center($0.clipped) } ?? pausePoint
         try phase("pointer-to-toolbar", "free", "ignore") { try move(toolbarPoint) }
         try phase("pointer-to-language-island", "free", "ignore") { try move(center(island.bounds)) }
         try still("language-island-hover", "visible")
+        try islandPicture("island-direct-hover")
         try phase("pointer-to-pause-button", "free", "ignore") { try move(pausePoint) }
         try still("pause-button-hover", "visible")
         try phase("pointer-back-to-caption", "free", "ignore") { try move(lanePoint(bodyKey)) }
@@ -232,7 +327,7 @@ private enum HoverInput {
             s.lanes[latestSource]?.full == true && s.lanes[latestTranslation]?.full == true &&
                 s.lanes[earlySource] == nil && s.backToLive == nil
         }
-        func confirmPointer(_ p: CGPoint) throws {
+        func pointerOwner(_ p: CGPoint) throws -> AXUIElement {
             var element: AXUIElement?
             var owner = pid_t(-1)
             guard let position = CGEvent(source: nil)?.location, hypot(position.x - p.x, position.y - p.y) < 2,
@@ -241,30 +336,76 @@ private enum HoverInput {
                   let element, AXUIElementGetPid(element, &owner) == .success, owner == pid else {
                 throw LayoutError("physical_input_did_not_target_owned_root")
             }
+            return element
+        }
+        func hitsReturnButton(_ hit: AXUIElement) -> Bool {
+            var node: AXUIElement? = hit
+            for _ in 0..<12 {
+                guard let e = node else { break }
+                if attribute(e, kAXRoleAttribute) as? String == kAXButtonRole,
+                   [kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute].contains(where: { attribute(e, $0) as? String == "Back to live" }) { return true }
+                guard let parent = attribute(e, kAXParentAttribute), CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
+                node = (parent as! AXUIElement)
+            }
+            return false
         }
         func click(_ p: CGPoint, _ stage: String) throws {
-            try confirmPointer(p)
+            let hit = try pointerOwner(p)
+            let returns = hitsReturnButton(hit)
+            mark(stage + "-target", nil, ["hitRole": attribute(hit, kAXRoleAttribute) as? String ?? "", "hitReturnButton": returns])
+            if stage == "recovery" && !returns { throw LayoutError("recovery_pointer_did_not_hit_return_button") }
             try pointer(.leftMouseDown, p)
-            defer { try? pointer(.leftMouseUp, p) }
             mark(stage + "-left-down")
             Thread.sleep(forTimeInterval: 0.07)
+            try pointer(.leftMouseUp, p)
+            mark(stage + "-left-up")
         }
         func photo(_ stage: String) throws {
             try captureFrame(windowID: root.id, frame: root.bounds, crop: root.bounds, output: out, stage: stage)
         }
-        try phase("pointer-enters-to-read", "free", "ignore") { try move(lanePoint(latestTranslation)) }
-        try phase("wheel-to-history", "free", "visible") {
-            let p = try lanePoint(latestTranslation)
-            try move(p)
-            try confirmPointer(p)
-            guard let wheel = CGEvent(scrollWheelEvent2Source: input, units: .pixel, wheelCount: 1,
-                                      wheel1: Int32(ceil(root.bounds.height * (layout ? 4 : 18))), wheel2: 0, wheel3: 0) else {
-                throw LayoutError("native_wheel_unavailable")
+        func middleCaption() throws -> CGPoint {
+            let state = try current()
+            let candidates = layout ? ["oldSource", "oldTranslation", latestSource, latestTranslation] :
+                ["s18", "t18", "s19", "t19", latestSource, latestTranslation]
+            let rows = candidates.compactMap { state.lanes[$0] }.filter(\.full)
+            guard let row = rows.min(by: { abs($0.bounds.midY - root.bounds.midY) < abs($1.bounds.midY - root.bounds.midY) }) else {
+                throw LayoutError("no_visible_middle_caption_for_wheel")
             }
-            wheel.location = p
-            mark("wheel-up")
-            wheel.post(tap: .cghidEventTap)
-            _ = try wait("scrolled-to-history", reading)
+            return center(row.clipped)
+        }
+        try phase("pointer-enters-to-read", "free", "ignore") { try move(middleCaption()) }
+        try phase("wheel-to-history", "free", "visible") {
+            let p = try middleCaption()
+            try move(p)
+            _ = try pointerOwner(p)
+            @MainActor func wheel(_ index: Int) throws {
+                guard let event = CGEvent(scrollWheelEvent2Source: input, units: .pixel, wheelCount: 1,
+                                          wheel1: Int32(ceil(root.bounds.height * 0.65)), wheel2: 0, wheel3: 0) else {
+                    throw LayoutError("native_wheel_unavailable")
+                }
+                event.location = p
+                mark("wheel-up-\(index)")
+                event.post(tap: .cghidEventTap)
+            }
+            @MainActor func observeWheel(_ stage: String, _ predicate: (Sample) -> Bool) throws -> Sample {
+                do { return try wait(stage, predicate) }
+                catch {
+                    mark(stage + "-last-state", try current())
+                    try photo(stage + "-failed")
+                    throw error
+                }
+            }
+            try wheel(1)
+            let detached = try observeWheel("first-scroll-left-live") { $0.backToLive != nil }
+            mark("first-scroll-left-live", detached)
+            if !reading(detached) {
+                for index in 2...(layout ? 7 : 17) {
+                    try wheel(index)
+                    Thread.sleep(forTimeInterval: 0.06)
+                    if reading(try current()) { break }
+                }
+            }
+            _ = try observeWheel("scrolled-to-history", reading)
         }
         try still("reading-while-hovered", "visible")
         try phase("pointer-leaves-while-reading", "free", "ignore") { try move(outside) }
@@ -301,8 +442,12 @@ private enum HoverInput {
         try photo("return-first-result")
         print("scene=\(args[5]) firstPhysicalClickReturned=\(firstReturned) quietY=\(quietBounds.midY) hoveredY=\(hoveredBounds.midY) deltaY=\(deltaY)")
         if !firstReturned {
-            guard reading(firstResult), let newBounds = firstResult.backToLive.flatMap({ frame(of: $0) }) else {
-                throw LayoutError("first_click_neither_live_nor_reading")
+            guard reading(firstResult) else { throw LayoutError("first_click_neither_live_nor_reading") }
+            // The old toolbar target raises a lock tooltip over the old return
+            // button. Approach the measured control from the caption body.
+            try phase("leave-obscuring-toolbar-tooltip", "free", "ignore") { try move(lanePoint(earlyTranslation)) }
+            guard let newBounds = (try current()).backToLive.flatMap({ frame(of: $0) }) else {
+                throw LayoutError("recovery_button_not_visible")
             }
             try phase("reacquire-visible-return-button", "free", "ignore") { try move(center(newBounds)) }
             try phase("recover-at-current-return-button", "free", "ignore") {
@@ -324,6 +469,8 @@ private enum HoverInput {
         try save()
         let recorderOK = finishRecorder()
         finalized = true
+        do { try inspectLanguagePanel() }
+        catch { outcome["languagePanelDiagnostic"] = String(describing: error); throw error }
         guard recorderOK else { throw LayoutError("recorder_failed_to_finalize") }
         if args[7] == "require-first-click" && !firstReturned { throw LayoutError("first_physical_click_missed_return") }
     }
