@@ -21,14 +21,14 @@ animation=false
 if [[ ${1:-} == --animation ]]; then animation=true; shift; fi
 policy=observe
 if [[ ${1:-} == --require-first-click ]]; then policy=require-first-click; shift; fi
-if [[ $# -ne 2 || ( $1 != layout && $1 != history ) || -z $2 || $2 == -* ]]; then
-  echo "Usage: $0 [--dev CERTIFICATE_SHA1] [--animation] [--require-first-click] layout|history EVIDENCE_DIR" >&2
+if [[ $# -ne 2 || ( $1 != layout && $1 != history && $1 != language ) || -z $2 || $2 == -* ]]; then
+  echo "Usage: $0 [--dev CERTIFICATE_SHA1] [--animation] [--require-first-click] layout|history|language EVIDENCE_DIR" >&2
   exit 2
 fi
 mode=$1
 evidence=$2
 recorder=${MIMI_HOVER_RECORDER:-$tools/recorder}
-[[ -d "$app" && ! -e "$evidence" && -x "$recorder" ]]
+[[ -d "$app" && ! -e "$evidence" && ( $mode == language || -x "$recorder" ) ]]
 if pgrep -x mimi >/dev/null; then
   echo "Another Mimi process already owns the test desktop." >&2
   exit 1
@@ -82,4 +82,4 @@ ready || { echo "The two signed UI-test windows and listening state were not rea
 "$scene/check-hover" "$pid" "$identifier" "$scene" "$evidence" "$mode" "$recorder" "$policy" 2>&1 | tee -a "$evidence/input.log"
 kill -0 "$pid"
 ready && [[ ! -e "$scene/settings-activation" ]]
-echo "Finished the physical hover, history and return sequence with Settings closed and listening active." | tee -a "$evidence/input.log"
+echo "Finished the $mode interaction with Settings closed and listening active." | tee -a "$evidence/input.log"

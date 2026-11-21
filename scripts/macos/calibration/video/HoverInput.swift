@@ -1,4 +1,6 @@
 
+import ImageIO
+
 // Compiled together with the actual native test's private AX/window samplers.
 @main @MainActor
 private enum HoverInput {
@@ -17,7 +19,7 @@ private enum HoverInput {
               let pid = pid_t(args[1]), pid > 0, let bundle = bundles[args[2]],
               let appInfo = NSRunningApplication(processIdentifier: pid), appInfo.bundleIdentifier == args[2],
               appInfo.executableURL?.standardizedFileURL.path == "/Applications/\(bundle)/Contents/MacOS/mimi",
-              ["layout", "history"].contains(args[5]), ["observe", "require-first-click"].contains(args[7]) else {
+              ["layout", "history", "language"].contains(args[5]), ["observe", "require-first-click"].contains(args[7]) else {
             throw LayoutError("expected_signed_fixture_on_isolated_host")
         }
         let fixture = URL(fileURLWithPath: args[3], isDirectory: true)
@@ -26,7 +28,8 @@ private enum HoverInput {
               fixture.resolvingSymlinksInPath().deletingLastPathComponent() == FileManager.default.temporaryDirectory.resolvingSymlinksInPath() else {
             throw LayoutError("private_scene_required")
         }
-        let layout = args[5] == "layout"
+        let capsuleOnly = args[5] == "language"
+        let layout = args[5] != "history"
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 0.25)
         try closeSettings(pid: pid, app: app)
@@ -102,7 +105,7 @@ private enum HoverInput {
         var recEnv = ProcessInfo.processInfo.environment
         recEnv["MIMI_UI_TEST"] = "1"
         recorder.environment = recEnv
-        try recorder.run()
+        if !capsuleOnly { try recorder.run() }
         let stop = out.appendingPathComponent("stop")
         func finishRecorder() -> Bool {
             if !FileManager.default.fileExists(atPath: stop.path) { try? Data().write(to: stop, options: .withoutOverwriting) }
@@ -111,13 +114,15 @@ private enum HoverInput {
             if recorder.isRunning { recorder.terminate(); return false }
             return recorder.terminationStatus == 0
         }
-        var finalized = false
+        var finalized = capsuleOnly
         defer { if !finalized { _ = finishRecorder() } }
-        let deadline = now + 8
-        while !FileManager.default.fileExists(atPath: out.appendingPathComponent("ready").path), now < deadline, recorder.isRunning {
-            Thread.sleep(forTimeInterval: 0.02)
+        if !capsuleOnly {
+            let deadline = now + 8
+            while !FileManager.default.fileExists(atPath: out.appendingPathComponent("ready").path), now < deadline, recorder.isRunning {
+                Thread.sleep(forTimeInterval: 0.02)
+            }
+            guard recorder.isRunning, FileManager.default.fileExists(atPath: out.appendingPathComponent("ready").path) else { throw LayoutError("recorder_never_armed") }
         }
-        guard recorder.isRunning, FileManager.default.fileExists(atPath: out.appendingPathComponent("ready").path) else { throw LayoutError("recorder_never_armed") }
         var phases: [[String: Any]] = [], events: [[String: Any]] = []
         var outcome: [String: Any] = ["scene": args[5], "rootWindowID": root.id, "islandWindowID": island.id,
                                        "root": rect(root.bounds), "island": rect(island.bounds), "clock": "systemUptime"]
@@ -179,14 +184,46 @@ private enum HoverInput {
             }
         }
         func still(_ name: String, _ controls: String) throws { try phase(name, "stationary", controls, delay: 0.50) }
-        func islandPicture(_ stage: String) throws {
+        func islandPicture(_ stage: String, bounds expected: CGRect? = nil) {
+            let bounds = expected ?? island.bounds
             let start = now
-            try captureFrame(windowID: island.id, frame: island.bounds, crop: island.bounds, output: out, stage: stage)
+            let own = (try? windows(pid: pid)) ?? []
+            var details: [String: Any] = ["windowID": island.id, "bounds": rect(bounds), "started": start,
+                "orderedFrontFirst": own.map(\.id).filter { $0 == root.id || $0 == island.id }]
+            // Fully transparent windows can produce a trimmed PNG. Save exactly
+            // the single-window capture, without scaling it or treating it as a screen crop.
+            do {
+                guard own.contains(where: { $0.id == island.id && equal($0.bounds, bounds) }) else { throw LayoutError("child_geometry_changed_before_picture") }
+                let file = out.appendingPathComponent(stage + ".png")
+                let shot = Process()
+                shot.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                shot.arguments = ["-x", "-o", "-l\(island.id)", file.path]
+                shot.standardOutput = FileHandle.nullDevice
+                shot.standardError = FileHandle.nullDevice
+                let done = DispatchSemaphore(value: 0)
+                shot.terminationHandler = { _ in done.signal() }
+                try shot.run()
+                if done.wait(timeout: .now() + 3) == .timedOut {
+                    shot.terminate()
+                    if done.wait(timeout: .now() + 1) == .timedOut { kill(shot.processIdentifier, SIGKILL) }
+                    throw LayoutError("child_picture_timed_out")
+                }
+                guard shot.terminationStatus == 0, let raw = try? Data(contentsOf: file),
+                      let source = CGImageSourceCreateWithData(raw as CFData, nil),
+                      let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+                      let width = properties[kCGImagePropertyPixelWidth] as? NSNumber,
+                      let height = properties[kCGImagePropertyPixelHeight] as? NSNumber else { throw LayoutError("child_png_unavailable") }
+                details["rawPNG"] = file.lastPathComponent
+                details["pixelBounds"] = ["x": 0, "y": 0, "width": width, "height": height]
+                details["pngByteCount"] = raw.count
+            } catch {
+                details["captureIssue"] = String(describing: error)
+                print("Optional child picture \(stage): \(error)")
+            }
             var hit: AXUIElement?
             var owner: pid_t = -1
-            let probe = center(island.bounds)
-            var details: [String: Any] = ["windowID": island.id, "bounds": rect(island.bounds), "started": start,
-                "finished": now, "orderedFrontFirst": try windows(pid: pid).map(\.id).filter { $0 == root.id || $0 == island.id }]
+            let probe = center(bounds)
+            details["finished"] = now
             if AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(probe.x), Float(probe.y), &hit) == .success,
                let hit, AXUIElementGetPid(hit, &owner) == .success, owner == pid {
                 details["hitRole"] = attribute(hit, kAXRoleAttribute) as? String ?? ""
@@ -227,7 +264,7 @@ private enum HoverInput {
             }
             try move(center(island.bounds))
             Thread.sleep(forTimeInterval: 0.3)
-            try islandPicture("island-before-open")
+            islandPicture("island-before-open")
             try physical(center(island.bounds), expected: island.bounds, stage: "open-language-panel")
             var expanded: Window?, collapse: CGRect?
             let deadline = now + 4
@@ -246,21 +283,22 @@ private enum HoverInput {
                         }
                         nodes.append(contentsOf: attribute(e, kAXChildrenAttribute) as? [AXUIElement] ?? [])
                     }
-                    if fields.count == 2, collapse != nil { expanded = w; break }
+                    if fields.count == 2 { expanded = w; if collapse != nil { break } }
                 }
                 Thread.sleep(forTimeInterval: 0.05)
             } while now < deadline
             let postClick = try surface()
-            try captureFrame(windowID: island.id, frame: postClick.bounds, crop: postClick.bounds, output: out, stage: "language-panel-after-physical-click")
+            islandPicture("language-panel-after-physical-click", bounds: postClick.bounds)
             outcome["openedLanguagePanel"] = expanded != nil
             outcome["islandPostClickWindowBounds"] = rect(postClick.bounds)
-            guard let expanded, let collapse else { throw LayoutError("physical_island_click_did_not_open_verified_language_controls") }
+            guard let expanded else { throw LayoutError("physical_island_click_did_not_open_verified_language_controls") }
             mark("language-panel-both-fields-visible", nil, ["windowID": expanded.id, "fields": ["Recognize", "Translate To"], "bounds": rect(expanded.bounds)])
+            guard let collapse else { throw LayoutError("opened_language_panel_but_collapse_button_not_located") }
             try physical(center(collapse), expected: expanded.bounds, stage: "collapse-language-panel")
             let closeDeadline = now + 4
             while !equal(try surface().bounds, island.bounds), now < closeDeadline { Thread.sleep(forTimeInterval: 0.05) }
             _ = try current()
-            try islandPicture("island-restored-after-panel")
+            islandPicture("island-restored-after-panel")
             outcome["collapsedLanguagePanel"] = true
             print("language panel opened from the physical island; both language fields verified; same window returned to its compact bounds")
         }
@@ -271,8 +309,23 @@ private enum HoverInput {
                 catch { outcome["languagePanelDiagnostic"] = String(describing: error); print("Language panel diagnostic: \(error)") }
             }
         }
+        if capsuleOnly {
+            islandPicture("island-quiet")
+            try move(lanePoint("source"))
+            Thread.sleep(forTimeInterval: 0.35)
+            islandPicture("island-from-caption-hover")
+            try move(center(island.bounds))
+            Thread.sleep(forTimeInterval: 0.35)
+            islandPicture("island-direct-hover")
+            do { try inspectLanguagePanel() }
+            catch { outcome["languagePanelDiagnostic"] = String(describing: error); throw error }
+            outcome["finalListening"] = true
+            outcome["settingsClosed"] = true
+            try save()
+            return
+        }
         try still("quiet-before-input", "hidden")
-        try islandPicture("island-quiet")
+        islandPicture("island-quiet")
         if layout {
             // Save the same root-only patch even when WebKit retains a visually
             // hidden status in its accessibility tree. The video is the paint evidence.
@@ -298,13 +351,13 @@ private enum HoverInput {
         let bodyKey = layout ? "source" : "t19"
         try phase("pointer-enters-caption", "free", "ignore") { try move(lanePoint(bodyKey)) }
         try still("caption-hover", "visible")
-        try islandPicture("island-from-caption-hover")
+        islandPicture("island-from-caption-hover")
         let pausePoint = try lanePoint("pause")
         let toolbarPoint = (try current()).lanes["toolbar"].map { center($0.clipped) } ?? pausePoint
         try phase("pointer-to-toolbar", "free", "ignore") { try move(toolbarPoint) }
         try phase("pointer-to-language-island", "free", "ignore") { try move(center(island.bounds)) }
         try still("language-island-hover", "visible")
-        try islandPicture("island-direct-hover")
+        islandPicture("island-direct-hover")
         try phase("pointer-to-pause-button", "free", "ignore") { try move(pausePoint) }
         try still("pause-button-hover", "visible")
         try phase("pointer-back-to-caption", "free", "ignore") { try move(lanePoint(bodyKey)) }

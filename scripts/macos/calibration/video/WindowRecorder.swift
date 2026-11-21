@@ -290,7 +290,8 @@ private func phaseCoverage(_ directory: URL, native: [String: Any], movie: [Stri
         let frameTimes = images.filter { $0 >= a && $0 <= b }
         let preceding = images.lastIndex(where: { $0 <= a })
         let following = images.firstIndex(where: { $0 >= b })
-        let bracket = Array(images[(preceding ?? 0)...(following ?? (images.count - 1))])
+        var bracket = Array(images[(preceding ?? 0)...(following ?? (images.count - 1))])
+        if following == nil { bracket.append(mediaEnd) }
         let gaps = zip(bracket.dropFirst(), bracket).map(-)
         return ["name": name, "expectation": phase["expectation"] ?? "unknown", "startVideoSeconds": a, "endVideoSeconds": b,
             "nativeCallbacks": observed.count, "nativeIdleCallbacks": observed.filter { $0["status"] as? Int == SCFrameStatus.idle.rawValue }.count,
@@ -458,10 +459,13 @@ private enum WindowRecorder {
         metadata["phaseCoverage"] = coverage
         metadata["cadencePolicy"] = "Disclose per-phase native image/idle samples; no uniform FPS requirement during static content. Pixel interpretation is separate."
         try writeJSON(metadata, output.appendingPathComponent("metadata.json"))
+        let statuses = metadata["nativeStatuses"] as! [String: Int]
         guard stopReason == "stop-marker", metadata["captureFailure"] == nil, metadata["stopCaptureFailure"] == nil,
               movie["videoSampleCount"] as? Int == metadata["nativeSamplesWritten"] as? Int,
               metadata["encoderBackpressureDrops"] as? Int == 0, metadata["invalidTimestampDrops"] as? Int == 0,
               metadata["completeSamplesWithoutUsableImage"] as? Int == 0, alignment <= 0.000_001,
+              statuses[String(SCFrameStatus.blank.rawValue), default: 0] == 0,
+              statuses[String(SCFrameStatus.suspended.rawValue), default: 0] == 0, statuses["-1", default: 0] == 0,
               coverage.allSatisfy({ $0["covered"] as? Bool == true }) else {
             throw RecordingError("video_phase_coverage_or_lossless_native_pts_alignment_failed_see_metadata")
         }
