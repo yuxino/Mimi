@@ -731,7 +731,9 @@ try {
         $controls = [MimiPointerSmoke]::FindVisibleControlWindow($overlay)
         if ($controls -eq [IntPtr]::Zero) { throw 'Could not identify the language control window.' }
         $labels = [IO.File]::ReadAllText((Join-Path $FixtureDirectory 'panel-labels.json')) | ConvertFrom-Json
-        Test-PanelLanguage $controls $labels $EvidenceDirectory
+        Add-Type -Path (Join-Path $PSScriptRoot 'tests/CaptionDragDesktop.cs')
+        . (Join-Path $PSScriptRoot 'tests/panel-blank-drag.ps1')
+        Test-PanelBlankDrag $controls $labels $EvidenceDirectory
         return
     }
 
