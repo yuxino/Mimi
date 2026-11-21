@@ -51,8 +51,8 @@
 }
 
 .overlay-control-island {
-  /* Language and progress occupy separate rows; transient work never resizes
-     the native island or steals the language pair's horizontal space. */
+  /* Language and progress occupy separate rows. The repeated translating label
+     reserves its width below instead of taking space from the language pair. */
   width: max-content;
   min-width: 116px;
   gap: 2px;
