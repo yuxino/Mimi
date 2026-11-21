@@ -277,15 +277,21 @@ private func phaseCoverage(_ directory: URL, native: [String: Any], movie: [Stri
           let uptime = first["callbackSystemUptime"] as? Double, let host = first["callbackHostClockSeconds"] as? Double,
           let display = first["displayHostClockSeconds"] as? Double,
           let observations = native["nativeObservations"] as? [[String: Any]],
-          let images = movie["encodedSamplePTSSeconds"] as? [Double],
+          let images = movie["encodedSamplePTSSeconds"] as? [Double], let frames = native["frames"] as? [[String: Any]],
           let timing = movie["encodedSampleTimingInReaderOrder"] as? [[String: Any]],
           let mediaEnd = movie["codedMediaEndSeconds"] as? Double else { throw RecordingError("phase_timebase_or_native_observations_missing") }
+    let displayedFrames = frames.enumerated().compactMap { index, frame -> (index: Int, time: Double)? in
+        guard images.indices.contains(index), let hostTime = frame["displayHostClockSeconds"] as? Double else { return nil }
+        let videoTime = hostTime - display
+        guard abs(videoTime - images[index]) <= 0.000_001 else { return nil }
+        return (index, videoTime)
+    }
     let presentations = timing.compactMap { sample -> ClosedRange<Double>? in
         guard let pts = (sample["pts"] as? [String: Any])?["seconds"] as? Double,
               let duration = (sample["duration"] as? [String: Any])?["seconds"] as? Double,
               pts.isFinite, duration.isFinite, duration > 0 else { return nil }
         return pts...(pts + duration)
-    }
+    }.sorted { $0.lowerBound < $1.lowerBound }
     return try phases.map { phase in
         guard let name = phase["name"] as? String, let start = phase["start"] as? Double,
               let end = phase["end"] as? Double, end > start else { throw RecordingError("invalid_phase_interval") }
@@ -302,20 +308,29 @@ private func phaseCoverage(_ directory: URL, native: [String: Any], movie: [Stri
         let gaps = zip(bracket.dropFirst(), bracket).map(-)
         let insideRecording = a >= 0 && b <= mediaEnd + 0.002 && preceding != nil
         let hold = presentations.first { $0.lowerBound <= a && b <= $0.upperBound }
-        // A passive hold can lie between two real frames. An input or application change still requires native observation.
-        let passiveHold = phase["observationOnly"] as? Bool == true && phase["expectation"] as? String == "stationary" &&
-            frameTimes.isEmpty && following != nil && hold != nil
+        let displayed = displayedFrames.filter { a <= $0.time && $0.time <= b }.map(\.index)
+        var presentedUntil = a
+        for span in presentations {
+            if span.lowerBound > presentedUntil + 0.000_001 { break }
+            presentedUntil = max(presentedUntil, span.upperBound)
+        }
+        let passive = phase["observationOnly"] as? Bool == true && phase["expectation"] as? String == "stationary"
+        // ScreenCaptureKit may deliver an already displayed frame after a passive interval ends.
+        let passiveDisplay = passive && !displayed.isEmpty && b <= presentedUntil + 0.000_001
+        let passiveHold = passive && frameTimes.isEmpty && following != nil && hold != nil
         let evidence: String
         if !insideRecording { evidence = "outside-recording" }
         else if !observed.isEmpty { evidence = "native-callback" }
+        else if passiveDisplay { evidence = "native-display-frame" }
         else if passiveHold { evidence = "held-encoded-frame" }
         else { evidence = "missing-native-callback" }
         return ["name": name, "expectation": phase["expectation"] ?? "unknown", "startVideoSeconds": a, "endVideoSeconds": b,
             "nativeCallbacks": observed.count, "nativeIdleCallbacks": observed.filter { $0["status"] as? Int == SCFrameStatus.idle.rawValue }.count,
             "imageFrames": frameTimes.count, "imageFramesPerPhaseSecond": Double(frameTimes.count) / (end - start),
             "maximumBracketingImageIntervalSeconds": gaps.max() ?? 0,
-            "nativeObserved": !observed.isEmpty, "singleFramePresentationSeconds": hold.map { [$0.lowerBound, $0.upperBound] } ?? [],
-            "coverageEvidence": evidence, "covered": insideRecording && (!observed.isEmpty || passiveHold)]
+            "nativeObserved": !observed.isEmpty, "nativeDisplayFrameIndices": displayed,
+            "singleFramePresentationSeconds": hold.map { [$0.lowerBound, $0.upperBound] } ?? [],
+            "coverageEvidence": evidence, "covered": insideRecording && (!observed.isEmpty || passiveDisplay || passiveHold)]
     }
 }
 
@@ -475,7 +490,7 @@ private enum WindowRecorder {
             throw error
         }
         metadata["phaseCoverage"] = coverage
-        metadata["cadencePolicy"] = "Report native callbacks separately from a single frame presented throughout a passive, stationary interval. Pixel interpretation is separate."
+        metadata["cadencePolicy"] = "Report callback arrival, aligned display time, and held coded images separately. Presentation-only evidence is limited to passive stationary intervals."
         try writeJSON(metadata, output.appendingPathComponent("metadata.json"))
         let statuses = metadata["nativeStatuses"] as! [String: Int]
         guard stopReason == "stop-marker", metadata["captureFailure"] == nil, metadata["stopCaptureFailure"] == nil,
