@@ -91,12 +91,28 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .overlay-control-detached[data-quiet-island]:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-keyboard-focus]:has(:focus-visible)) .overlay-control-island {
-    opacity: 0;
+  .overlay-control-detached[data-quiet-island] {
+    --island-opacity: 0;
+    --island-pointer-events: none;
   }
 
-  .overlay-control-detached[data-quiet-island]:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-keyboard-focus]:has(:focus-visible)) :is(.overlay-control-island, .overlay-control-island *) {
-    pointer-events: none;
+  /* The caption and the language button live in separate native windows.
+     Either window can reveal the button before the pointer reaches it. */
+  .overlay-control-detached[data-overlay-peer-hover],
+  .overlay-control-detached[data-overlay-hover],
+  .overlay-control-detached[data-overlay-keyboard-focus] .overlay-control-island:focus-visible,
+  .overlay-control-detached:hover:not([data-overlay-pointer-tracked]) {
+    --island-opacity: 1;
+    --island-pointer-events: auto;
+  }
+
+  .overlay-control-detached[data-quiet-island] .overlay-control-island {
+    opacity: var(--island-opacity);
+  }
+
+  .overlay-control-detached[data-quiet-island] .overlay-control-island,
+  .overlay-control-detached[data-quiet-island] .overlay-control-island * {
+    pointer-events: var(--island-pointer-events);
   }
 }
 
