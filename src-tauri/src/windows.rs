@@ -104,7 +104,7 @@ mod windows_pointer;
 mod windows_panel_drag;
 
 #[cfg(target_os = "windows")]
-pub(crate) use windows_panel_drag::prepare_panel_drag;
+pub(crate) use windows_panel_drag::{panel_drag_button_down, prepare_panel_drag};
 
 #[cfg(target_os = "windows")]
 pub use windows_pointer::WindowsPointerTracker;

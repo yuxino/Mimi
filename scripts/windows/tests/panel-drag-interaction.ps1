@@ -83,8 +83,33 @@ function Test-PanelDragInteraction([IntPtr]$Controls,[string]$EvidencePath) {
         Start-Sleep -Milliseconds 400
         $metadata.shortGesture=Assert-PanelDragPosition 48
         $null=Wait-PanelLanguageState 'panel-refocus-after-short-gesture' { [MimiPanelKeyboard]::OwnsFocus($Controls) }
+        [MimiPointerSmoke]::AssertCaptionMoveEnded($overlay)
+        $offset=48;$metadata.quickMoves=@()
+        foreach ($distance in @(3,48)) {
+            $point=Get-PanelBlankPoint
+            [MimiPointerSmoke]::MoveOverWindow($Controls,$point.X,$point.Y,'Check a quick native panel move')
+            try {
+                [MimiCaptionDragDesktop]::SetLeftButton($true)
+                Start-Sleep -Milliseconds 8
+                [MimiPointerSmoke]::MoveAndVerify(($point.X+$distance),$point.Y)
+                Start-Sleep -Milliseconds 7
+            } finally { [MimiCaptionDragDesktop]::SetLeftButton($false) }
+            Start-Sleep -Milliseconds 400
+            $offset+=$distance
+            $position=Assert-PanelDragPosition $offset
+            $null=Wait-PanelLanguageState 'panel-refocus-after-quick-gesture' { [MimiPanelKeyboard]::OwnsFocus($Controls) }
+            [MimiPointerSmoke]::AssertCaptionMoveEnded($overlay)
+            if ([MimiCaptionDragDesktop]::LeftDown()) { throw 'A quick panel gesture left the button held.' }
+            $metadata.quickMoves+=@{distance=$distance;position=$position}
+        }
+        $point=Get-PanelBlankPoint
+        [MimiPointerSmoke]::ClickOverlay($Controls,$point.X,$point.Y,'An ordinary click in panel blank space')
+        Start-Sleep -Milliseconds 400
+        $metadata.ordinaryClick=Assert-PanelDragPosition $offset
+        $null=Wait-PanelLanguageState 'panel-focus-after-ordinary-click' { [MimiPanelKeyboard]::OwnsFocus($Controls) }
+        [MimiPointerSmoke]::AssertCaptionMoveEnded($overlay)
         $metadata.passed=$true
-        Write-Host 'Native panel middle drag passed: same HWNDs, +48px, expanded sizes/anchor retained; short gesture and native refocus passed. Continuing original language selections.'
+        Write-Host 'Native panel middle drag passed: same HWNDs, +48px, expanded sizes/anchor retained; stationary/quick gestures, ordinary click and native refocus passed. Continuing original language selections.'
     } catch { $metadata.passed=$false;$metadata.failure=[string]$_;throw }
     finally {
         [MimiCaptionDragDesktop]::SetLeftButton($false)

@@ -45,7 +45,6 @@ mod native {
     };
     use crate::windows::{OverlayControlState, OverlayControlWindowManager};
     use ::windows::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
-    use ::windows::Win32::Graphics::Gdi::ScreenToClient;
     use ::windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
     use ::windows::Win32::UI::WindowsAndMessaging::{
         GetCursorPos, GetForegroundWindow, GetGUIThreadInfo, GetWindowThreadProcessId, IsWindow,
@@ -161,14 +160,14 @@ mod native {
                                     foreground,
                                 )
                             {
-                                // A short cross-WebView press can release before
-                                // the root acquires capture. Forward that already
-                                // released button once to finish the owned move;
-                                // cancelling would discard outline-mode movement.
+                                // A cross-WebView press can release before the
+                                // root acquires capture. Its active move loop
+                                // consumes screen points: client-relative input
+                                // committed the outline to (0, 0) in native QA.
+                                // Preserve the real release point, including a
+                                // quick move; cancelling would discard it.
                                 let mut point = POINT::default();
-                                if unsafe { GetCursorPos(&mut point) }.is_ok()
-                                    && unsafe { ScreenToClient(root, &mut point) }.as_bool()
-                                {
+                                if unsafe { GetCursorPos(&mut point) }.is_ok() {
                                     let position =
                                         ((point.y as u16 as u32) << 16) | point.x as u16 as u32;
                                     release_forwarded = unsafe {
@@ -204,6 +203,10 @@ mod native {
         }
     }
 
+    pub(crate) fn panel_drag_button_down() -> bool {
+        (unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) }) < 0
+    }
+
     pub(crate) fn prepare_panel_drag(app: &AppHandle, root: &WebviewWindow) -> Option<PanelDrag> {
         let control = app.get_webview_window("overlay-control")?;
         let root = root.hwnd().ok()?.0 as isize;
@@ -228,7 +231,7 @@ mod native {
 }
 
 #[cfg(target_os = "windows")]
-pub(crate) use native::prepare_panel_drag;
+pub(crate) use native::{panel_drag_button_down, prepare_panel_drag};
 
 #[cfg(test)]
 mod tests {

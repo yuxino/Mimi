@@ -362,6 +362,16 @@ public static class MimiPointerSmoke {
             throw new InvalidOperationException("Windows did not enter a native move modal owned by the subtitle root.");
     }
 
+    public static void AssertCaptionMoveEnded(IntPtr overlay) {
+        uint process;
+        var thread = GetWindowThreadProcessId(overlay, out process);
+        var gui = new GuiThreadInfo { Size = (uint)Marshal.SizeOf(typeof(GuiThreadInfo)) };
+        if (thread == 0 || !GetGUIThreadInfo(thread, ref gui))
+            throw new InvalidOperationException("Could not observe the subtitle root after releasing the native move.");
+        if ((gui.Flags & 0x0002) != 0 && gui.MoveSize == overlay)
+            throw new InvalidOperationException("The subtitle root remained in its native move modal after release.");
+    }
+
     public static void ClickOverlay(IntPtr overlay, int x, int y, string action) {
         AssertHit(overlay, new Point { X = x, Y = y }, action);
         if (!SetCursorPos(x, y))

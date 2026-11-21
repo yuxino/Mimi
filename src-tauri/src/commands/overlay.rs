@@ -136,6 +136,11 @@ pub fn overlay_move_start(
     {
         #[cfg(target_os = "windows")]
         let from_panel = window.label() == "overlay-control";
+        #[cfg(target_os = "windows")]
+        if from_panel && !crate::windows::panel_drag_button_down() {
+            // A queued DOM press must not start an OS move after its release.
+            return Ok(());
+        }
         let target = match window.label() {
             "overlay" => window,
             "overlay-control" => {
