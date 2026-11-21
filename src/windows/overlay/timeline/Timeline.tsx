@@ -111,6 +111,7 @@ export const Timeline = memo(function Timeline({
   const measureTranslation = useCallback((height: number) => measureLane("translation", height), [measureLane]);
   const resolvedFontFamily = useMemo(() => subtitleFontFamily(fontFamily), [fontFamily]);
   const touchStartYRef = useRef<number | null>(null);
+  const scrollbarPress = useRef<{ id: number; y: number } | null>(null);
   const tight = viewportHeight !== null && viewportHeight < 80;
   const laneGap = tight ? 1 : LANE_GAP;
   const paddingTop = tight ? 0 : blendsWithBackground ? IMMERSIVE_BLOCK_GAP : BLOCK_PADDING_Y;
@@ -123,11 +124,18 @@ export const Timeline = memo(function Timeline({
 
   useEffect(() => {
     // A thumb can be released outside this viewport, before its last scroll event.
-    const release = () => {
+    const release = (event: Event) => {
       const element = containerRef.current;
       if (!element) return;
+      const press = scrollbarPress.current;
+      const pointer = event.type === "blur" ? null : event as PointerEvent;
+      if (press && pointer?.pointerId !== undefined && pointer.pointerId !== press.id) return;
+      scrollbarPress.current = null;
+      const releasedDownGutter = !!(press && pointer?.type === "pointerup" && pointer.pointerType === "mouse" &&
+        pointer.button === 0 && pointer.clientY > press.y &&
+        hitsVerticalScrollbar(element, pointer.clientX, pointer.clientY));
       const wasDraggingScrollbar = scroll.isDraggingScrollbar();
-      scroll.pointerUp(element);
+      scroll.pointerUp(element, releasedDownGutter);
       if (wasDraggingScrollbar) setReadingHistory(!scroll.isFollowing());
     };
     window.addEventListener("pointerup", release, true);
@@ -190,6 +198,7 @@ export const Timeline = memo(function Timeline({
       ref={containerRef}
       tabIndex={0}
       onWheel={(event) => {
+        scroll.finishScrollbarRelease();
         if (event.deltaY < 0) {
           scroll.beginReading(event.currentTarget);
           setReadingHistory(true);
@@ -223,10 +232,12 @@ export const Timeline = memo(function Timeline({
       onPointerDown={(event) => {
         const scrollbar = event.target === event.currentTarget && event.pointerType === "mouse" &&
           event.button === 0 && event.isPrimary !== false && hitsVerticalScrollbar(event.currentTarget, event.clientX);
+        scrollbarPress.current = scrollbar ? { id: event.pointerId, y: event.clientY } : null;
         scroll.pointerDown(event.currentTarget, scrollbar);
       }}
       onPointerMove={(event) => { if (event.buttons !== 0) scroll.pointerMove(event.currentTarget); }}
       onKeyDown={(event) => {
+        scroll.finishScrollbarRelease();
         if (event.key === "Home") {
           event.preventDefault();
           scroll.readFromStart(event.currentTarget);
@@ -251,6 +262,7 @@ export const Timeline = memo(function Timeline({
         const following = scroll.isFollowing();
         if (!following || !scroll.isDraggingScrollbar()) setReadingHistory(!following);
       }}
+      onScrollEnd={() => scroll.finishScrollbarRelease()}
       className={`overlay-timeline ${timelineClassName(blendsWithBackground)}`}
       style={{
         display: "flex", flexDirection: "column",

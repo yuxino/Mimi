@@ -22,7 +22,9 @@ Keep the capsule visible during recording and while the overlay is locked.
 The locked capsule exposes one-click unlock while the subtitle canvas remains
 click-through. An error temporarily restores the regular recovery controls.
 Devices without fine hover keep the controls visible. Hidden controls stay
-reachable by keyboard and release their pointer targets. Live subtitles
+reachable by keyboard and release their pointer targets. On an embedded
+surface, the button's transparent sizing wrapper also passes pointer hits
+through to feedback and captions underneath. Live subtitles
 reclaim the control and progress rows when quiet. Session actions, failures and
 translation recovery retain a short status line. While reading history, Back to
 live stays below the captions, within reach as the controls appear. The listening
