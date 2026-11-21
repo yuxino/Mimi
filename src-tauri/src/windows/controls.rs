@@ -502,9 +502,7 @@ impl OverlayControlWindowManager {
         }
         #[cfg(not(target_os = "linux"))]
         Self::apply_geometry(app, mode);
-        if !window.is_visible().unwrap_or(false) {
-            show_overlay_control_window(app, &window);
-        }
+        show_overlay_control_window(app, &window);
         #[cfg(target_os = "windows")]
         let _ = window.set_focusable(focus_policy.focusable_after_show);
         #[cfg(target_os = "windows")]
