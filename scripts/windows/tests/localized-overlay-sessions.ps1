@@ -1,3 +1,11 @@
+# The readiness marker belongs to this parent script, before the native probe
+# process is launched. Its marker reader is not in the parent's function scope.
+function Test-HistoryProbeReady([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+    try { return [IO.File]::ReadAllText($Path).Trim() -ceq 'ready' }
+    catch [IO.IOException] { return $false }
+}
+
 # The package smoke owns the executable and private fixture directory. Each
 # launch must mount both WebViews again before its localized controls are used.
 function Invoke-LocalizedOverlaySession([hashtable]$Preferences, [string]$EvidencePath) {
@@ -20,11 +28,11 @@ function Invoke-LocalizedOverlaySession([hashtable]$Preferences, [string]$Eviden
         if ($historyTrace) {
             $traceReady = Join-Path $frontendReadyDir 'history-pointer-probe-ready'
             $deadline = [Diagnostics.Stopwatch]::StartNew()
-            while ((Read-SmokeMarker $traceReady) -ne 'ready' -and $deadline.ElapsedMilliseconds -lt 5000) {
+            while (-not (Test-HistoryProbeReady $traceReady) -and $deadline.ElapsedMilliseconds -lt 5000) {
                 if ($primary.HasExited) { throw 'History trace app exited before its observer was ready.' }
                 Start-Sleep -Milliseconds 25
             }
-            if ((Read-SmokeMarker $traceReady) -ne 'ready') { throw 'History metadata observer was not ready within 5000ms.' }
+            if (-not (Test-HistoryProbeReady $traceReady)) { throw 'History metadata observer was not ready within 5000ms.' }
         }
         $settingsWindow = [MimiWindowSmoke]::FindUniqueWindow([uint32]$primary.Id, 'mimi UI test settings')
         if ($settingsWindow -eq [IntPtr]::Zero) { throw 'The mounted Settings window could not be identified.' }
