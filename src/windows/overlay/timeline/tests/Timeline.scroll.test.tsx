@@ -388,7 +388,7 @@ it.each([[298, 24], [298, 8], [150, 78], [310, 78], [298, 95]])(
   },
 );
 
-it.each(["scrollend", "reflow", "blur", "upward", "wheel", "expired"])(
+it.each(["scrollend", "reflow", "blur", "upward", "wheel"])(
   "discards a released thumb's remaining movement after %s", async reason => {
     const reading = await mountHistoryReader();
     await pressTimeline();
@@ -400,15 +400,29 @@ it.each(["scrollend", "reflow", "blur", "upward", "wheel", "expired"])(
     if (reason === "blur") await act(() => window.dispatchEvent(new Event("blur")));
     if (reason === "upward") await nativeScroll(55);
     if (reason === "wheel") await act(() => timeline.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -20 })));
-    const later = reason === "expired" ? vi.spyOn(performance, "now").mockReturnValue(performance.now() + 1000) : null;
-    try {
-      await nativeScroll(120);
-      expect(reading).toHaveBeenLastCalledWith(true);
-    } finally {
-      later?.mockRestore();
-    }
+    await nativeScroll(120);
+    expect(reading).toHaveBeenLastCalledWith(true);
   },
 );
+
+it.each([true, false])("handles a delayed final thumb movement with native scrollend support %s", async supportsScrollEnd => {
+  const reading = await mountHistoryReader();
+  const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "onscrollend");
+  if (!supportsScrollEnd) Reflect.deleteProperty(HTMLElement.prototype, "onscrollend");
+  const clock = vi.spyOn(performance, "now");
+  try {
+    expect("onscrollend" in timeline).toBe(supportsScrollEnd);
+    await pressTimeline();
+    await nativeScroll(80);
+    await releaseAt(298, 78);
+    clock.mockReturnValue(performance.now() + 1000);
+    await nativeScroll(120);
+    expect(reading).toHaveBeenLastCalledWith(!supportsScrollEnd);
+  } finally {
+    clock.mockRestore();
+    if (!supportsScrollEnd && descriptor) Object.defineProperty(HTMLElement.prototype, "onscrollend", descriptor);
+  }
+});
 
 it.each(["pointerup", "pointercancel", "blur"])("ignores unrelated scrolls after a scrollbar gesture ends (%s)", async end => {
   const reading = await mountHistoryReader();

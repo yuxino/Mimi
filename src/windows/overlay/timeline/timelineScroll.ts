@@ -1,10 +1,9 @@
 type ScrollIntent =
   | { kind: "down" | "pointer"; top: number }
   | { kind: "scrollbar"; top: number; range: number }
-  | { kind: "released-scrollbar"; top: number; range: number; expiresAt: number };
+  | { kind: "released-scrollbar"; top: number; range: number; fallbackDeadline: number | null };
 
-// scrollend normally closes the gesture. Also expire its eligibility on
-// engines that omit scrollend, without delaying a single caption or frame.
+// Older WebViews have no scrollend event to close an unfinished gesture.
 const SCROLLBAR_RELEASE_WINDOW_MS = 250;
 
 function maxScrollTop(element: HTMLElement) {
@@ -44,8 +43,12 @@ export class TimelineScroll {
     if (scrollbar && releasedDownGutter && !this.following && !this.atTail(element)) {
       // Chromium can deliver pointerup before applying the last thumb movement.
       // Resume only if the trailing scroll reaches the end of the same track.
-      this.userScrolling = { kind: "released-scrollbar", top: element.scrollTop,
-        range: maxScrollTop(element), expiresAt: performance.now() + SCROLLBAR_RELEASE_WINDOW_MS };
+      this.userScrolling = {
+        kind: "released-scrollbar", top: element.scrollTop, range: maxScrollTop(element),
+        // A busy renderer can take longer than a clock deadline to apply its
+        // next scroll. Use the native gesture boundary wherever available.
+        fallbackDeadline: "onscrollend" in element ? null : performance.now() + SCROLLBAR_RELEASE_WINDOW_MS,
+      };
     }
     const resume = this.pointerInterruptedGlide && this.following;
     this.pointerInterruptedGlide = false;
@@ -119,8 +122,8 @@ export class TimelineScroll {
     if (atTail) this.smoothFollowing = false;
     const range = maxScrollTop(element);
     const released = this.userScrolling;
-    if (released?.kind === "released-scrollbar" &&
-      (released.range !== range || element.scrollTop < released.top || performance.now() > released.expiresAt)) {
+    if (released?.kind === "released-scrollbar" && (released.range !== range || element.scrollTop < released.top ||
+      (released.fallbackDeadline !== null && performance.now() > released.fallbackDeadline))) {
       this.endUserIntent();
     }
     const intent = this.userScrolling;

@@ -1,7 +1,7 @@
 // Browser harness for the actual overlay components. Start Vite on port 1420,
 // then pass this complete function to the project's supported browser page API.
 // Synthetic state only; this does not verify native window or capture behavior.
-async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640], languages = ["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th", "ru"], themes = ["dark", "light"], serviceCases, checkSubtitleLanes = true, subtitleMotionOnly = false, subtitleModesOnly = false, readoutLayoutOnly = false } = {}) => {
+async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640], languages = ["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th", "ru"], themes = ["dark", "light"], serviceCases, checkSubtitleLanes = true, subtitleMotionOnly = false, subtitleModesOnly = false, readoutLayoutOnly = false, subtitleHistoryOnly = false } = {}) => {
   await page.goto(`${baseUrl}/?window=overlay`);
   await page.cdp("Emulation.setFocusEmulationEnabled", { enabled: true });
   await page.waitForSelector(".overlay-surface");
@@ -13,9 +13,9 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
     await import("/scripts/frontend/fixtures/verify-caption-motion.js");
   });
 
-  async function configure({ language = "en", route = "deepL", audioInput = "system", timestamps = false, provider, alias, speechRecognitionName, profileName, theme = "dark", hasCaptions = true, longHistory = false, surface = "overlay", rejectStop = false, captionMotion }) {
+  async function configure({ language = "en", route = "deepL", audioInput = "system", timestamps = false, provider, alias, speechRecognitionName, profileName, theme = "dark", hasCaptions = true, longHistory = false, surface = "overlay", rejectStop = false, captionMotion, captionHistory = false }) {
     await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
-    return page.evaluate(async ({ language, route, audioInput, timestamps, provider, alias, speechRecognitionName, profileName, hasCaptions, longHistory, surface, rejectStop, captionMotion }) => {
+    return page.evaluate(async ({ language, route, audioInput, timestamps, provider, alias, speechRecognitionName, profileName, hasCaptions, longHistory, surface, rejectStop, captionMotion, captionHistory }) => {
       if (typeof window.__TAURI_INTERNALS__ !== "undefined") throw new Error("Memory-only browser preview required");
       // Vite may keep timestamped dependency imports even after page reload.
       // Import the actual module already loaded by the mounted UI; importing
@@ -112,6 +112,10 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
         };
         if (fixtureState.noServiceDetails && fixtureState.activeChrome && fixtureState.timelinePresent === hasCaptions
           && fixtureState.missingTexts.length === 0 && effectiveUiLanguage() === language) {
+          if (captionHistory) {
+            const { prepareCaptionHistory } = await import("/scripts/frontend/fixtures/verify-caption-history.js");
+            return prepareCaptionHistory(useStore);
+          }
           if (captionMotion) {
             const { verifyCaptionMotion } = await import("/scripts/frontend/fixtures/verify-caption-motion.js");
             return verifyCaptionMotion(useStore, captionMotion);
@@ -120,7 +124,7 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
         }
       }
       throw new Error(`Overlay fixture did not reach the mounted UI. Restart Vite and reload after HMR/rebase changes before retrying. ${JSON.stringify({ language, route, audioInput, timestamps, ...fixtureState })}`);
-    }, { language, route, audioInput, timestamps, provider, alias, speechRecognitionName, profileName, hasCaptions, longHistory, surface, rejectStop, captionMotion });
+    }, { language, route, audioInput, timestamps, provider, alias, speechRecognitionName, profileName, hasCaptions, longHistory, surface, rejectStop, captionMotion, captionHistory });
   }
 
   async function resize(width, height) {
@@ -168,6 +172,45 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
 
   await configure({ longHistory: true });
   await resize(580, 240);
+
+  if (subtitleHistoryOnly) {
+    let held = false;
+    try {
+      await configure({ language: "de", route: "followService", provider: "volcanoEngine", longHistory: true, captionHistory: true });
+      await resize(580, 240);
+      await page.hover(".overlay-timeline");
+      const following = await page.evaluate(() => window.__captionHistory.following());
+      if (Math.abs(following.surface.width - 580) > 1 || Math.abs(following.surface.height - 240) > 1) {
+        throw new Error("Caption history overlay has the wrong size: " + JSON.stringify(following));
+      }
+      const wheel = { x: following.box.left + following.box.width / 2,
+        y: following.box.top + following.viewportHeight / 2 };
+      await page.cdp("Input.dispatchMouseEvent", { type: "mouseWheel", ...wheel, deltaX: 0, deltaY: -75 });
+      const reading = await page.evaluate(before => window.__captionHistory.reading(before), following);
+      // Derive the thumb's center from the real track/range, without a host's
+      // minimum thumb-height assumption. The small held move verifies the hit.
+      const thumb = reading.viewportHeight ** 2 / reading.contentHeight;
+      const x = reading.box.right - reading.gutterWidth / 2;
+      const y = reading.box.top + reading.top / reading.max * (reading.viewportHeight - thumb) + thumb / 2;
+      await page.mouse.move(x, y);
+      await page.evaluate(() => window.__captionHistory.start());
+      await page.mouse.down();
+      held = true;
+      await page.mouse.move(x, y + 3);
+      const dragged = await page.evaluate(before => window.__captionHistory.held(before), reading);
+      // Deliver the final movement before release, as a physical mouse does.
+      // Do not wait for a frame, examine the DOM, or wait for a scroll between them.
+      await page.mouse.move(x, dragged.box.bottom - 2);
+      await page.mouse.up();
+      held = false;
+      const result = await page.evaluate(() => window.__captionHistory.finish());
+      return { checked: 1, subtitleHistory: { following, reading, dragged, ...result } };
+    } finally {
+      if (held) await page.mouse.up();
+      await page.evaluate(() => window.__captionHistory?.dispose());
+      await page.cdp("Emulation.setFocusEmulationEnabled", { enabled: false });
+    }
+  }
 
   if (readoutLayoutOnly) {
     const readoutLayout = [];

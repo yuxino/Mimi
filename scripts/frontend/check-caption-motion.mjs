@@ -231,10 +231,16 @@ try {
     assert.ok(cases.every(item => item.frames > 0 && item.pendingShift <= 2 && item.historyShift <= 2
       && item.targetLanguage === "zh" && !/openai/i.test(item.provider)), "Unverified route or caption geometry");
   }
+  const history = await verify(page, { baseUrl, subtitleHistoryOnly: true });
+  assert.equal(history.checked, 1, "Expected one real scrollbar last-move/release case");
+  assert.ok(history.subtitleHistory.release?.trusted && history.subtitleHistory.released.ready
+    && history.subtitleHistory.appended.ready && history.subtitleHistory.newContent,
+  "Scrollbar release or the next complete caption did not restore following");
   assert.deepEqual(errors, [], "Unexpected browser errors");
   console.log(JSON.stringify({ browser: (await devtools.command("Browser.getVersion")).product, ...result,
     readoutChecked: readouts.checked, readoutLayout: readouts.readoutLayout,
-    modeChecked: modes.checked, subtitleModes: modes.subtitleModes }));
+    modeChecked: modes.checked, subtitleModes: modes.subtitleModes,
+    historyChecked: history.checked, subtitleHistory: history.subtitleHistory }));
 } catch (error) {
   // Preserve the assertion or launch error even if cleanup also fails.
   console.error(error);
