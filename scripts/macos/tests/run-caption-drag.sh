@@ -23,6 +23,11 @@ else
   exit 2
 fi
 evidence=$1
+gesture=${MIMI_TEST_DRAG_GESTURE:-caption}
+case "$gesture" in
+  caption|panel) ;;
+  *) echo "Choose caption or panel for MIMI_TEST_DRAG_GESTURE." >&2; exit 2 ;;
+esac
 [[ -d "$app" && ! -e "$evidence" ]]
 if pgrep -x mimi >/dev/null; then
   echo "Another Mimi process is already using the test desktop." >&2
@@ -37,7 +42,7 @@ else
 fi
 mkdir -p "$evidence"
 {
-  echo "Verified $app identifier=$identifier certificatePinSHA1=$signer"
+  echo "Verified $app identifier=$identifier certificatePinSHA1=$signer gesture=$gesture"
   echo "Executable SHA-256"
   shasum -a 256 "$app/Contents/MacOS/mimi"
 } | tee "$evidence/drag.log"
@@ -56,7 +61,7 @@ cat > "$scene/preferences.json" <<'JSON'
 {"ui_language":"en","source_language":"en","target_language":"zh","audio_input":"system","subtitle_display_mode":"bilingual","subtitle_animation":false,"subtitle_background_opacity":100,"retain_session_history":false,"record_session_audio":false}
 JSON
 
-xcrun swiftc "$suite/caption-drag.swift" "$suite/Capture.swift" -o "$scene/check-drag"
+xcrun swiftc "$suite/caption-drag.swift" "$suite/Capture.swift" "$suite/PanelDrag.swift" -o "$scene/check-drag"
 MIMI_UI_TEST=1 MIMI_AUTO_START=1 MIMI_UI_TEST_STANDARD_OVERLAY=1 \
   MIMI_UI_TEST_DUAL_SUBTITLES=1 MIMI_UI_TEST_PREFERENCES_DIR="$scene" \
   MIMI_UI_TEST_FRONTEND_READY_DIR="$scene/ready" MIMI_UI_TEST_SESSION_STATE_FILE="$scene/session" \
@@ -74,7 +79,7 @@ for ((i=0; i<150; i++)); do
 done
 ready || { echo "The two signed windows and synthetic listening session were not ready in 30 seconds." >&2; exit 1; }
 [[ ! -e "$scene/settings-activation" ]]
-"$scene/check-drag" "$pid" "$identifier" "$evidence" 2>&1 | tee -a "$evidence/drag.log"
+"$scene/check-drag" "$pid" "$identifier" "$evidence" "$gesture" 2>&1 | tee -a "$evidence/drag.log"
 kill -0 "$pid"
 ready && [[ ! -e "$scene/settings-activation" ]] || {
   echo "The drag changed the listening session or explicitly reopened Settings." >&2
