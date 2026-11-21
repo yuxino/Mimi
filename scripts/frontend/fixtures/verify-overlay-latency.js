@@ -1,5 +1,27 @@
 import { I18N } from "/src/lib/i18n.ts";
-import { capsuleLabels } from "/src/windows/overlay-control/capsule/capsuleLabels.ts";
+
+// An asynchronous fixture import can outlive the mounted page during HMR or
+// navigation. Fail with the actual lifecycle/state instead of a null DOM read;
+// never seed another session or replace the missing product surface here.
+export function requireOverlayTimeline(store, stage) {
+  const surface = document.querySelector(".overlay-surface");
+  const timeline = surface?.querySelector(".overlay-timeline");
+  const route = new URLSearchParams(location.search).get("window");
+  const { session, settings } = store.getState();
+  if (route !== "overlay" || !surface?.isConnected || !timeline?.isConnected || session.subtitles.history.length === 0) {
+    throw new Error("Overlay fixture is not mounted for measurement: " + JSON.stringify({ stage, route,
+      readyState: document.readyState, visibility: document.visibilityState,
+      rootChildren: document.getElementById("root")?.childElementCount ?? 0,
+      surfaces: document.querySelectorAll(".overlay-surface").length,
+      canvases: document.querySelectorAll(".overlay-expanded-canvas").length,
+      timelines: document.querySelectorAll(".overlay-timeline").length,
+      active: session.isActive, status: session.status.kind, paused: session.isPaused,
+      collapsed: session.isOverlayCollapsed, immersive: settings.subtitleBlendsWithBackground,
+      historyCount: session.subtitles.history.length, trackCount: session.subtitles.tracks?.length ?? 0,
+    }));
+  }
+  return { surface, timeline };
+}
 
 // Check painted text through its ancestors and clipping layers. AX/DOM presence
 // alone cannot distinguish quiet chrome from a visible status or measurement.
@@ -41,25 +63,25 @@ export function measureTextVisibility(text, timeline) {
   return { present: true, rendered, opacity, unclipped, uncovered, captionOverlap };
 }
 
-// Restrict ordinary work to the actual compact island in this subtitle surface.
-// An independently opened details panel may legitimately repeat session state.
-export function translationIndicator(surface, timeline, settings) {
+// Scope the ordinary progress/readout to the main subtitle window. A separate
+// details panel may legitimately expose the same full session observations.
+export function translationIndicator(surface, timeline) {
   const phase = surface.querySelector('.overlay-control-embedded[data-mode="island"] .overlay-control-island__phase');
   const statuses = [...surface.querySelectorAll('.overlay-expanded-canvas .overlay-latency [role="status"]')];
   const work = [...surface.querySelectorAll('.overlay-expanded-canvas .overlay-latency span, .overlay-expanded-canvas .overlay-latency strong')]
     .filter(node => !node.childElementCount && node.textContent === I18N.overlay.translating);
-  return { expected: capsuleLabels(settings, "translating").phase, phase: phase?.textContent ?? null,
+  return { expected: I18N.overlay.translating, phase: phase?.textContent ?? null,
     phaseGlyph: measureTextVisibility(phase, timeline),
     rootWorkGlyphs: work.map(node => measureTextVisibility(node, timeline)),
     statuses: statuses.map(node => ({ text: node.textContent,
       ...measureTextVisibility(node.querySelector("strong") ?? node, timeline) })) };
 }
 
-function readoutPlacement(surface, timeline, numbers) {
+function readoutPlacement(surface, timeline, nodes) {
   const box = surface.getBoundingClientRect();
   const strip = surface.querySelector(".overlay-action-strip")?.getBoundingClientRect();
   const island = surface.querySelector('.overlay-control-embedded[data-mode="island"] .overlay-control-island')?.getBoundingClientRect();
-  const rects = numbers.map(node => node.parentElement.getBoundingClientRect());
+  const rects = nodes.map(node => node.getBoundingClientRect());
   if (!strip || !island || !rects.length) return { issues: ["readout, toolbar or real island missing"] };
   const edges = rect => ({ left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom });
   const bounds = { left: Math.min(...rects.map(rect => rect.left)), top: Math.min(...rects.map(rect => rect.top)),
@@ -67,6 +89,9 @@ function readoutPlacement(surface, timeline, numbers) {
   const overlaps = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
   const issues = [];
   if (rects.some(rect => overlaps(rect, strip) || overlaps(rect, island) || overlaps(rect, timeline.getBoundingClientRect()))) issues.push("readout overlaps controls or captions");
+  if (rects.some(rect => Math.abs((rect.top + rect.bottom) / 2 - (rects[0].top + rects[0].bottom) / 2) > 2)) issues.push("progress and number are not on one line");
+  const summary = surface.querySelector('.overlay-control-embedded[data-mode="island"] .overlay-control-island__summary');
+  if (!summary || summary.scrollHeight > summary.clientHeight + 1 || island.height > 31) issues.push("language island is not a single compact line");
   if (bounds.left < box.left + 12 || bounds.right > box.right - 12) issues.push("readout outside canvas edges");
   if (box.width >= 552) {
     if (bounds.right > strip.left - 3 || rects.some(rect => rect.top + rect.height / 2 < strip.top
@@ -77,36 +102,41 @@ function readoutPlacement(surface, timeline, numbers) {
     readout: bounds, toolbar: edges(strip), island: edges(island) };
 }
 
-function inspectReadout(surface, timeline, settings, { samples, pending = false, recovery = false, status = null, follow = false }, hovered) {
+function inspectReadout(surface, timeline, { samples, source, pending = false, recovery = false, status = null, follow = false }, hovered) {
   const numbers = [...surface.querySelectorAll(".overlay-expanded-canvas .overlay-latency__measurement strong")];
   const glyphs = numbers.map(node => measureTextVisibility(node, timeline));
-  const indicator = translationIndicator(surface, timeline, settings);
+  const indicator = translationIndicator(surface, timeline);
   const visible = glyph => glyph.rendered && glyph.uncovered && !glyph.captionOverlap;
+  // Long language names may intentionally ellipsize, but the actual language
+  // separator still supplies an unclipped glyph witness for the compact child.
+  const languageGlyph = measureTextVisibility(surface.querySelector('.overlay-control-embedded[data-mode="island"] .overlay-control-island__summary [aria-hidden="true"]'), timeline);
   const labels = numbers.map(node => node.parentElement.getAttribute("aria-label"));
-  const api = numbers.find(node => node.textContent === "128 ms");
-  const translation = numbers.find(node => node.textContent === "246 ms");
-  const translationLabel = follow ? I18N.overlay.translationFollowLatency : I18N.overlay.translationLatency;
-  const labelMatches = (!api || api.parentElement.textContent.includes(I18N.overlay.apiLatencyShort))
-    && (!translation || (translation.parentElement.getAttribute("aria-label") === `${translationLabel}: 246 ms`
-      && translation.parentElement.querySelector("svg") !== null));
-  const placement = hovered && numbers.length ? readoutPlacement(surface, timeline, numbers) : null;
-  const expectedPhase = pending ? indicator.expected : null;
+  const sourceLabel = source === "api" ? I18N.overlay.apiLatency
+    : follow ? I18N.overlay.translationFollowLatency : I18N.overlay.translationLatency;
+  const labelMatches = numbers.every(node => node.parentElement.getAttribute("aria-label") === `${sourceLabel}: ${node.textContent}`
+    && node.parentElement.getAttribute("title")?.includes(node.textContent)
+    && node.parentElement.textContent.trim() === node.textContent && !node.parentElement.querySelector("svg"));
+  const statuses = [...surface.querySelectorAll('.overlay-expanded-canvas .overlay-latency [role="status"]')];
+  const components = [...numbers.map(node => node.parentElement), ...(pending ? statuses : [])];
+  const placement = hovered && !recovery && components.length ? readoutPlacement(surface, timeline, components) : null;
+  const expectedStatus = recovery ? status : pending ? indicator.expected : null;
+  const statusesMatch = expectedStatus === null ? indicator.statuses.length === 0
+    : indicator.statuses.length === 1 && indicator.statuses[0].text === expectedStatus
+      && ((hovered || recovery) ? visible(indicator.statuses[0]) : !indicator.statuses[0].rendered);
+  const workMatches = pending ? indicator.rootWorkGlyphs.length === 1
+    && indicator.rootWorkGlyphs.every(glyph => hovered ? visible(glyph) : !glyph.rendered) : indicator.rootWorkGlyphs.length === 0;
   const ready = numbers.map(node => node.textContent).join("\n") === samples.join("\n")
     && glyphs.every(glyph => hovered ? visible(glyph) : !glyph.rendered) && labelMatches
-    && indicator.phase === expectedPhase && (pending ? (hovered ? visible(indicator.phaseGlyph) : !indicator.phaseGlyph.rendered) : true)
-    && indicator.rootWorkGlyphs.every(glyph => !glyph.rendered)
-    && (recovery ? indicator.statuses.length === 1 && indicator.statuses[0].text === status && visible(indicator.statuses[0])
-      : indicator.statuses.length === 0) && (!placement || placement.issues.length === 0);
-  return { ready, samples: numbers.map(node => node.textContent), labels, glyphs, indicator, placement };
+    && languageGlyph.present && (hovered ? visible(languageGlyph) : !languageGlyph.rendered)
+    && indicator.phase === null && statusesMatch && workMatches && (!placement || placement.issues.length === 0);
+  return { ready, samples: numbers.map(node => node.textContent), labels, glyphs, languageGlyph, indicator, placement };
 }
 
 // The caller owns real hover/quiet pointer input. Change only observations on
 // the same live captions so a pending request cannot conceal a viewport jump.
 export async function verifyOverlayLatency(store, { hovered, motion }) {
-  const surface = document.querySelector(".overlay-surface");
-  const timeline = surface.querySelector(".overlay-timeline");
+  const { surface, timeline } = requireOverlayTimeline(store, "latency observations");
   const session = store.getState().session;
-  const settings = store.getState().settings;
   const anchor = [...timeline.querySelectorAll("span")].find(node => !node.childElementCount
     && node.textContent === session.subtitles.source.text);
   if (!anchor) throw new Error("Latency fixture needs the already visible live source line");
@@ -122,17 +152,21 @@ export async function verifyOverlayLatency(store, { hovered, motion }) {
   const absent = { apiLatencyMs: null, translationLatencyMs: null, translationLatencyKind: null };
   const cases = [
     { stage: "no samples", values: absent, samples: [] },
-    { stage: "API only", values: { ...absent, apiLatencyMs: 128 }, samples: ["128 ms"] },
-    { stage: "translation only", values: { ...absent, translationLatencyMs: 246, translationLatencyKind: "request" }, samples: ["246 ms"] },
-    { stage: "both samples", values: measured, samples: ["128 ms", "246 ms"] },
-    { stage: "follow sample", values: { ...measured, translationLatencyKind: "follow" }, samples: ["128 ms", "246 ms"], follow: true },
-    { stage: "final pending", values: { ...measured, isTranslationPending: true }, samples: ["128 ms", "246 ms"], pending: true },
-    { stage: "final cleared", values: measured, samples: ["128 ms", "246 ms"] },
-    { stage: "preview pending", values: { ...measured, isTranslationPreviewPending: true }, samples: ["128 ms", "246 ms"], pending: true },
+    { stage: "API only", values: { ...absent, apiLatencyMs: 128 }, samples: ["128 ms"], source: "api" },
+    { stage: "translation only", values: { ...absent, translationLatencyMs: 246, translationLatencyKind: "request" }, samples: ["246 ms"], source: "translation" },
+    { stage: "both samples", values: measured, samples: ["128 ms"], source: "api" },
+    { stage: "follow sample", values: { ...absent, translationLatencyMs: 246, translationLatencyKind: "follow" }, samples: ["246 ms"], source: "translation", follow: true },
+    { stage: "final pending", values: { ...measured, isTranslationPending: true }, samples: ["128 ms"], source: "api", pending: true },
+    { stage: "final cleared", values: measured, samples: ["128 ms"], source: "api" },
+    { stage: "preview pending", values: { ...measured, isTranslationPreviewPending: true }, samples: ["128 ms"], source: "api", pending: true },
+    { stage: "pending translation fallback", values: { ...absent, translationLatencyMs: 246, translationLatencyKind: "request", isTranslationPending: true },
+      samples: ["246 ms"], source: "translation", pending: true },
     { stage: "pending without samples", values: { ...absent, isTranslationPending: true }, samples: [], pending: true },
+    { stage: "zero API wins", values: { ...measured, apiLatencyMs: 0 }, samples: ["0 ms"], source: "api" },
+    { stage: "unknown translation boundary", values: { ...absent, translationLatencyMs: 246 }, samples: [] },
     { stage: "recovery", values: { ...measured, translationRecovery: { reason: "rateLimited", retryAfterMs: 600, retryScheduled: true } },
       samples: [], status: I18N.overlay.translationRateLimited, recovery: true },
-    { stage: "recovered", values: measured, samples: ["128 ms", "246 ms"] },
+    { stage: "recovered", values: measured, samples: ["128 ms"], source: "api" },
   ];
   const results = [];
   try {
@@ -157,7 +191,7 @@ export async function verifyOverlayLatency(store, { hovered, motion }) {
           throw new Error("Latency changed the live caption geometry: " + JSON.stringify({ stage: sample.stage,
             hovered, motion, initial, current, maxShift, viewportShift }));
         }
-        last = inspectReadout(surface, timeline, settings, sample, hovered);
+        last = inspectReadout(surface, timeline, sample, hovered);
         if (last.ready) {
           steadySince ??= now;
           if (now - steadySince >= 200) { results.push({ stage: sample.stage, ...last, frames, maxShift, viewportShift }); break; }
@@ -172,9 +206,8 @@ export async function verifyOverlayLatency(store, { hovered, motion }) {
 // Used by the nine-language narrow/wide matrix. The same confirmed line and
 // actual island survive pending/cleared states under a stationary real pointer.
 export async function verifyReadoutLayout(store, { hovered }) {
-  const surface = document.querySelector(".overlay-surface");
-  const timeline = surface.querySelector(".overlay-timeline");
-  const { session, settings } = store.getState();
+  const { surface, timeline } = requireOverlayTimeline(store, "localized readout layout");
+  const { session } = store.getState();
   const text = session.subtitles.history.at(-1).source;
   const anchor = [...timeline.querySelectorAll("span")].find(node => !node.childElementCount && node.textContent === text);
   if (!anchor) throw new Error("Readout layout fixture has no confirmed anchor");
@@ -196,7 +229,7 @@ export async function verifyReadoutLayout(store, { hovered }) {
         if (!anchor.isConnected || maxShift > 2 || line.bottom > view.bottom + 1 || line.top < view.top - 1) {
           throw new Error("Pending readout moved or clipped the confirmed line: " + JSON.stringify({ hovered, pending, initial, maxShift }));
         }
-        last = inspectReadout(surface, timeline, settings, { samples: ["128 ms", "246 ms"], pending, follow: true }, hovered);
+        last = inspectReadout(surface, timeline, { samples: ["128 ms"], source: "api", pending }, hovered);
         if (last.ready) {
           steadySince ??= now;
           if (now - steadySince >= 200) { results.push({ pending, ...last, maxShift, frames }); break; }

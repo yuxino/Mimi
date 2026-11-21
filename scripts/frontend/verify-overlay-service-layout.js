@@ -5,6 +5,13 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
   await page.goto(`${baseUrl}/?window=overlay`);
   await page.cdp("Emulation.setFocusEmulationEnabled", { enabled: true });
   await page.waitForSelector(".overlay-surface");
+  // Load the browser probes before seeding/verifying their product state. A
+  // first dynamic import after readiness must not create an unobserved gap
+  // between the mounted-UI assertion and the start of geometry measurement.
+  await page.evaluate(async () => {
+    await import("/scripts/frontend/fixtures/verify-overlay-latency.js");
+    await import("/scripts/frontend/fixtures/verify-caption-motion.js");
+  });
 
   async function configure({ language = "en", route = "deepL", audioInput = "system", timestamps = false, provider, alias, speechRecognitionName, profileName, theme = "dark", hasCaptions = true, longHistory = false, surface = "overlay", rejectStop = false, captionMotion }) {
     await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
@@ -415,7 +422,7 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
           if (canvas.querySelector(".overlay-service")) issues.push("service details left in caption canvas");
           const samples = [...canvas.querySelectorAll(".overlay-latency__measurement strong")];
           const measurementGlyphs = samples.map(node => measureTextVisibility(node, timeline));
-          if (samples.map(node => node.textContent).join("\n") !== "128 ms\n246 ms") issues.push("hover latency samples missing");
+          if (samples.map(node => node.textContent).join("\n") !== "128 ms") issues.push("hover API-priority readout missing or duplicated");
           if (measurementGlyphs.some(glyph => !glyph.rendered || !glyph.uncovered || glyph.captionOverlap)) issues.push("hover latency samples clipped or covered");
           return { issues, actions: buttons.map(button => button.getAttribute("aria-label")), measurementGlyphs };
         });

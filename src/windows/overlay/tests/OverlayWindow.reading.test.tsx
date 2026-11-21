@@ -145,9 +145,9 @@ it.each(["zh", "en", "ja"] as const)("keeps return to live below the timeline al
   await mount(); await readHistory();
   const row = host.querySelector<HTMLElement>(".overlay-status-row")!;
   expect(returnButton()?.textContent).toBe({ zh: "回到实时", en: "Back to live", ja: "リアルタイムへ" }[language]);
-  expect(row.querySelector('[role="status"]')).toBeNull();
+  expect(row.querySelector('[role="status"]')?.textContent).toBe(I18N.overlay.translating);
   expect([...row.querySelectorAll(".overlay-latency__measurement strong")].map(node => node.textContent))
-    .toEqual(["120 ms", "700 ms"]);
+    .toEqual(["120 ms"]);
   expect(timeline().nextElementSibling).toBe(returnButton());
   await act(async () => host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.overlay.closeSubtitles}"]`)!.click());
   expect(row.querySelector('[role="alert"]')?.textContent).toBe(I18N.overlay.controlActionFailed);
@@ -175,7 +175,7 @@ it.each(["zh", "en", "ja"] as const)("retains bilingual reading and return to li
   expect(timeline().scrollTop).toBe(249);
   await act(async () => useStore.setState(state => ({ settings: { ...state.settings, subtitleBlendsWithBackground: false } })));
   expect([...host.querySelectorAll(".overlay-status-row .overlay-latency__measurement strong")].map(node => node.textContent))
-    .toEqual(["1.5 s", "3.0 s"]);
+    .toEqual(["1.5 s"]);
   expect(host.querySelector('.overlay-status-row :is([role="status"], [role="alert"])')).toBeNull();
 });
 

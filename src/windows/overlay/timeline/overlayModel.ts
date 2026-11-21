@@ -181,6 +181,7 @@ export function computeActivityPhaseFromSignals(
 export function emptyStateText(
   session: SessionStateEvent,
   settings: Pick<SettingsSnapshot, "sourceLanguage" | "targetLanguage">,
+  phase = computeActivityPhase(session, settings),
 ): string {
   if (session.isPaused) return I18N.overlay.paused;
 
@@ -188,11 +189,7 @@ export function emptyStateText(
     case "connecting":
       return I18N.overlay.connecting;
     case "listening":
-      return (pendingSourceTranslation(session.subtitles, settings) ?? isWaitingForFinalTranslation(
-        settings,
-        session.detectedLanguage,
-        session.isTranslationPending,
-      ))
+      return phase === "translating" && settings.targetLanguage !== "original"
         ? I18N.overlay.translatingEmpty
         : I18N.overlay.phaseListening;
     case "stopping":

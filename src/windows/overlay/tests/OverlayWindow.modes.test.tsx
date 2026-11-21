@@ -91,7 +91,7 @@ function visibleLanes(): string[] {
     });
 }
 
-it("keeps the measured OpenAI API time beside the tools while the language capsule owns translation activity", async () => {
+it("pairs streamed OpenAI translation activity with the existing API time until the draft finishes", async () => {
   const source = { text: "The train is arriving.", isFinal: false };
   const translation = { text: "列车即将", isFinal: false };
   const draft = { ...empty, source, translation, realtimePreview: { source, translation } };
@@ -100,7 +100,7 @@ it("keeps the measured OpenAI API time beside the tools while the language capsu
     credentialState: "present" }], activeProfileId: "live" });
   await publish(draft, observations);
   const hoverRow = () => host.querySelector(".overlay-status-row .overlay-hover-control");
-  expect(hoverRow()?.querySelector('[role="status"]')).toBeNull();
+  expect(hoverRow()?.querySelector('[role="status"]')?.textContent).toBe(I18N.overlay.translating);
   expect([...hoverRow()!.querySelectorAll(".overlay-latency__measurement strong")].map(node => node.textContent)).toEqual(["205 ms"]);
   await publish({ ...empty, history: [{ source: source.text, translation: "列车即将到站。", createdAt: 1 }] }, observations);
   expect(hoverRow()?.querySelector('[role="status"]')).toBeNull();

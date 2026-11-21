@@ -299,7 +299,7 @@ export function OverlayWindow() {
       {pendingSessionLabel || actionFailed ? <div role={pendingSessionLabel ? "status" : "alert"} className="overlay-action-feedback">
         {pendingSessionLabel ?? actionFailureMessage}
       </div> : (controlMode !== "panel" || feedback) && <OverlayLatency surface="canvas" session={session}
-        translationRequired={translationRequired} translating={presentationLocked && phase === "translating"} />}
+        translationRequired={translationRequired} translating={blocks.length > 0 && phase === "translating"} />}
     </div>;
   }
 
@@ -366,6 +366,7 @@ export function OverlayWindow() {
         data-overlay-locked={presentationLocked ? "" : undefined}
         data-overlay-draggable={!presentationLocked && !controlAction.pending ? "" : undefined}
         data-overlay-has-captions={blocks.length > 0 ? "" : undefined}
+        data-low-opacity={settings.subtitleBackgroundOpacity < 70 ? "" : undefined}
         onPointerDownCapture={event => startOverlayContentDrag(event, presentationLocked || controlAction.pending)}
         style={{
           borderRadius: 16,
@@ -492,7 +493,7 @@ export function OverlayWindow() {
                     emptyDensity === "minimal" ? "ellipsis" : undefined,
                 }}
               >
-                {emptyStateText(session, settings)}
+                {emptyStateText(session, settings, phase)}
               </div>
             </div>
           ) : (

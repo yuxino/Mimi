@@ -30,43 +30,32 @@
 
 .overlay-control-island {
   display: flex;
+  width: max-content;
   height: 30px;
   min-width: 0;
+  /* Leave room for the subtitle toolbar at the native minimum width. */
+  max-width: 156px;
   align-items: center;
-  gap: 3px;
-  padding: 0 7px;
+  gap: 2px;
+  padding: 0 6px;
   overflow: hidden;
-  border: 1px solid var(--control-border-strong);
-  border-radius: 11px;
+  border: 1px solid transparent;
+  border-radius: 8px;
   color: var(--control-text);
-  background: var(--control-bg);
+  background: transparent;
   font-size: 12px;
   line-height: 1;
   text-align: left;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
   cursor: pointer;
+  opacity: 1;
   transition:
     border-color 130ms ease,
     background-color 130ms ease,
     opacity 130ms ease;
 }
 
-.overlay-control-island {
-  /* Language and progress occupy separate rows. The repeated translating label
-     reserves its width below instead of taking space from the language pair. */
-  width: max-content;
-  min-width: 116px;
-  gap: 2px;
-  padding-inline: 6px;
-  border-radius: 10px;
-  border-color: rgba(255, 255, 255, 0.16);
-  background: rgba(16, 16, 16, 0.94);
-  /* The compact child leaves room for the subtitle toolbar at minimum width. */
-  max-width: 156px;
-  opacity: 1;
-}
-
 .overlay-control-island[data-unlock] {
-  min-width: 0;
   padding-inline: 8px;
 }
 
@@ -86,6 +75,11 @@
   visibility: hidden;
   pointer-events: none;
 }
+
+/* Only the button takes hits. Its transparent sizing wrapper overlaps the
+   caption window's recovery text when the ordinary controls fade away. */
+.overlay-control-embedded[data-mode="island"] { pointer-events: none; }
+.overlay-control-embedded[data-mode="island"] .overlay-control-island { pointer-events: auto; }
 
 .overlay-control-embedded[data-mode="panel"] {
   width: 280px;
@@ -135,8 +129,7 @@
 
 .overlay-control-island:hover,
 .overlay-control-island:focus-visible {
-  border-color: rgba(255, 255, 255, 0.3);
-  background: rgba(20, 20, 20, 0.98);
+  background: rgba(255, 255, 255, 0.08);
   opacity: 1;
 }
 
@@ -144,76 +137,35 @@
   flex: 0 0 auto;
 }
 
-.overlay-control-island__content {
-  display: flex;
-  min-width: 0;
-  flex: 1 1 auto;
-  flex-direction: column;
-}
-
-.overlay-control-island__content > .overlay-control-island__summary {
-  flex: 0 0 auto;
-  line-height: 14px;
-}
-
 .overlay-control-island__summary > [aria-hidden="true"] {
   flex: 0 0 auto;
 }
 
-.overlay-control-island__detail {
-  display: flex;
+.overlay-control-island > .overlay-control-island__phase {
   min-width: 0;
-  height: 0;
-  align-items: center;
-  gap: 3px;
-}
-
-.overlay-control-island__detail:has(.overlay-control-island__phase, .audio-input-indicator, .recording-indicator) {
-  height: 12px;
-}
-
-.overlay-control-island__progress {
-  display: grid;
-  min-width: 0;
-  flex: 1 1 auto;
-  font-size: 10px;
-  font-weight: 500;
-  line-height: 12px;
-  white-space: nowrap;
-}
-
-/* Measure the same localized progress budget even while it is not visible.
-   This avoids a width jump on every streamed sentence without a duplicate label. */
-.overlay-control-island__progress::before {
-  content: attr(data-label);
-  grid-area: 1 / 1;
-  height: 0;
-  visibility: hidden;
-}
-
-.overlay-control-island__progress > .overlay-control-island__phase {
-  grid-area: 1 / 1;
-  min-width: 0;
+  max-width: 50%;
+  flex: 0 1 auto;
   overflow: hidden;
-  font: inherit;
+  font-size: 11px;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .overlay-control-island__activity {
   position: relative;
-  width: 20px;
+  width: 18px;
   height: 24px;
-  flex: 0 0 20px;
+  flex: 0 0 18px;
 }
 
 .overlay-control-island__activity > [data-pulse-style] {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%) scale(0.833333);
+  transform: translate(-50%, -50%) scale(0.75);
 }
 
-.overlay-control-island__detail > .audio-input-indicator > svg {
+.overlay-control-island > .audio-input-indicator > svg {
   width: 10px;
   height: 10px;
 }
@@ -615,7 +567,21 @@
     border-color: CanvasText;
     color: CanvasText;
     background: Canvas;
+    text-shadow: none;
     forced-color-adjust: none;
+  }
+
+  .overlay-control-island:hover,
+  .overlay-control-island:focus-visible {
+    --control-text: HighlightText;
+    --control-text-muted: HighlightText;
+    --control-text-faint: HighlightText;
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .overlay-control-island .sound-light {
+    color: var(--control-text) !important;
   }
 
   .overlay-control-settings-link:hover:not(:disabled),

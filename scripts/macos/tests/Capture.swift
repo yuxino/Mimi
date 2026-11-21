@@ -309,6 +309,15 @@ func glyphWitness(in image: CGImage, frame: CGRect, crop: CGRect) throws -> Glyp
     }
     // Only transparency explains an accepted size mismatch. An opaque or
     // partly painted cropped window must fail instead of being called hidden.
+    guard try !windowHasPaintedPixels(image) else {
+        throw CaptionCaptureError.failed("control_witness_nontransparent_scale_mismatch")
+    }
+    return GlyphWitness(point: nil, neighborPixels: 0, background: 0, maxAlpha: 0, width: image.width, height: image.height)
+}
+
+/// WindowServer can trim transparent margins. Whole-window visibility does
+/// not need to assume any mapping between these pixels and the logical frame.
+func windowHasPaintedPixels(_ image: CGImage) throws -> Bool {
     var rgba = [UInt8](repeating: 0, count: image.width * image.height * 4)
     try rgba.withUnsafeMutableBytes { bytes in
         guard let context = CGContext(data: bytes.baseAddress, width: image.width, height: image.height, bitsPerComponent: 8,
@@ -318,8 +327,5 @@ func glyphWitness(in image: CGImage, frame: CGRect, crop: CGRect) throws -> Glyp
         }
         context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
     }
-    guard stride(from: 3, to: rgba.count, by: 4).allSatisfy({ rgba[$0] == 0 }) else {
-        throw CaptionCaptureError.failed("control_witness_nontransparent_scale_mismatch")
-    }
-    return GlyphWitness(point: nil, neighborPixels: 0, background: 0, maxAlpha: 0, width: image.width, height: image.height)
+    return stride(from: 3, to: rgba.count, by: 4).contains { rgba[$0] != 0 }
 }

@@ -1,9 +1,8 @@
-import { translationIndicator, verifyOverlayLatency } from "./verify-overlay-latency.js";
+import { requireOverlayTimeline, translationIndicator, verifyOverlayLatency } from "./verify-overlay-latency.js";
 
 // Runs in the mounted, memory-only overlay while the pointer stays in one place.
 export async function verifyCaptionMotion(store, { hovered, motion }) {
-  const surface = document.querySelector(".overlay-surface");
-  const timeline = surface.querySelector(".overlay-timeline");
+  const { surface, timeline } = requireOverlayTimeline(store, "caption motion");
   const box = surface.getBoundingClientRect();
   if (Math.abs(box.width - 580) > 1 || Math.abs(box.height - 240) > 1
     || surface.matches(":hover") !== hovered || document.body.classList.contains("motion-reduced") === motion) {
@@ -38,8 +37,9 @@ export async function verifyCaptionMotion(store, { hovered, motion }) {
     return rect?.width > 0 && rect.bottom > view.top && rect.top < view.bottom;
   }
   function pendingGlyph() {
-    const indicator = translationIndicator(surface, timeline, store.getState().settings);
-    return { ...indicator.phaseGlyph, text: indicator.phase, expected: indicator.expected,
+    const indicator = translationIndicator(surface, timeline);
+    const status = indicator.statuses.find(node => node.text === indicator.expected);
+    return { present: Boolean(status), ...status, expected: indicator.expected, phase: indicator.phase,
       rootStatuses: indicator.statuses, rootWorkGlyphs: indicator.rootWorkGlyphs };
   }
 
@@ -80,7 +80,8 @@ export async function verifyCaptionMotion(store, { hovered, motion }) {
       const glyph = pendingGlyph();
       return visible(span(expectedText)) && Math.abs(tailGap()) <= 2 && (working
         ? glyph.present && glyph.text === glyph.expected && glyph.rendered === hovered && (!hovered || (glyph.uncovered && !glyph.captionOverlap))
-        : !glyph.present) && glyph.rootStatuses.length === 0 && glyph.rootWorkGlyphs.every(node => !node.rendered);
+        : !glyph.present) && glyph.phase === null && glyph.rootStatuses.length === (working ? 1 : 0)
+        && glyph.rootWorkGlyphs.length === (working ? 1 : 0);
     }, () => {
       const current = read();
       result.frames++;

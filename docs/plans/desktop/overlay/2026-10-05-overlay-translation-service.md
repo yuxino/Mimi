@@ -73,9 +73,11 @@ over the controls behind them.
 
 Show the actual service route and measured timings below the panel's current
 configuration. The details subscribe to the settings and session observations
-they render. Hovering over the expanded subtitle canvas reveals the language
-button's translation progress and the available timings beside the right-hand
-tools. At narrow widths the timings sit below those tools. Translation recovery and
+they render. Hovering over the expanded subtitle canvas reveals a single-line
+language selector and a readout beside the right-hand tools. Translation
+progress and one timing share that readout. Prefer the API round trip when
+available, then the measured translation time. At narrow widths the readout
+sits below the tools. Translation recovery and
 Back to live remain visible while needed. Hover or focus on the service
 reveals the full route, and clicking opens the active configuration in Settings
 through the panel's guarded action.

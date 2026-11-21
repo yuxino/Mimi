@@ -201,7 +201,7 @@ try {
     const cases = result.subtitleMotion.filter(item => item.hovered === hovered && item.motion === motion);
     assert.equal(cases.length, 1, "Missing or duplicate caption motion case");
     assert.ok(cases[0].frames > 0, "Caption geometry was not sampled");
-    assert.equal(cases[0].latencyVisibility.length, 11, "Missing actual latency/status states");
+    assert.equal(cases[0].latencyVisibility.length, 14, "Missing actual latency/status states");
     assert.ok(cases[0].latencyVisibility.every(state => state.ready && state.frames > 0 && state.maxShift <= 2),
       "Latency/status visibility or caption geometry was not verified");
   }

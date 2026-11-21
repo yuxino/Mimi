@@ -98,7 +98,8 @@ export function LanguageStatusCapsule({
   }, [expanded, onWidthChange]);
 
   const pulse = <PulseRing phase={phase} compact motionEnabled={pulseOn} animationVisible={animationVisible} pulseStyle={settings.pulseStyle} />;
-  const phaseBadge = transientPhase && !(transientPhase === "paused" && audioRecording === "paused") &&
+  const phaseBadge = transientPhase && (expanded || transientPhase !== "translating") &&
+    !(transientPhase === "paused" && audioRecording === "paused") &&
     <span className="overlay-control-island__phase">{compact.phase}</span>;
   const recording = <RecordingIndicator status={audioRecording} compact={!expanded} language={effectiveUiLanguage()} />;
 
@@ -150,20 +151,14 @@ export function LanguageStatusCapsule({
         {recording}
       </> : <>
         <span className="overlay-control-island__activity">{pulse}</span>
-        <span className="overlay-control-island__content">
-          <span className="overlay-control-island__summary">
-            <strong>{compact.source}</strong>
-            <span aria-hidden="true">{status.separator}</span>
-            <span>{compact.target}</span>
-          </span>
-          <span className="overlay-control-island__detail">
-            <AudioInputIndicator input={settings.audioInput} target={settings.systemAudioTarget} />
-            <span className="overlay-control-island__progress" data-label={capsuleLabels(settings, "translating").phase}>
-              {phaseBadge}
-            </span>
-            {recording}
-          </span>
+        <AudioInputIndicator input={settings.audioInput} target={settings.systemAudioTarget} />
+        <span className="overlay-control-island__summary">
+          <strong>{compact.source}</strong>
+          <span aria-hidden="true">{status.separator}</span>
+          <span>{compact.target}</span>
         </span>
+        {phaseBadge}
+        {recording}
         <Icon name="chevron-down" />
       </>}
     </button>

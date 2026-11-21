@@ -2,7 +2,6 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { I18N } from "../../../lib/i18n";
 import { Select } from "../../../components/inputs/Select";
 import type { OverlayControlMode } from "../../../lib/ipc";
 import { OverlayControlWindow } from "../OverlayControlWindow";
@@ -82,7 +81,7 @@ it.each([false, true])("shows current streamed translation phase in the capsule 
     });
     await act(async () => root.render(<OverlayControlWindow embedded={embedded} />));
     expect(host.querySelector(".sound-light")?.getAttribute("data-phase")).toBe("translating");
-    expect(host.querySelector(".overlay-control-island__phase")?.textContent).toBe(I18N.overlay.translating);
+    expect(host.querySelector(".overlay-control-island__phase")).toBeNull();
     await act(async () => useStore.setState(state => ({ session: { ...state.session,
       subtitles: { ...state.session.subtitles, realtimePreview: null,
         source: { ...source, isFinal: true }, translation: { text: "你好", isFinal: true },

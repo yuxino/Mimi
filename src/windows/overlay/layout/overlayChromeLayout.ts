@@ -13,7 +13,7 @@ const BUTTON_GAP = 2;
 const COLLAPSE_STRIP_WIDTH = STRIP_EDGE_WIDTH + BUTTON_WIDTH * 3 + BUTTON_GAP * 2;
 const CLEAR_STRIP_WIDTH = COLLAPSE_STRIP_WIDTH + BUTTON_WIDTH + BUTTON_GAP;
 const FULL_STRIP_WIDTH = CLEAR_STRIP_WIDTH + 2 * (BUTTON_WIDTH + BUTTON_GAP);
-// Two compact timing readings, including spacing between their tabular values.
+// The translated activity label, separator and one tabular timing reading.
 const TIMING_GROUP_WIDTH = 144;
 export const TIMING_INSET_BESIDE_ACTIONS = 10 + FULL_STRIP_WIDTH + CHROME_GAP;
 

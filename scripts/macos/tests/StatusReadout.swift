@@ -7,11 +7,11 @@ private struct ReadoutError: Error, CustomStringConvertible {
     init(_ label: String) { description = label }
 }
 
-private let measurements = Set(["接口", "186ms", "427ms"])
-private let translating = "翻译中"
-private let watched = measurements.union([translating, "翻译耗时"])
+// Preserve occurrences, ordering, and physical lines. A duplicated number,
+// a second measurement or a wrapped language must not pass as a set of words.
+private let watched = try! NSRegularExpression(pattern: "翻译中|翻译耗时|接口|自动|中文|[0-9]+(?:[.,][0-9]+)?(?:ms|s)")
 
-private func readStatus(in image: CGImage) throws -> Set<String> {
+private func readStatus(in image: CGImage) throws -> [[String]] {
     // The original PNG is retained. Enlarge the small text for OCR and draw
     // the private window's alpha over black, without capturing the desktop.
     let width = image.width * 4, height = image.height * 4
@@ -31,9 +31,27 @@ private func readStatus(in image: CGImage) throws -> Set<String> {
     request.usesLanguageCorrection = false
     request.minimumTextHeight = 0.002
     try VNImageRequestHandler(cgImage: enlarged).perform([request])
-    let text = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
-        .joined().lowercased().filter { !$0.isWhitespace }
-    return watched.filter { text.contains($0) }
+    // Vision can split Chinese and Latin runs on the same line. Join runs
+    // from left to right only when their vertical centers share a baseline.
+    var lines: [(bounds: CGRect, text: String)] = []
+    for observation in (request.results ?? []).sorted(by: { $0.boundingBox.minX < $1.boundingBox.minX }) {
+        guard let candidate = observation.topCandidates(1).first else { continue }
+        let box = observation.boundingBox
+        let text = candidate.string.lowercased().filter { !$0.isWhitespace }
+        if let index = lines.firstIndex(where: {
+            abs($0.bounds.midY - box.midY) <= min($0.bounds.height, box.height) * 0.5
+        }) {
+            lines[index].text += text
+        } else {
+            lines.append((box, text))
+        }
+    }
+    return lines.compactMap { line in
+        let text = line.text as NSString
+        let tokens = watched.matches(in: line.text, range: NSRange(location: 0, length: text.length))
+            .map { text.substring(with: $0.range) }
+        return tokens.isEmpty ? nil : tokens
+    }
 }
 
 func verifyStatusReadout(rootID: CGWindowID, root: CGRect, childID: CGWindowID, pause: CGRect, fixture: URL, output: URL,
@@ -45,7 +63,7 @@ func verifyStatusReadout(rootID: CGWindowID, root: CGRect, childID: CGWindowID, 
     let outside = CGPoint(x: display.minX + 8, y: display.minY + 8)
     guard !root.contains(outside), !(try compactBounds()).contains(outside) else { throw ReadoutError("outside_point_unavailable") }
     let child = try compactBounds()
-    // The wide fixture places its numeric group between the capsule and the
+    // The wide fixture places its single readout between the capsule and the
     // first toolbar button. A second-line or overlapping reading must fail.
     let row = CGRect(x: child.maxX, y: pause.minY, width: pause.minX - child.maxX, height: pause.height)
     guard abs(root.width - 580) <= 1, row.width > 0, root.contains(row) else { throw ReadoutError("status_wide_toolbar_geometry_invalid") }
@@ -71,10 +89,10 @@ func verifyStatusReadout(rootID: CGWindowID, root: CGRect, childID: CGWindowID, 
     }
     func observe(_ name: String, step: Int, hover: CGWindowID? = nil) throws {
         let working = step == 1 || step == 3 || step == 4
-        let expectedRoot = hover == nil ? Set<String>() : measurements
-        let expectedChild: Set<String> = working && hover != nil ? [translating] : []
+        let expectedRoot = hover == nil ? [] : [working ? ["翻译中", "186ms"] : ["186ms"]]
+        let expectedChild = hover == nil ? [] : [["自动", "中文"]]
         let deadline = ProcessInfo.processInfo.systemUptime + 5
-        var rootWords = Set<String>(), rowWords = Set<String>(), childWords = Set<String>(), childVisible = false
+        var rootWords: [[String]] = [], rowWords: [[String]] = [], childWords: [[String]] = [], childVisible = false
         func matches() -> Bool {
             rootWords == expectedRoot && rowWords == expectedRoot && childWords == expectedChild && childVisible == (hover != nil)
         }
@@ -89,21 +107,17 @@ func verifyStatusReadout(rootID: CGWindowID, root: CGRect, childID: CGWindowID, 
             guard let top = image.cropping(to: try pixelRect(header, root, image)),
                   let besideToolbar = image.cropping(to: try pixelRect(row, root, image)) else { throw ReadoutError("status_crop_missing") }
             rootWords = try readStatus(in: top)
-            rowWords = hover == nil ? [] : try readStatus(in: besideToolbar)
-            let language = CGRect(x: child.minX + 32, y: child.minY + 4, width: child.width - 52, height: child.height - 8)
-            let glyph = try glyphWitness(in: capsule, frame: child, crop: language)
-            childVisible = glyph.visible
-            // WindowServer can represent an entirely transparent window as a
-            // single pixel; glyphWitness verifies its alpha before we skip OCR.
-            childWords = capsule.width == 1 && capsule.height == 1 && glyph.maxAlpha == 0 ? [] : try readStatus(in: capsule)
+            rowWords = try readStatus(in: besideToolbar)
+            childVisible = try windowHasPaintedPixels(capsule)
+            childWords = childVisible ? try readStatus(in: capsule) : []
             if matches() { break }
             Thread.sleep(forTimeInterval: 0.08)
         } while ProcessInfo.processInfo.systemUptime < deadline
         stages.append(["stage": name, "fixtureStep": step, "pointerWindow": hover.map(String.init) ?? "outside",
-                       "expectedRoot": expectedRoot.sorted(), "expectedChild": expectedChild.sorted(),
-                       "rootText": rootWords.sorted(), "toolbarRowText": rowWords.sorted(), "controlText": childWords.sorted(),
+                       "expectedRoot": expectedRoot, "expectedChild": expectedChild,
+                       "rootText": rootWords, "toolbarRowText": rowWords, "controlText": childWords,
                        "visibleLanguage": childVisible, "accepted": matches()])
-        let result = "\(name) root=\(rootWords.sorted()) toolbarRow=\(rowWords.sorted()) capsule=\(childWords.sorted()) visible=\(childVisible)"
+        let result = "\(name) root=\(rootWords) toolbarRow=\(rowWords) capsule=\(childWords) visible=\(childVisible)"
         guard matches() else { throw ReadoutError("status_readout_mismatch \(result)") }
         print("status_readout \(result)")
     }
@@ -130,6 +144,7 @@ func verifyStatusReadout(rootID: CGWindowID, root: CGRect, childID: CGWindowID, 
     try advance(to: 2)
     try observe("status-settled-capsule", step: 2, hover: childID)
     try advance(to: 3)
+    try observe("status-pending-again", step: 3, hover: childID)
     try advance(to: 4) // The shared projection now holds a draft translation with both pending flags off.
     try observe("status-streaming-capsule", step: 4, hover: childID)
     try hoverCaption("translation")

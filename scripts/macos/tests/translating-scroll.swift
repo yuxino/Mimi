@@ -23,12 +23,6 @@ private func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
     return AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success ? value : nil
 }
 
-private func buttonNames(_ element: AXUIElement) -> [String] {
-    [kAXTitleAttribute, kAXDescriptionAttribute].compactMap { attribute(element, $0) as? String }
-}
-
-private let currentLanguageMarker = ", current: "
-
 private func frame(of element: AXUIElement) -> CGRect? {
     guard let p = attribute(element, kAXPositionAttribute), CFGetTypeID(p) == AXValueGetTypeID(),
           let s = attribute(element, kAXSizeAttribute), CFGetTypeID(s) == AXValueGetTypeID() else { return nil }
@@ -89,6 +83,20 @@ private func closeSettings(pid: pid_t, app: AXUIElement) throws {
     throw LayoutError("fixture_settings_not_found")
 }
 
+private func pauseButtonBounds(pid: pid_t, root: CGRect) throws -> CGRect {
+    let deadline = now + 5
+    repeat {
+        let found = try visibleAXMatches(pid: pid, frame: root) { element in
+            attribute(element, kAXRoleAttribute) as? String == kAXButtonRole &&
+                [kAXTitleAttribute, kAXDescriptionAttribute].contains { attribute(element, $0) as? String == "暂停翻译" }
+        }
+        if found.count == 1 { return found[0].ax }
+        guard found.isEmpty else { throw LayoutError("pause_button_not_unique") }
+        Thread.sleep(forTimeInterval: 0.04)
+    } while now < deadline
+    throw LayoutError("pause_button_unavailable")
+}
+
 private struct Ack: Decodable {
     let step: Int
     let pending: Bool
@@ -126,12 +134,12 @@ private struct Sample {
     let backToLive: AXUIElement?
 
     var json: [String: Any] {
-        ["started": started, "finished": finished, "controlAXTranslating": translating,
+        ["started": started, "finished": finished, "rootAXTranslating": translating,
          "lanes": lanes.mapValues(\.json)]
     }
 }
 
-private func sample(_ root: AXUIElement, bounds: CGRect, compact: AXUIElement? = nil, inspectHistory: Bool = false) throws -> Sample {
+private func sample(_ root: AXUIElement, bounds: CGRect, inspectHistory: Bool = false) throws -> Sample {
     let started = now
     var pending: [(AXUIElement, Int, CGRect, Bool)] = [(root, 0, bounds, false)]
     var lanes: [String: Lane] = [:]
@@ -150,6 +158,9 @@ private func sample(_ root: AXUIElement, bounds: CGRect, compact: AXUIElement? =
         let labels = [kAXValueAttribute, kAXTitleAttribute, kAXDescriptionAttribute].compactMap {
             attribute(element, $0) as? String
         }
+        // The English scroll check keeps its pointer outside. AX observes the
+        // root's progress state; the Chinese hover check verifies actual paint.
+        if labels.contains("Translating"), let elementFrame, clip.intersects(elementFrame) { translating = true }
         if inspectHistory, role == kAXButtonRole, labels.contains("Back to live"), let elementFrame, clip.intersects(elementFrame) {
             backToLive = element
         }
@@ -164,14 +175,6 @@ private func sample(_ root: AXUIElement, bounds: CGRect, compact: AXUIElement? =
         if depth < 20, let children = attribute(element, kAXChildrenAttribute) as? [AXUIElement] {
             pending.append(contentsOf: children.map { ($0, depth + 1, clip, scrollFound) })
         }
-    }
-    // Quiet chrome can still expose its accessible name. Its painted appearance
-    // is checked separately in the signed Chinese hover scene.
-    if let compact {
-        guard let name = buttonNames(compact).first(where: { $0.contains(currentLanguageMarker) }) else {
-            throw LayoutError("language_capsule_accessible_name_unavailable")
-        }
-        translating = name.contains(" · Translating" + currentLanguageMarker)
     }
     return Sample(started: started, finished: now, lanes: lanes, translating: translating, backToLive: backToLive)
 }
@@ -217,20 +220,6 @@ private enum TranslatingScroll {
         let axWindows = attribute(app, kAXWindowsAttribute) as? [AXUIElement] ?? []
         let axRoots = axWindows.filter { frame(of: $0).map { equal($0, root.bounds) } ?? false }
         guard axRoots.count == 1 else { throw LayoutError("caption_ax_root_not_unique") }
-        func button(in bounds: CGRect, named predicate: (String) -> Bool) throws -> AXUIElement {
-            let deadline = now + 5
-            repeat {
-                let found = try visibleAXMatches(pid: pid, frame: bounds) { element in
-                    guard let role = attribute(element, kAXRoleAttribute) as? String,
-                          [kAXButtonRole, kAXPopUpButtonRole, kAXMenuButtonRole].contains(role) else { return false }
-                    return buttonNames(element).contains(where: predicate)
-                }
-                if found.count == 1 { return found[0].element }
-                guard found.isEmpty else { throw LayoutError("readout_button_not_unique") }
-                Thread.sleep(forTimeInterval: 0.04)
-            } while now < deadline
-            throw LayoutError("readout_button_unavailable")
-        }
         func acceptedStep(_ step: Int) -> Ack? {
             let path = fixture.appendingPathComponent("translation-layout-state.json")
             guard let data = try? Data(contentsOf: path), data.count <= 1024,
@@ -238,9 +227,7 @@ private enum TranslatingScroll {
             return state
         }
         if checkReadout {
-            guard let pause = frame(of: try button(in: root.bounds, named: { $0 == "暂停翻译" })) else {
-                throw LayoutError("pause_geometry_unavailable")
-            }
+            let pause = try pauseButtonBounds(pid: pid, root: root.bounds)
             try verifyStatusReadout(rootID: root.id, root: root.bounds, childID: island.id, pause: pause, fixture: fixture, output: output,
                                     acknowledged: { step in
                 guard let state = acceptedStep(step) else { return false }
@@ -258,7 +245,6 @@ private enum TranslatingScroll {
             })
             return
         }
-        let capsule = try button(in: island.bounds, named: { $0.contains(currentLanguageMarker) })
         guard let savedCursor = CGEvent(source: nil)?.location,
               !CGEventSource.buttonState(.combinedSessionState, button: .left) else { throw LayoutError("idle_pointer_unavailable") }
         func move(_ point: CGPoint) throws {
@@ -300,7 +286,7 @@ private enum TranslatingScroll {
                   !CGEventSource.buttonState(.combinedSessionState, button: .left) else {
                 throw LayoutError("native_window_or_quiet_pointer_changed")
             }
-            let value = try sample(axRoots[0], bounds: root.bounds.insetBy(dx: 12, dy: 12), compact: capsule)
+            let value = try sample(axRoots[0], bounds: root.bounds.insetBy(dx: 12, dy: 12))
             var entry = value.json
             entry["requestedStep"] = step
             trace.append(entry)
