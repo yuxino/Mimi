@@ -88,7 +88,10 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
       if (!disposed) updateNativePointer(point !== null);
     }, "overlay-control").then(remove => {
       if (disposed) remove();
-      else unlisten = remove;
+      else {
+        unlisten = remove;
+        (window as Window & { __MIMI_CAPSULE_PROBE_STAGE__?: (stage: string, value?: string) => void }).__MIMI_CAPSULE_PROBE_STAGE__?.("native-listener-ready");
+      }
     }).catch(() => {});
     return () => {
       disposed = true;

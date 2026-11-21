@@ -71,17 +71,26 @@ define_class!(
     impl MimiOverlayPointerOwner {
         #[unsafe(method(mouseEntered:))]
         fn entered(&self, event: &NSEvent) {
+            if self.ivars().surface == Surface::Control {
+                crate::language_probe::native(&self.ivars().app, "control-entered", self.ivars().surface.label(), serde_json::json!({"eventInWindow": [event.locationInWindow().x, event.locationInWindow().y], "eventTimestamp": event.timestamp(), "eventWindowNumber": event.windowNumber(), "insideBefore": self.ivars().inside.get()}));
+            }
             self.clear(false);
             self.motion(event);
         }
 
         #[unsafe(method(mouseMoved:))]
         fn moved(&self, event: &NSEvent) {
+            if self.ivars().surface == Surface::Control {
+                crate::language_probe::native(&self.ivars().app, "control-moved", self.ivars().surface.label(), serde_json::json!({"eventInWindow": [event.locationInWindow().x, event.locationInWindow().y], "eventTimestamp": event.timestamp(), "eventWindowNumber": event.windowNumber(), "insideBefore": self.ivars().inside.get()}));
+            }
             self.motion(event);
         }
 
         #[unsafe(method(mouseExited:))]
         fn exited(&self, _event: &NSEvent) {
+            if self.ivars().surface == Surface::Control {
+                crate::language_probe::native(&self.ivars().app, "control-exited", self.ivars().surface.label(), serde_json::json!({"eventTimestamp": _event.timestamp(), "eventWindowNumber": _event.windowNumber(), "insideBefore": self.ivars().inside.get()}));
+            }
             self.clear(true);
         }
     }
@@ -160,11 +169,14 @@ impl MimiOverlayPointerOwner {
 
     fn emit(&self, point: Option<OverlayPointerPosition>) {
         let ivars = self.ivars();
-        let _ = ivars.app.emit_to(
+        let emitted = ivars.app.emit_to(
             EventTarget::webview_window(ivars.surface.label()),
             EVENT,
             point,
         );
+        if ivars.surface == Surface::Control {
+            crate::language_probe::native(&self.ivars().app, "control-emit", self.ivars().surface.label(), serde_json::json!({"inside": point.is_some(), "accepted": emitted.is_ok(), "viewHidden": ivars.view.isHiddenOrHasHiddenAncestor()}));
+        }
     }
 
     fn deliver(&self, delivery: PointerDelivery) {
@@ -206,7 +218,11 @@ impl MimiOverlayPointerOwner {
     }
 
     fn clear(&self, report_outside: bool) {
-        if self.reset() || report_outside {
+        let was_inside = self.reset();
+        if self.ivars().surface == Surface::Control {
+            crate::language_probe::native(&self.ivars().app, "control-clear", self.ivars().surface.label(), serde_json::json!({"wasInside": was_inside, "reportOutside": report_outside}));
+        }
+        if was_inside || report_outside {
             self.emit(None);
         }
     }
@@ -280,6 +296,7 @@ pub(super) fn install(window: &WebviewWindow) {
         return;
     };
     let app = window.app_handle().clone();
+    crate::language_probe::native(&app, "install-request", surface.label(), serde_json::json!({}));
     let _ = window.with_webview(move |platform| {
         let Some(mtm) = MainThreadMarker::new() else {
             return;
@@ -289,16 +306,22 @@ pub(super) fn install(window: &WebviewWindow) {
         let Some(view) = (unsafe { Retained::retain(platform.inner().cast::<NSView>()) }) else {
             return;
         };
+        crate::language_probe::native(&app, "install-view", surface.label(), serde_json::json!({
+            "viewHasWindow": view.window().is_some(), "viewWindowNumber": view.window().map(|w| w.windowNumber()), "viewHidden": view.isHiddenOrHasHiddenAncestor(),
+            "ownerPresent": owner(surface).is_some()
+        }));
         if !view.window().is_some_and(|window| window.isVisible()) {
+            crate::language_probe::native(&app, "install-not-visible", surface.label(), serde_json::json!({}));
             return;
         }
         if owner(surface)
             .is_some_and(|owner| Retained::as_ptr(&owner.ivars().view) == Retained::as_ptr(&view))
         {
+            crate::language_probe::native(&app, "install-same-owner", surface.label(), serde_json::json!({}));
             return;
         }
         drop(take_registration(surface));
-        let owner = MimiOverlayPointerOwner::new(app, surface, view.clone(), mtm);
+        let owner = MimiOverlayPointerOwner::new(app.clone(), surface, view.clone(), mtm);
         let owner_object: &AnyObject = owner.as_ref();
         let options = NSTrackingAreaOptions::ActiveAlways
             | NSTrackingAreaOptions::MouseEnteredAndExited
@@ -317,6 +340,7 @@ pub(super) fn install(window: &WebviewWindow) {
         REGISTRATIONS.with_borrow_mut(|slots| {
             slots[surface as usize] = Some(PointerRegistration { view, area, owner });
         });
+        crate::language_probe::native(&app, "install-success", surface.label(), serde_json::json!({}));
     });
 }
 
@@ -377,6 +401,11 @@ pub(super) fn refresh_after_window_update(app: &AppHandle) {
 }
 
 fn refresh_on_main(mtm: MainThreadMarker) {
+    if let Some(owner) = owner(Surface::Control) {
+        crate::language_probe::native(&owner.ivars().app, "native-refresh", "overlay-control", serde_json::json!({
+            "ownerInside": owner.ivars().inside.get()
+        }));
+    }
     let screen_point = NSEvent::mouseLocation();
     let frontmost = NSWindow::windowNumberAtPoint_belowWindowWithWindowNumber(screen_point, 0, mtm);
     for surface in [Surface::Overlay, Surface::Control] {

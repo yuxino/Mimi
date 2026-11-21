@@ -92,7 +92,7 @@
   window.__MIMI_CAPSULE_PROBE_STAGE__ = (name, value) => {
     if (name === "mode" && nativeModes.includes(value)) reactMode = value;
     else if (name === "route" && ["overlay","overlay-control","settings"].includes(value)) appRoute = value;
-    else if (!["lazy-resolved","child-committed"].includes(name)) return;
+    else if (!["lazy-resolved","child-committed","native-listener-ready"].includes(name)) return;
     emit("react", {stage:name, route:appRoute, reactMode});
   };
   function fail(event, e) {

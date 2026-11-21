@@ -43,6 +43,17 @@ pub(crate) fn record(window: &WebviewWindow, sample: Value) -> Result<(), String
     if window.label() != "overlay-control" || !sample.is_object() {
         return Err("unexpected child observer".into());
     }
+    #[cfg(target_os = "macos")]
+    if sample.get("kind").and_then(Value::as_str) == Some("react")
+        && sample.get("stage").and_then(Value::as_str) == Some("native-listener-ready")
+    {
+        native(
+            window.app_handle(),
+            "frontend-native-listener-ready",
+            "overlay-control",
+            json!({}),
+        );
+    }
     write_record(window.app_handle(), sample)
 }
 
@@ -76,4 +87,78 @@ fn write_record(app: &AppHandle, sample: Value) -> Result<(), String> {
     output
         .write_all(&line)
         .map_err(|_| "observer append".into())
+}
+
+/// Read-only AppKit metadata for the two owned synthetic surfaces. No windows
+/// are activated, reconfigured, hit-tested by DOM, or given synthetic events.
+#[cfg(target_os = "macos")]
+pub(crate) fn native(app: &AppHandle, stage: &'static str, surface: &'static str, details: Value) {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSEvent, NSWindow};
+    use objc2_foundation::NSProcessInfo;
+    use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+    static COUNT: AtomicUsize = AtomicUsize::new(0);
+    static LAST_MOVE_US: AtomicU64 = AtomicU64::new(0);
+    if !enabled(app) {
+        return;
+    }
+    let app = app.clone();
+    let dispatcher = app.clone();
+    let observe = move || {
+        let Some(mtm) = MainThreadMarker::new() else {
+            return;
+        };
+        let uptime = NSProcessInfo::processInfo().systemUptime();
+        if stage == "control-moved" {
+            let us = (uptime * 1_000_000.0) as u64;
+            let last = LAST_MOVE_US.load(Ordering::Relaxed);
+            if us.saturating_sub(last) < 100_000 {
+                return;
+            }
+            LAST_MOVE_US.store(us, Ordering::Relaxed);
+        }
+        if COUNT.fetch_add(1, Ordering::Relaxed) >= 512 {
+            return;
+        }
+        let root = app.get_webview_window("overlay");
+        let control = app.get_webview_window("overlay-control");
+        // The WebviewWindow handles above keep these main-thread pointers live.
+        let root_native = root
+            .as_ref()
+            .and_then(|w| w.ns_window().ok())
+            .map(|p| unsafe { &*p.cast::<NSWindow>() });
+        let control_native = control
+            .as_ref()
+            .and_then(|w| w.ns_window().ok())
+            .map(|p| unsafe { &*p.cast::<NSWindow>() });
+        let current = if surface == "overlay-control" {
+            control_native
+        } else {
+            root_native
+        };
+        let point = NSEvent::mouseLocation();
+        let front = NSWindow::windowNumberAtPoint_belowWindowWithWindowNumber(point, 0, mtm);
+        let root_number = root_native.map(|w| w.windowNumber());
+        let control_number = control_native.map(|w| w.windowNumber());
+        let _ = write_record(
+            &app,
+            json!({
+                "kind": "native-pointer-probe", "stage": stage, "surface": surface,
+                "systemUptime": uptime, "appKitPoint": [point.x, point.y],
+                "rootWindowNumber": root_number, "controlWindowNumber": control_number,
+                "frontMatchesRoot": root_number == Some(front),
+                "frontMatchesControl": control_number == Some(front),
+                "visible": current.map(|w| w.isVisible()),
+                "ignoresMouseEvents": current.map(|w| w.ignoresMouseEvents()),
+                "parentIsRoot": control_native.and_then(|w| w.parentWindow())
+                    .is_some_and(|w| Some(w.windowNumber()) == root_number),
+                "details": details
+            }),
+        );
+    };
+    if MainThreadMarker::new().is_some() {
+        observe();
+    } else {
+        let _ = dispatcher.run_on_main_thread(observe);
+    }
 }

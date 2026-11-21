@@ -264,6 +264,7 @@ fn configure_overlay_window_impl_macos(
             }
         }
 
+        crate::language_probe::native(window_for_main.app_handle(), "configure-native", if window_for_main.label() == "overlay-control" { "overlay-control" } else { "overlay" }, serde_json::json!({"orderFront": order_front}));
         if order_front {
             ns_window.orderFrontRegardless();
             macos_pointer::install(&window_for_main);

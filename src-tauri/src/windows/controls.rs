@@ -513,7 +513,10 @@ impl OverlayControlWindowManager {
         }
         #[cfg(not(target_os = "linux"))]
         Self::apply_geometry(app, mode);
-        if !window.is_visible().unwrap_or(false) {
+        let visible = window.is_visible().unwrap_or(false);
+        #[cfg(target_os = "macos")]
+        crate::language_probe::native(app, if visible { "show-skipped-visible" } else { "show-initial" }, "overlay-control", serde_json::json!({}));
+        if !visible {
             show_overlay_control_window(app, &window);
         }
         #[cfg(target_os = "windows")]
