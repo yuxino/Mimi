@@ -563,6 +563,45 @@ it("loads choices on open and keeps a saved label without inventing a selectable
   expect(Number.parseFloat(document.querySelector<HTMLElement>(".mimi-select__menu")!.style.maxHeight)).toBe(280);
 });
 
+const allApps = { value: "", label: "All applications" };
+const playerA = { value: "app.a", label: "Player A" };
+const playerB = { value: "app.b", label: "Player B" };
+const playerC = { value: "app.c", label: "Player C" };
+
+async function renderApps(players: typeof playerA[]) {
+  await act(() => root.render(<Select label="Application" value="" options={[allApps, ...players]}
+    searchLabel="Search applications" onChange={onChange} />));
+}
+
+async function highlightLastPlayer() {
+  await renderApps([playerA, playerC]);
+  await act(() => trigger().click());
+  await typeQuery("Player");
+  await key("End");
+  expect(document.getElementById(input().getAttribute("aria-activedescendant")!)?.textContent).toBe("Player C");
+}
+
+it("confirms the highlighted application by ID after a refresh inserts a search result ahead of it", async () => {
+  await highlightLastPlayer();
+  await renderApps([playerA, playerB, playerC]);
+  expect(document.getElementById(input().getAttribute("aria-activedescendant")!)?.textContent).toBe("Player C");
+  await key("Enter");
+  expect(onChange).toHaveBeenCalledExactlyOnceWith("app.c");
+});
+
+it("waits for a new keyboard choice when a refresh removes the highlighted application", async () => {
+  await highlightLastPlayer();
+  await renderApps([playerA, playerB]);
+  await key("Enter");
+  expect(onChange).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(input());
+  expect(input().hasAttribute("aria-activedescendant")).toBe(false);
+  await key("ArrowDown");
+  expect(document.getElementById(input().getAttribute("aria-activedescendant")!)?.textContent).toBe("Player A");
+  await key("Enter");
+  expect(onChange).toHaveBeenCalledExactlyOnceWith("app.a");
+});
+
 it("scrolls only the results for keyboard navigation and never moves the list on hover", async () => {
   await renderSearch();
   await act(() => trigger().click());

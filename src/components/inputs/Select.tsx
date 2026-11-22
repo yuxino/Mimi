@@ -87,13 +87,15 @@ export function Select({ label, value, options, disabled = false, busy = false, 
   const selectedLabel = options[selected]?.label ?? valueLabel ?? value;
   const selectedIcon = selected >= 0 ? options[selected].icon : valueIcon;
   const selectedVisible = visible.findIndex(option => option.value === value);
-  const [cursor, setCursor] = useState({ selection: value, query: "", index: 0 });
-  // Keep the selected value even if it becomes unavailable, but only enabled
-  // rows can own the cursor. A disabled cursor advances to the next usable row.
+  const [cursor, setCursor] = useState<{ selection: string; query: string; option: string | null } | null>(null);
   const resolveCursor = (position: typeof cursor) => {
-    const preferred = position.selection === value && position.query === query && position.index >= 0
-      ? position.index : Math.max(0, selectedVisible);
-    return nextEnabledOption(visible, Math.min(visible.length - 1, preferred) - 1, 1);
+    let preferred = Math.max(0, selectedVisible);
+    if (position?.selection === value && position.query === query) {
+      preferred = position.option === null ? 0 : visible.findIndex(option => option.value === position.option);
+      // Refresh can remove the app under the cursor. Enter must not choose its replacement.
+      if (preferred < 0) return -1;
+    }
+    return nextEnabledOption(visible, preferred - 1, 1);
   };
   const active = resolveCursor(cursor);
 
@@ -110,11 +112,10 @@ export function Select({ label, value, options, disabled = false, busy = false, 
     revealActive.current = reveal;
     // Keyboard intent also reveals an unchanged active row after manual
     // scrolling. Repeated pointer movement is filtered at the row instead.
-    setCursor(previous => ({
-      selection: value,
-      query,
-      index: typeof index === "number" ? index : index(resolveCursor(previous)),
-    }));
+    setCursor(previous => {
+      const next = typeof index === "number" ? index : index(resolveCursor(previous));
+      return { selection: value, query, option: visible[next]?.value ?? null };
+    });
   }
 
   function show() {
@@ -157,7 +158,7 @@ export function Select({ label, value, options, disabled = false, busy = false, 
     setQuery("");
     revealActive.current = true;
     // Follow the saved choice while lazy options arrive, until the user navigates.
-    setCursor({ selection: value, query: "", index: -1 });
+    setCursor(null);
     typeahead.current = { text: "", at: 0 };
     onOpen?.();
   }
@@ -297,7 +298,7 @@ export function Select({ label, value, options, disabled = false, busy = false, 
     revealActive.current = true;
     if (list.current) list.current.scrollTop = 0;
     setQuery(text);
-    setCursor({ selection: value, query: text, index: 0 });
+    setCursor({ selection: value, query: text, option: null });
   }
 
   const rows = open ? visible.map((option, index) => (
@@ -309,7 +310,7 @@ export function Select({ label, value, options, disabled = false, busy = false, 
       onPointerMove={() => {
         if (option.disabled) return;
         revealActive.current = false;
-        if (cursor.selection !== value || cursor.query !== query || cursor.index !== index) setActive(index, false);
+        if (cursor?.selection !== value || cursor.query !== query || cursor.option !== option.value) setActive(index, false);
       }} onPointerDown={(event) => event.preventDefault()}
       onClick={() => choose(index)}>
       <span className="mimi-select__content">
