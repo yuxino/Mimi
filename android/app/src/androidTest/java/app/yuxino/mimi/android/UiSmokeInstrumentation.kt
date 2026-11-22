@@ -219,6 +219,10 @@ class UiSmokeInstrumentation : Instrumentation() {
                 closeAfterExportReturn = closeAfterReturn)
             return
         }
+        captureArguments?.getString("notification_offer")?.let { scenario ->
+            app.yuxino.mimi.android.capture.CaptureNotificationPermissionChecks(this).run(scenario)
+            return
+        }
         if (captureArguments?.getString("capture_sources") == "true") {
             CaptureSourcesChecks(this).run(captureArguments)
             return

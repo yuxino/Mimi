@@ -52,6 +52,8 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
         val chunks = AtomicLong()
         val nonzeroChunks = AtomicLong()
         val video = args?.getString("media_id")?.toLongOrNull()
+        val noNotificationPermission = args?.getString("shortcut_without_notifications") == "true"
+        val originalEdge = host.showEdge
         val engine = object : ProviderEngine {
             override val sampleRateHz = 16_000
             override fun start() = Unit
@@ -67,8 +69,17 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
             consent.verifyEmulatorConsentMode()
             check(SettingsStore.profiles(context).isEmpty() && SettingsStore.captureInput(context) == CaptureInput.SYSTEM)
             check(!MimiService.isRunning && !MimiService.isStarting && !MimiService.isStopping)
-            check(Settings.canDrawOverlays(context) && CaptionShortcutNotification.canPost(context))
-            check(host.showNotification && host.showEdge) { "Enable both shortcuts and add the tile on the test device" }
+            check(Settings.canDrawOverlays(context))
+            if (noNotificationPermission) {
+                check(video != null && !host.showEdge && !host.showNotification && !CaptionShortcutNotification.canPost(context) &&
+                    context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    "Use a fresh notification permission, both optional shortcuts off, an installed tile and a playback video"
+                }
+            } else {
+                check(CaptionShortcutNotification.canPost(context) && host.showNotification && host.showEdge) {
+                    "Enable both shortcuts and add the tile on the test device"
+                }
+            }
             if (args?.getString("review") == "true") evidence = context.getExternalFilesDir("shortcut-review")
             onMain {
                 MimiService.setCaptureEngineForTests(context, engine)
@@ -109,7 +120,7 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
             await { activePackage() == previousApp && !MimiService.ownUiVisible }
             check(!MimiService.isRunning && MimiService.captureProjectionForTests == null &&
                 chunks.get() == 0L && nonzeroChunks.get() == 0L)
-            check(hasNotification("caption_shortcuts") && !hasNotification("capture"))
+            check(hasNotification("caption_shortcuts") == !noNotificationPermission && !hasNotification("capture"))
 
             stage = "start from tile"
             tile()
@@ -121,6 +132,18 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
                 await { nonzeroChunks.get() > 0 }
             }
             await { !MimiService.ownUiVisible && activePackage() == previousApp }
+            if (noNotificationPermission) {
+                stage = "tile starts playback capture without requesting notification permission"
+                check(MimiService.captureProjectionForTests != null && nonzeroChunks.get() > 0 &&
+                    context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+                shot("03-returned-with-notifications-off")
+                stage = "stop from the tile without notification access"
+                tile()
+                await { !MimiService.isRunning && !MimiService.isStopping && MimiService.captureProjectionForTests == null }
+                shell("cmd statusbar collapse")
+                checkExplicitNotificationOffer()
+                return@runCatching
+            }
             await { hasNotification("capture") && !hasNotification("caption_shortcuts") }
             shot("03-returned-to-playback")
             if (args?.getString("edge_preference") == "true") checkEdgePreferenceDuringPlayback(previousApp, chunks)
@@ -190,6 +213,7 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
             val stopCommand = edgeCommand(stop)
             check(MimiService.isRunning && !MimiService.isStopping &&
                 !stopCommand.contains(character.centerX(), character.centerY()))
+            shot("17-edge-stop")
             tap(stopCommand)
             stopped()
             if (args?.getString("screen_lock_resume") == "true") checkResumeAfterUnlock(previousApp, chunks)
@@ -201,7 +225,7 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
                 if (MimiService.isRunning) onMain { context.startService(MimiService.stopIntent(context)) }
                 await { !MimiService.isRunning && !MimiService.isStopping }
                 onMain {
-                    host.showEdge = true
+                    host.showEdge = originalEdge
                     check(SettingsStore.deleteProfile(context, checkNotNull(profile)))
                 }
             }
@@ -211,7 +235,8 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
         val error = result.exceptionOrNull() ?: cleanup.exceptionOrNull()
         test.finish(if (error == null) Activity.RESULT_OK else Activity.RESULT_CANCELED, Bundle().apply {
             val counts = "Discarded audio chunks: ${chunks.get()}, nonzero: ${nonzeroChunks.get()}."
-            putString("stream", if (error == null) "Three native caption shortcuts passed. $counts\n"
+            val scenario = if (noNotificationPermission) "Tile playback without notification permission and explicit notification setting" else "Three native caption shortcuts"
+            putString("stream", if (error == null) "$scenario passed. $counts\n"
                 else "Caption shortcut check failed at $stage: ${error.message}. $counts\n")
         })
     }
@@ -227,6 +252,30 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
     private fun hasNotification(channel: String) = notifications.activeNotifications.any { it.notification.channelId == channel }
     private fun stopped() = await { !MimiService.isRunning && !MimiService.isStarting && !MimiService.isStopping &&
         MimiService.captureProjectionForTests == null && !hasNotification("capture") && hasNotification("caption_shortcuts") }
+
+    private fun checkExplicitNotificationOffer() {
+        stage = "open the optional notification setting"
+        shell("am start -W --user current -a android.intent.action.MAIN -c android.intent.category.LAUNCHER " +
+            "-f 0x10200000 -n ${context.packageName}/${MainActivity::class.java.name}")
+        fun more() = appNode { it.viewIdResourceName == "${context.packageName}:id/tab_general" }
+        await { more() != null && MimiService.ownUiVisible }
+        check(checkNotNull(more()).performAction(AccessibilityNodeInfo.ACTION_CLICK))
+        await { more()?.isChecked == true }
+        awaitMorePanelDrawn()
+        val name = label(R.string.shortcut_notification_label)
+        fun setting() = appNode { it.isCheckable && it.text?.toString() == name }
+        await { setting()?.isChecked == false }
+        tapAfterWindowTransition(Rect().also { checkNotNull(setting()).getBoundsInScreen(it) })
+        stage = "only the explicit setting opens notification permission"
+        await {
+            val dialog = test.uiAutomation.rootInActiveWindow
+            dialog?.packageName?.endsWith("permissioncontroller") == true &&
+                dialog.findAccessibilityNodeInfosByViewId("com.android.permissioncontroller:id/permission_allow_button").any { it.isVisibleToUser }
+        }
+        shot("18-notification-permission-from-More")
+        shell("input keyevent KEYCODE_BACK")
+        await { setting()?.isChecked == false && !host.showNotification && !CaptionShortcutNotification.canPost(context) }
+    }
 
     private fun checkEdgePreferenceDuringPlayback(player: String, chunks: AtomicLong) {
         val tucked = label(R.string.shortcut_reveal_edge)

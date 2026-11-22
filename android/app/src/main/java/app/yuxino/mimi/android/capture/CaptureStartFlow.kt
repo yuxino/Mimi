@@ -7,7 +7,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
@@ -25,6 +24,7 @@ internal class CaptureStartFlow(
     savedState: Bundle?,
     private val onChanged: () -> Unit,
     private val onFinished: (CaptureStartResult) -> Unit,
+    private val fromMainScreen: Boolean = false,
 ) {
     var starting = savedState?.getBoolean("starting") ?: false
         private set
@@ -156,10 +156,14 @@ internal class CaptureStartFlow(
         val token = MimiService.prepareStart(activity)
         request = token
         MimiService.startFromActivity(activity, intent.putExtra(MimiService.EXTRA_START_REQUEST, token))
-        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(activity,
-                Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+        if (CaptureNotificationPermission.takeFirstOffer(activity, fromMainScreen)) {
             notificationPermissionPending = true
-            ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIFICATIONS)
+            try {
+                ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIFICATIONS)
+            } catch (_: RuntimeException) {
+                // Capture is already starting. This optional dialog must not cancel the service request.
+                notificationPermissionPending = false
+            }
         }
         onChanged()
     }

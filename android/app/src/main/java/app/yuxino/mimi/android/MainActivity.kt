@@ -82,7 +82,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         captureStart = CaptureStartFlow(this, savedInstanceState?.getBundle("capture_start"),
             onChanged = { if (::startStop.isInitialized) refreshUi() },
-            onFinished = { result -> if (result == CaptureStartResult.SETUP_REQUIRED) openSettings() })
+            onFinished = { result -> if (result == CaptureStartResult.SETUP_REQUIRED) openSettings() },
+            fromMainScreen = true)
         val firstRunPrefs = getSharedPreferences("first_run", 0)
         if (!firstRunPrefs.contains("seen") && java.io.File(applicationInfo.dataDir, "shared_prefs/mimi_secure.xml").exists()) {
             firstRunPrefs.edit().putBoolean("seen", true).apply()

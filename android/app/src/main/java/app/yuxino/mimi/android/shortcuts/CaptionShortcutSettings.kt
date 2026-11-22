@@ -17,6 +17,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import app.yuxino.mimi.android.MimiApplication
 import app.yuxino.mimi.android.R
+import app.yuxino.mimi.android.capture.CaptureNotificationPermission
 import app.yuxino.mimi.android.services.editor.ServiceSettingsUi
 import app.yuxino.mimi.android.ui.HelpUi
 import com.google.android.material.button.MaterialButton
@@ -50,6 +51,7 @@ internal class CaptionShortcutSettings(private val activity: AppCompatActivity) 
         } else save { shortcuts.showEdge = enabled }
     }
     private val notification = toggle(R.string.shortcut_notification_label, "caption-notification-switch") { enabled ->
+        if (enabled) CaptureNotificationPermission.markHandled(activity)
         when {
             !enabled || CaptionShortcutNotification.canPost(activity) -> save { shortcuts.showNotification = enabled }
             Build.VERSION.SDK_INT >= 33 && activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
