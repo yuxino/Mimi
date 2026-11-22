@@ -10,8 +10,40 @@ enum Foreground {
     None,
 }
 
-fn drag_finished(saw_move: bool, moving: bool, left_down: bool, foreground: Foreground) -> bool {
-    foreground == Foreground::External || (saw_move && !moving) || (!moving && !left_down)
+#[derive(Clone, Copy)]
+enum DragButton {
+    Held,
+    Released,
+    ReleasedBeforeStart,
+}
+
+impl DragButton {
+    fn sample(left_down: bool, release_before_queue_turn: bool) -> Self {
+        if left_down {
+            Self::Held
+        } else if release_before_queue_turn {
+            Self::ReleasedBeforeStart
+        } else {
+            Self::Released
+        }
+    }
+}
+
+fn drag_finished(saw_move: bool, moving: bool, button: DragButton, foreground: Foreground) -> bool {
+    if foreground == Foreground::External {
+        return true;
+    }
+    if moving {
+        return false;
+    }
+    if saw_move {
+        return true;
+    }
+    match button {
+        DragButton::Held => false,
+        DragButton::Released => true,
+        DragButton::ReleasedBeforeStart => foreground == Foreground::None,
+    }
 }
 
 fn forward_released_button(
@@ -41,7 +73,8 @@ fn focus_after_drag(foreground: Foreground) -> FocusAfterDrag {
 #[cfg(target_os = "windows")]
 mod native {
     use super::{
-        drag_finished, focus_after_drag, forward_released_button, FocusAfterDrag, Foreground,
+        drag_finished, focus_after_drag, forward_released_button, DragButton, FocusAfterDrag,
+        Foreground,
     };
     use crate::windows::windows_panel_drag_release::{ReleasePointLease, ScreenPoint};
     use crate::windows::{OverlayControlState, OverlayControlWindowManager};
@@ -184,6 +217,20 @@ mod native {
         pub(crate) fn observe(self, app: &AppHandle) {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
+                // Tao posted the native caption press on the window thread before
+                // observe() was called. Queue a turn behind it. A worker sample
+                // before that turn cannot distinguish a pending move from a click
+                // whose move has already finished between samples.
+                let (acknowledge_start, start_turn) = tokio::sync::oneshot::channel();
+                if app
+                    .run_on_main_thread(move || {
+                        let _ = acknowledge_start.send(());
+                    })
+                    .is_err()
+                {
+                    self.finish(&app);
+                    return;
+                }
                 let mut saw_move = false;
                 let mut release_forwarded = false;
                 let mut startup_expired = false;
@@ -196,6 +243,9 @@ mod native {
                     {
                         return;
                     }
+                    // Read the acknowledgment first. A queue turn during the
+                    // native query belongs to the next sample.
+                    let before_start_turn = start_turn.is_empty();
                     // Pointer-bearing native structs do not cross the await.
                     let sample = {
                         let root = HWND(self.root as *mut _);
@@ -221,7 +271,10 @@ mod native {
                     let Some((moving, captured, left_down, foreground)) = sample else {
                         break;
                     };
-                    if drag_finished(saw_move, moving, left_down, foreground)
+                    let release = self.release.point();
+                    let button =
+                        DragButton::sample(left_down, release.is_some() && before_start_turn);
+                    if drag_finished(saw_move, moving, button, foreground)
                         || (startup_expired && !moving)
                     {
                         break;
@@ -232,7 +285,6 @@ mod native {
                         self.release.stop();
                         native_capture_ready = true;
                     }
-                    let release = self.release.point();
                     if !release_forwarded
                         && forward_released_button(moving, captured, release.is_some(), foreground)
                     {
@@ -310,27 +362,44 @@ pub(crate) use native::{panel_drag_button_down, prepare_panel_drag};
 #[cfg(test)]
 mod tests {
     use super::*;
+    use DragButton::{Held, Released};
+
+    #[test]
+    fn an_owned_release_waits_for_the_queued_move_then_finishes_normally() {
+        // The hook received up before the UI thread dispatched its already-posted move.
+        let early = DragButton::sample(false, true);
+        assert!(!drag_finished(false, false, early, Foreground::Control));
+        // The native root now captures and can receive that same up.
+        let up = DragButton::sample(false, false);
+        assert!(!drag_finished(false, true, up, Foreground::Root));
+        assert!(forward_released_button(true, true, true, Foreground::Root));
+        assert!(drag_finished(true, false, up, Foreground::Root));
+
+        // A click can also complete between samples. No extra timeout or focus change is needed.
+        assert!(drag_finished(false, false, up, Foreground::Control));
+        assert!(drag_finished(false, false, early, Foreground::External));
+    }
 
     #[test]
     fn native_move_and_stationary_press_keep_the_internal_handoff_owned() {
         for foreground in [Foreground::Root, Foreground::Control, Foreground::None] {
-            assert!(!drag_finished(false, true, true, foreground));
-            assert!(!drag_finished(true, true, true, foreground));
-            assert!(!drag_finished(false, false, true, foreground));
+            assert!(!drag_finished(false, true, Held, foreground));
+            assert!(!drag_finished(true, true, Held, foreground));
+            assert!(!drag_finished(false, false, Held, foreground));
         }
     }
 
     #[test]
     fn release_short_click_and_cancel_finish_without_requiring_a_moved_event() {
-        assert!(drag_finished(false, false, false, Foreground::Root));
-        assert!(drag_finished(false, false, false, Foreground::Control));
-        assert!(drag_finished(true, false, true, Foreground::Root));
+        assert!(drag_finished(false, false, Released, Foreground::Root));
+        assert!(drag_finished(false, false, Released, Foreground::Control));
+        assert!(drag_finished(true, false, Held, Foreground::Root));
     }
 
     #[test]
     fn actual_external_focus_ends_a_drag_without_waiting_for_mouse_release() {
-        assert!(drag_finished(false, false, true, Foreground::External));
-        assert!(drag_finished(true, true, true, Foreground::External));
+        assert!(drag_finished(false, false, Held, Foreground::External));
+        assert!(drag_finished(true, true, Held, Foreground::External));
         assert_eq!(
             focus_after_drag(Foreground::External),
             FocusAfterDrag::Dismiss

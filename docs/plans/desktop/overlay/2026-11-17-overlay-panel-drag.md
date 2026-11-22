@@ -59,6 +59,10 @@ so a closed or subsequent gesture cannot consume an earlier release.
 Normal release preserves outline displacement without synthesizing system input. A queued
 panel press whose physical button is already released must not start a new OS
 move. Continue to wait for native completion before restoring panel focus.
+Tao posts the move request to the window thread. If the owned button release
+arrives before that thread processes the request, retain its position through
+that queue turn. Once the thread has handled the request, a click that never
+entered a move loop can finish normally.
 Keep the original long-drag and 15ms stationary-press assertions, plus quick
 3-pixel and 48-pixel moves, immediate pointer movement after release, and an
 ordinary blank click.
