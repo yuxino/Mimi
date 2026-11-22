@@ -78,9 +78,13 @@ it("keeps actual recording feedback in the existing control and replaces duplica
       expect(host.querySelector("button")!.title).toContain(label);
       expect(host.querySelector("[data-recording-status]")?.getAttribute("data-recording-status")).toBe(audioRecording);
       if (audioRecording === "paused") {
-        expect(host.querySelector(".overlay-control-island__phase")).toBeNull();
+        expect(host.querySelector(".overlay-control-island__phase")?.textContent).toBe("暂停");
         expect(host.querySelector(".recording-indicator__label")).toBeNull();
         expect(host.querySelector("[data-recording-status]")?.getAttribute("aria-label")).toBe(label);
+        await act(async () => root.render(<LanguageStatusCapsule {...props} expanded
+          phase="paused" isPaused audioRecording="paused" />));
+        expect(host.querySelector(".overlay-control-island__phase")).toBeNull();
+        expect(host.querySelector(".recording-indicator__label")?.textContent).toBeTruthy();
       }
     }
   } finally {
@@ -129,6 +133,16 @@ it.each(["zh", "zh-TW", "en", "ja", "ko", "fr", "de", "ru", "th"] as const)("kee
       status={{ source: longLabels.source, separator: "→", target: longLabels.target }} phase="listening" />));
     expect(host.querySelector(".overlay-control-island__summary")?.textContent).toBe(`${longLabels.source}→${longLabels.target}`);
     expect(host.querySelector("button")?.getAttribute("aria-label")).toContain(`${longLabels.source} → ${longLabels.target}`);
+    await act(async () => root.render(<LanguageStatusCapsule {...props} settings={longSettings}
+      status={{ source: longLabels.source, separator: "→", target: longLabels.target }} phase="paused" isPaused />));
+    const pausedButton = host.querySelector("button")!;
+    expect(pausedButton.querySelector(".overlay-control-island__summary")).toBeNull();
+    expect(pausedButton.querySelector(".overlay-control-island__phase")?.textContent)
+      .toBe(capsuleLabels(longSettings, "paused", language).phase);
+    for (const fullLabel of [pausedButton.title, pausedButton.getAttribute("aria-label")]) {
+      expect(fullLabel).toContain(`${longLabels.source} → ${longLabels.target}`);
+      expect(fullLabel).toContain(OVERLAY_ACTIVITY_PHASES.paused.accessibilityLabel);
+    }
     await act(async () => root.render(<LanguageStatusCapsule {...props} phase="translating" expanded />));
     expect(host.querySelector(".overlay-control-header .overlay-control-island__phase")?.textContent).toBe(labels.phase);
   } finally {

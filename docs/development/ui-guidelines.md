@@ -315,6 +315,11 @@ language. Use a short gesture hint when the expanded instructions do not fit;
 retain a complete accessible action. Verify geometry with the actual overlay
 components and confirm the affected gesture in the signed native app.
 
+The locked subtitle control shows a short unlock action and provides the full
+name in its tooltip and accessible label. Measure the rendered word against its
+available space in every UI language, including with the recording mark present.
+The text container can fit inside the button while still clipping the word.
+
 ### Android subtitle overlay acceptance
 
 For Android, appearance preferences must refresh the existing service-owned

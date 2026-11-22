@@ -1,7 +1,7 @@
 export const SUPPLEMENTAL_EN = {
   applicationAudio_copy: {
     title: "Capture sound from", all: "All applications", application: "Application",
-    search: "Search applications", refresh: "Refresh applications", loading: "Loading applications…",
+    search: "Search applications", refresh: "Refresh applications", refreshed: "Application list refreshed.", loading: "Loading applications…",
     empty: "No applications found. Open the app, then refresh.", noMatch: "No matching applications.", missing: "Unavailable",
     unavailable: "The selected application is no longer available. Open it and select it again, or choose All applications.",
     unsupported: "Application audio capture is available on macOS and Windows 11 (build 20348 or later).",
@@ -11,7 +11,7 @@ export const SUPPLEMENTAL_EN = {
   },
   playbackStream_copy: {
     title: "Capture audio stream", all: "All system audio", application: "Audio stream",
-    search: "Search audio streams", refresh: "Refresh audio streams", loading: "Loading audio streams…",
+    search: "Search audio streams", refresh: "Refresh audio streams", refreshed: "Audio stream list refreshed.", loading: "Loading audio streams…",
     empty: "No audio streams found. Play sound, then refresh.", noMatch: "No matching audio streams.", missing: "Unavailable",
     unavailable: "This audio stream is unavailable. Play sound and select a stream again, or choose All system audio.",
     unsupported: "Audio stream capture requires Linux with PulseAudio or PipeWire-Pulse.",

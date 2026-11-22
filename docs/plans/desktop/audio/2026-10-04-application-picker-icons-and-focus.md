@@ -24,8 +24,12 @@ There is no new disk storage, persistent icon cache, dependency, network request
 or permission. Each WebView keeps one bounded in-memory icon map across control
 panel remounts (128 icons, 12 KiB per data URL, 1 MiB total). On macOS, restore the
 selected icon silently on mount or an external target change through NSWorkspace.
-Do not cache selectable lists or change the target. Background failure or a closed
-application falls back without an error; manual refresh still reports failure.
+Do not cache selectable lists or change the target. A failed background lookup
+leaves the fallback icon. In either window, pressing Refresh shows a brief
+result. Opening the list loads choices quietly on success and reports a failed
+read. Opening it during a button refresh keeps that request's notification.
+A missing selected application stays marked beside the picker until it is
+available again or the user changes the selection.
 Generation checks prevent an older request from replacing newer icons. Icons,
 application names and identifiers stay out of diagnostics, recordings and saved
 capture preferences; preferences still store only the existing selected target.

@@ -3,7 +3,7 @@ import type { SupplementalCopy } from "./supplemental-schema";
 export const SUPPLEMENTAL = {
   applicationAudio_copy: {
     title: "จับเสียงจาก", all: "ทุกแอปพลิเคชัน", application: "แอปพลิเคชัน",
-    search: "ค้นหาแอปพลิเคชัน", refresh: "รีเฟรชแอปพลิเคชัน", loading: "กำลังโหลดแอปพลิเคชัน…",
+    search: "ค้นหาแอปพลิเคชัน", refresh: "รีเฟรชแอปพลิเคชัน", refreshed: "รีเฟรชรายการแอปแล้ว", loading: "กำลังโหลดแอปพลิเคชัน…",
     empty: "ไม่พบแอปพลิเคชัน เปิดแอปแล้วรีเฟรช", noMatch: "ไม่พบแอปพลิเคชันที่ตรงกัน", missing: "ใช้งานไม่ได้",
     unavailable: "แอปพลิเคชันที่เลือกใช้งานไม่ได้แล้ว เปิดแอปและเลือกใหม่ หรือเลือกทุกแอปพลิเคชัน",
     unsupported: "การจับเสียงจากแอปพลิเคชันใช้ได้บน macOS และ Windows 11 (บิลด์ 20348 ขึ้นไป)",
@@ -13,7 +13,7 @@ export const SUPPLEMENTAL = {
   },
   playbackStream_copy: {
     title: "จับเสียงจากสตรีม", all: "เสียงระบบทั้งหมด", application: "สตรีมเสียง",
-    search: "ค้นหาสตรีมเสียง", refresh: "รีเฟรชสตรีมเสียง", loading: "กำลังโหลดสตรีมเสียง…",
+    search: "ค้นหาสตรีมเสียง", refresh: "รีเฟรชสตรีมเสียง", refreshed: "รีเฟรชรายการสตรีมเสียงแล้ว", loading: "กำลังโหลดสตรีมเสียง…",
     empty: "ไม่พบสตรีมเสียง โปรดเล่นเสียงแล้วรีเฟรช", noMatch: "ไม่มีสตรีมเสียงที่ตรงกัน", missing: "ไม่พร้อมใช้งาน",
     unavailable: "สตรีมเสียงนี้ไม่พร้อมใช้งาน โปรดเล่นเสียงแล้วเลือกใหม่ หรือเลือกเสียงระบบทั้งหมด",
     unsupported: "การจับสตรีมเสียงต้องใช้ Linux ที่มี PulseAudio หรือ PipeWire-Pulse",
