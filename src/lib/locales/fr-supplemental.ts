@@ -3,7 +3,7 @@ import type { SupplementalCopy } from './supplemental-schema';
 export const SUPPLEMENTAL = {
   applicationAudio_copy: {
     title: "Capturer le son de", all: "Toutes les applications", application: "Application",
-    search: "Rechercher une application", refresh: "Actualiser les applications", loading: "Chargement des applications…",
+    search: "Rechercher une application", refresh: "Actualiser les applications", refreshed: "Liste des applications actualisée.", loading: "Chargement des applications…",
     empty: "Aucune application trouvée. Ouvrez l’application, puis actualisez.", noMatch: "Aucune application correspondante.", missing: "Indisponible",
     unavailable: "L’application sélectionnée n’est plus disponible. Ouvrez-la et sélectionnez-la de nouveau, ou choisissez Toutes les applications.",
     unsupported: "La capture audio par application est disponible sur macOS et Windows 11 (build 20348 ou ultérieure).",
@@ -13,7 +13,7 @@ export const SUPPLEMENTAL = {
   },
   playbackStream_copy: {
     title: "Capturer un flux audio", all: "Tout le son du système", application: "Flux audio",
-    search: "Rechercher des flux audio", refresh: "Actualiser les flux audio", loading: "Chargement des flux audio…",
+    search: "Rechercher des flux audio", refresh: "Actualiser les flux audio", refreshed: "Liste des flux audio actualisée.", loading: "Chargement des flux audio…",
     empty: "Aucun flux audio trouvé. Lancez un son puis actualisez.", noMatch: "Aucun flux audio correspondant.", missing: "Indisponible",
     unavailable: "Ce flux audio est indisponible. Lancez un son et sélectionnez à nouveau un flux, ou choisissez Tout le son du système.",
     unsupported: "La capture de flux audio nécessite Linux avec PulseAudio ou PipeWire-Pulse.",

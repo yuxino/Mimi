@@ -3,7 +3,7 @@ import type { SupplementalCopy } from './supplemental-schema';
 export const SUPPLEMENTAL = {
   applicationAudio_copy: {
     title: "Audio aus Anwendungen", all: "Alle Anwendungen", application: "Anwendung",
-    search: "Anwendungen suchen", refresh: "Anwendungen aktualisieren", loading: "Anwendungen werden geladen…",
+    search: "Anwendungen suchen", refresh: "Anwendungen aktualisieren", refreshed: "Anwendungsliste aktualisiert.", loading: "Anwendungen werden geladen…",
     empty: "Keine Anwendungen gefunden. Öffne die App und aktualisiere die Liste.", noMatch: "Keine passenden Anwendungen.", missing: "Nicht verfügbar",
     unavailable: "Die ausgewählte Anwendung ist nicht mehr verfügbar. Öffne sie und wähle sie erneut aus oder wechsle zu „Alle Anwendungen“.",
     unsupported: "Anwendungsaudio kann unter macOS und Windows 11 (Build 20348 oder neuer) erfasst werden.",
@@ -13,7 +13,7 @@ export const SUPPLEMENTAL = {
   },
   playbackStream_copy: {
     title: "Audiostream aufnehmen", all: "Gesamter Systemton", application: "Audiostream",
-    search: "Audiostreams suchen", refresh: "Audiostreams aktualisieren", loading: "Audiostreams werden geladen…",
+    search: "Audiostreams suchen", refresh: "Audiostreams aktualisieren", refreshed: "Audiostreamliste aktualisiert.", loading: "Audiostreams werden geladen…",
     empty: "Keine Audiostreams gefunden. Ton abspielen und aktualisieren.", noMatch: "Keine passenden Audiostreams.", missing: "Nicht verfügbar",
     unavailable: "Dieser Audiostream ist nicht verfügbar. Ton abspielen und erneut auswählen oder Gesamter Systemton wählen.",
     unsupported: "Audiostream-Aufnahme erfordert Linux mit PulseAudio oder PipeWire-Pulse.",

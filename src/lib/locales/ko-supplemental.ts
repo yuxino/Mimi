@@ -3,7 +3,7 @@ import type { SupplementalCopy } from './supplemental-schema';
 export const SUPPLEMENTAL = {
   applicationAudio_copy: {
     title: "오디오 캡처 대상", all: "모든 앱", application: "앱",
-    search: "앱 검색", refresh: "앱 새로고침", loading: "앱 불러오는 중…",
+    search: "앱 검색", refresh: "앱 새로고침", refreshed: "앱 목록을 새로고쳤습니다.", loading: "앱 불러오는 중…",
     empty: "앱을 찾을 수 없습니다. 앱을 연 다음 새로고침하세요.", noMatch: "일치하는 앱이 없습니다.", missing: "사용 불가",
     unavailable: "선택한 앱을 더 이상 사용할 수 없습니다. 앱을 열고 다시 선택하거나 모든 앱을 선택하세요.",
     unsupported: "앱별 오디오 캡처는 macOS와 Windows 11(빌드 20348 이상)에서 사용할 수 있습니다.",
@@ -13,7 +13,7 @@ export const SUPPLEMENTAL = {
   },
   playbackStream_copy: {
     title: "오디오 스트림 캡처", all: "모든 시스템 소리", application: "오디오 스트림",
-    search: "오디오 스트림 검색", refresh: "오디오 스트림 새로고침", loading: "오디오 스트림 불러오는 중…",
+    search: "오디오 스트림 검색", refresh: "오디오 스트림 새로고침", refreshed: "오디오 스트림 목록을 새로고쳤습니다.", loading: "오디오 스트림 불러오는 중…",
     empty: "오디오 스트림이 없습니다. 소리를 재생한 후 새로고침하세요.", noMatch: "일치하는 오디오 스트림이 없습니다.", missing: "사용 불가",
     unavailable: "선택한 오디오 스트림을 사용할 수 없습니다. 소리를 재생하고 다시 선택하거나 모든 시스템 소리를 선택하세요.",
     unsupported: "오디오 스트림 캡처에는 Linux의 PulseAudio 또는 PipeWire-Pulse가 필요합니다.",
