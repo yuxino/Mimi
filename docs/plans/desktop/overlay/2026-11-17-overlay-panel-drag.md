@@ -25,6 +25,58 @@ limit must not disable movement or take over the scrollbar's gesture.
 
 The subtitle overlay owns the user frame. A detached panel may invoke the existing `overlay_move_start` command while the native mode is Panel and both presentation locks are off. The command selects the subtitle root before recording drag intent. Existing native root movement keeps the panel attached on AppKit and follows it through geometry events on Windows and X11. On Wayland the panel already shares the same window and uses the compositor's move gesture.
 
+On Windows, this panel-authored native move transfers foreground and keyboard
+focus from the control to the subtitle root. This is an internal gesture rather
+than click-away. While the focused panel owns that gesture, retire an older
+scheduled dismissal and preserve the expanded surface. Observe actual move-mode
+ownership and button release: outline dragging can defer all movement until
+release, and a short click or cancelled drag can produce no Moved event. This
+observer exists only for that gesture. On completion, return keyboard ownership
+to the same control only if the owning root is still foreground. Settings or
+another application's foreground dismisses without reactivating Mimi. Attempt
+ordinary Win32 foreground restoration once; do not use Tao's force-focus retry
+(which can inject Alt). A refusal leaves the compact entry, not an unfocused
+expanded panel. Explicitly opening controls retains its existing focus path.
+
+A cross-WebView press can release before the root acquires capture. The hosted
+WinEvent trace observed the root remain in its move modal after stationary,
+3-pixel and 48-pixel quick gestures. Only the current owned gesture may forward
+the already-released button once to the original root, while it is foreground,
+owns capture and is still in its native move modal. That modal consumes the
+actual screen point: a client-relative point committed the outline to (0, 0),
+while the screen-point control preserved 0, 3 and 48 pixels respectively.
+Polling the cursor after up is insufficient: moving it 30 pixels immediately
+after a stationary release moved the window those extra 30 pixels. The gesture
+therefore holds a release-point lease only while the primary button is held and
+native root capture is not established. It reads the first owned up and removes
+the hook immediately, without reading other mouse payloads. Target WebView2
+input is in another process, so the app's own window message queue does not
+cover this boundary. Cancellation, a new move intent and teardown retire the
+lease; a startup still without native capture expires after 30 seconds. Native
+end messages are queued on the main thread under the current gesture token,
+so a closed or subsequent gesture cannot consume an earlier release.
+
+Normal release preserves outline displacement without synthesizing system input. A queued
+panel press whose physical button is already released must not start a new OS
+move. Continue to wait for native completion before restoring panel focus.
+Tao posts the move request to the window thread. If the owned button release
+arrives before that thread processes the request, retain its position through
+that queue turn. Once the thread has handled the request, a click that never
+entered a move loop can finish normally.
+Keep the original long-drag and 15ms stationary-press assertions, plus quick
+3-pixel and 48-pixel moves, immediate pointer movement after release, and an
+ordinary blank click.
+
+Mode changes, lock, collapse, Stop and explicit dismissal retire gesture
+ownership. A late completion must not reopen a closed or newly opened panel.
+Focus-loss scheduling and Panel-to-Island transitions check their generation and
+current mode atomically at the state owner, so a stale timer cannot replace a
+new drag or Hidden presentation. Native acceptance includes the same 48-pixel
+middle-blank gesture, a short stationary press, subsequent real language
+selection and true external click-away. Keep screenshot/video pixels restricted
+to the offline test windows and a neutral background; report actual frame PTS
+and capture gaps instead of assuming the requested frame rate.
+
 On macOS the press must stay anchored to its position inside the subtitle root.
 A stationary click must leave both the root and its attached language control
 in place, including when the pointer is over a visible subtitle glyph. A drag

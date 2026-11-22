@@ -134,6 +134,13 @@ pub fn overlay_move_start(
     }
     #[cfg(not(target_os = "macos"))]
     {
+        #[cfg(target_os = "windows")]
+        let from_panel = window.label() == "overlay-control";
+        #[cfg(target_os = "windows")]
+        if from_panel && !crate::windows::panel_drag_button_down() {
+            // A queued DOM press must not start an OS move after its release.
+            return Ok(());
+        }
         let target = match window.label() {
             "overlay" => window,
             "overlay-control" => {
@@ -153,9 +160,41 @@ pub fn overlay_move_start(
         if !OverlayWindowManager::move_start(&app, &state.overlay) {
             return Ok(());
         }
+        #[cfg(target_os = "windows")]
+        let panel_drag = {
+            // A new native move intent cannot inherit a previous gesture's up
+            // or deferred focus restoration, even while Panel mode stays open.
+            let retired = OverlayControlWindowManager::retire_panel_drag(&app);
+            if retired && !from_panel {
+                OverlayControlWindowManager::schedule_dismiss(&app);
+            }
+            if from_panel {
+                match crate::windows::prepare_panel_drag(&app, &target) {
+                    Ok(Some(drag)) => Some(drag),
+                    Ok(None) => {
+                        OverlayWindowManager::move_cancel(&state.overlay);
+                        return Ok(());
+                    }
+                    Err(()) => {
+                        OverlayWindowManager::move_cancel(&state.overlay);
+                        return Err("Could not start overlay drag.".to_string());
+                    }
+                }
+            } else {
+                None
+            }
+        };
         if target.start_dragging().is_err() {
+            #[cfg(target_os = "windows")]
+            if let Some(drag) = panel_drag {
+                drag.cancel(&app);
+            }
             OverlayWindowManager::move_cancel(&state.overlay);
             return Err("Could not start overlay drag.".to_string());
+        }
+        #[cfg(target_os = "windows")]
+        if let Some(drag) = panel_drag {
+            drag.observe(&app);
         }
         Ok(())
     }
