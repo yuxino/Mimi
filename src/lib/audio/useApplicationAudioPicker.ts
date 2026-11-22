@@ -14,10 +14,15 @@ function currentTargetKey() {
   return target?.kind === "application" ? target.id : "";
 }
 
+interface PickerFeedback {
+  beginToast: () => (message: string, failure?: boolean) => void;
+  clearToast: () => void;
+}
+
 /** Selectable lists load on user intent. The chosen application's local icon
  * can refresh silently without permission or capture. Linux only reads already
  * discovered streams; it never initializes discovery in the background. */
-export function useApplicationAudioPicker(disabled = false, externalBusy = false) {
+export function useApplicationAudioPicker(disabled: boolean, externalBusy: boolean, { beginToast, clearToast }: PickerFeedback) {
   const target = useStore(state => state.settings.systemAudioTarget) ?? { kind: "system" as const };
   const ready = useStore(state => state.initializationStatus === "ready");
   const status = useStore(state => state.session.status.kind);
@@ -27,7 +32,7 @@ export function useApplicationAudioPicker(disabled = false, externalBusy = false
   const [icons, setIcons] = useState(applicationIconCache.read);
   const [loadingState, setLoading] = useState({ targetKey, ready, active: false });
   const [pending, setPending] = useState(false);
-  const [failure, setFailure] = useState<{ targetKey: string; message: string } | null>(null);
+  const feedbackTarget = useRef(targetKey);
   const snapshotRef = useRef(snapshot);
   const snapshotRevision = useRef(0);
   const mounted = useRef(false);
@@ -59,6 +64,9 @@ export function useApplicationAudioPicker(disabled = false, externalBusy = false
   const text = applicationAudioCopy();
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => { snapshotRef.current = snapshot; }, [snapshot]);
+  useEffect(() => {
+    if (!ready || feedbackTarget.current !== targetKey) clearToast();
+  }, [targetKey, ready, clearToast]);
   useEffect(() => {
     const previous = generation.current;
     if (previous.targetKey !== targetKey || previous.ready !== ready) {
@@ -94,8 +102,6 @@ export function useApplicationAudioPicker(disabled = false, externalBusy = false
   const loading = loadingState.targetKey === targetKey && loadingState.ready === ready && loadingState.active;
   // An external window can choose a newly opened application. Its new target
   // is not missing merely because this window has an older enumeration.
-  if (failure && failure.targetKey !== targetKey) setFailure(null);
-  const error = failure?.targetKey === targetKey ? failure.message : null;
   const supported = snapshot?.value.supported ?? (!isTauri || /Mac|Windows|Linux/i.test(navigator.userAgent));
   const unavailable = disabled || !ready;
   const busy = externalBusy || pending || status === "connecting" || status === "stopping";
@@ -112,26 +118,30 @@ export function useApplicationAudioPicker(disabled = false, externalBusy = false
     label: (names.get(app.name) ?? 0) > 1 && app.id.startsWith("windows:") ? `${app.name} · ${app.id.split(":")[1]}` : app.name,
   }))];
 
-  async function refresh(reportFailure?: (message: string) => void) {
+  async function refresh(intent: "open" | "refresh") {
     if (listing.current !== null || locked || !supported) return;
     const owner = generation.current.value;
     const current = () => mounted.current && owner === generation.current.value && currentTargetKey() === targetKey;
     listing.current = owner;
+    // Opening the menu may share a pending button refresh. Reserve feedback
+    // only for the request we actually start.
+    feedbackTarget.current = targetKey;
+    const notify = beginToast();
     // A late cached-only result cannot replace this explicit enumeration.
     snapshotRevision.current += 1;
     setLoading({ targetKey, ready, active: true });
-    setFailure(null);
     try {
       const value = await readSnapshot(false, owner);
       if (current()) {
         setIcons(applicationIconCache.read());
         setSnapshot({ targetKey, value });
+        if (!value.supported) notify(text.unsupported, true);
+        else if (intent === "refresh") notify(value.applications.length ? text.refreshed : text.empty);
       }
     } catch {
       if (current()) {
         setIcons(applicationIconCache.read());
-        if (reportFailure) reportFailure(text.failed);
-        else setFailure({ targetKey, message: text.failed });
+        notify(text.failed, true);
       }
     } finally {
       if (listing.current === owner) {
@@ -141,13 +151,14 @@ export function useApplicationAudioPicker(disabled = false, externalBusy = false
     }
   }
 
-  async function choose(id: string, reportFailure?: (message: string) => void) {
+  async function choose(id: string) {
     if (locked || switching.current || id === selected) return;
     const app = applications.find(app => app.id === id);
     if (id && !app) return;
     switching.current = true;
     setPending(true);
-    setFailure(null);
+    feedbackTarget.current = id;
+    const notify = beginToast();
     try {
       await switchTarget(app ? { kind: "application", id: app.id, name: app.name } : { kind: "system" });
     } catch (failure) {
@@ -159,8 +170,8 @@ export function useApplicationAudioPicker(disabled = false, externalBusy = false
       const currentKey = current?.kind === "application" ? current.id : "";
       if (mounted.current && (currentKey === id || currentKey === targetKey)) {
         const safeMessage = applicationAudioError(message) ?? audioInputErrorMessage(message) ?? audioSourceErrorMessage(message) ?? text.saveFailed;
-        if (reportFailure) reportFailure(safeMessage);
-        else setFailure({ targetKey: currentKey, message: safeMessage });
+        feedbackTarget.current = currentKey;
+        notify(safeMessage, true);
       }
     } finally {
       switching.current = false;
@@ -168,7 +179,7 @@ export function useApplicationAudioPicker(disabled = false, externalBusy = false
     }
   }
 
-  return { text, selected, valueLabel, selectedIconDataUrl: icons.get(selected), options, loading, pending, error, missing, supported, unavailable, busy, locked,
+  return { text, selected, valueLabel, selectedIconDataUrl: icons.get(selected), options, loading, pending, missing, supported, unavailable, busy, locked,
     empty: snapshot?.value.supported === true && applications.length === 0,
     refresh, choose };
 }

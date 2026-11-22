@@ -3,7 +3,7 @@ import type { SupplementalCopy } from './supplemental-schema';
 export const SUPPLEMENTAL = {
   applicationAudio_copy: {
     title: "擷取聲音來源", all: "全部應用程式", application: "應用程式",
-    search: "搜尋應用程式", refresh: "重新整理應用程式清單", loading: "正在載入應用程式…",
+    search: "搜尋應用程式", refresh: "重新整理應用程式清單", refreshed: "已重新整理應用程式清單。", loading: "正在載入應用程式…",
     empty: "沒有找到應用程式，請開啟目標應用程式後重新整理。", noMatch: "沒有符合條件的應用程式。", missing: "不可用",
     unavailable: "所選應用程式已不可用，請開啟應用程式後重新選擇，或選擇全部應用程式。",
     unsupported: "應用程式聲音擷取支援 macOS 和 Windows 11（build 20348 及以上）。",
@@ -12,7 +12,7 @@ export const SUPPLEMENTAL = {
   },
   playbackStream_copy: {
     title: "擷取音訊串流", all: "全部系統音訊", application: "音訊串流",
-    search: "搜尋音訊串流", refresh: "重新整理音訊串流", loading: "正在載入音訊串流…",
+    search: "搜尋音訊串流", refresh: "重新整理音訊串流", refreshed: "已重新整理音訊串流清單。", loading: "正在載入音訊串流…",
     empty: "找不到音訊串流，請先播放聲音再重新整理。", noMatch: "沒有符合的音訊串流。", missing: "無法使用",
     unavailable: "所選音訊串流已無法使用，請播放聲音後重新選擇，或選擇全部系統音訊。",
     unsupported: "音訊串流擷取需要 Linux 上的 PulseAudio 或 PipeWire-Pulse。",

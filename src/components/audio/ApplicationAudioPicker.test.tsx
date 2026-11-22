@@ -7,6 +7,7 @@ import { ApplicationAudioPicker } from "./ApplicationAudioPicker";
 import { applicationIconCache } from "../../lib/audio/applicationAudioIcons";
 import { applicationAudioCopy, type ApplicationSnapshot } from "../../lib/audio/applicationAudio";
 import { useStore } from "../../lib/store";
+import { SettingsToastRegion } from "../../windows/settings/feedback/SettingsToast";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../../lib/ipc", async original => ({ ...await original<typeof import("../../lib/ipc")>(), isTauri: true }));
@@ -31,7 +32,9 @@ afterEach(async () => {
   await act(async () => root.unmount()); host.remove(); useStore.setState(initial, true);
   applicationIconCache.clear(); vi.unstubAllGlobals();
 });
-async function mount(visible = true) { await act(async () => root.render(visible ? <ApplicationAudioPicker /> : null)); }
+async function mount(visible = true) {
+  await act(async () => root.render(<><SettingsToastRegion />{visible && <ApplicationAudioPicker />}</>));
+}
 function trigger() { return host.querySelector<HTMLButtonElement>('button[role="combobox"]')!; }
 function icon() { return trigger().querySelector('img')?.getAttribute("src"); }
 function refreshButton() { return host.querySelector<HTMLButtonElement>('.application-audio-picker__refresh')!; }
@@ -72,7 +75,7 @@ it("marks a target switch as busy and retains the same available controls after 
   expect(refreshButton().getAttribute("aria-busy")).toBe("true");
   expect(refreshButton().hasAttribute("data-refreshing")).toBe(false);
   expect(document.querySelector(".mimi-select__menu")).toBeNull();
-  await act(() => reject(new Error("private-save-error")));
+  await act(async () => reject(new Error("private-save-error")));
   expect(button.disabled).toBe(false);
   expect(button.hasAttribute("aria-busy")).toBe(false);
   expect(refreshButton().disabled).toBe(false);
@@ -181,9 +184,10 @@ it("keeps background failures silent while a manual refresh still reports a safe
   vi.mocked(invoke).mockRejectedValue(new Error("synthetic-private-error"));
   await mount();
   expect(icon()).toBeUndefined();
-  expect(host.querySelector('[role="alert"]')).toBeNull();
+  expect(host.querySelector(".settings-toast")).toBeNull();
   await act(async () => host.querySelector<HTMLButtonElement>('.application-audio-picker__refresh')!.click());
-  expect(host.querySelector('[role="alert"]')?.textContent).toBe(applicationAudioCopy().failed);
+  expect(host.querySelector('.settings-toast[role="alert"]')?.textContent).toBe(applicationAudioCopy().failed);
+  expect(host.querySelector('.application-audio-picker [role="alert"]')).toBeNull();
   expect(host.textContent).not.toContain("synthetic-private-error");
   expect(switchTarget).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled();
 });
@@ -260,6 +264,7 @@ it("ignores a previous target's late refresh failure after an external target ch
   expect(icon()).toBe(chat.iconDataUrl);
   expect(applicationIconCache.read().get(chat.id)).toBe(chat.iconDataUrl);
   expect(host.querySelector('[role="alert"]')).toBeNull();
+  expect(host.querySelector(".settings-toast")).toBeNull();
   expect(host.textContent).not.toContain("synthetic-private-error");
 });
 
@@ -278,7 +283,22 @@ it("does not accept a refresh from the first visit after an external target chan
   expect(icon()).toBe(currentIcon);
   expect(trigger().textContent).toBe(player.name);
   expect(host.querySelector('[role="alert"]')).toBeNull();
+  expect(host.querySelector(".settings-toast")).toBeNull();
   expect(refreshButton().disabled).toBe(false);
+});
+
+it.each(["success", "failure"] as const)("does not announce a refresh's late %s after the picker unmounts", async result => {
+  await mount();
+  const pending = deferred();
+  vi.mocked(invoke).mockReturnValueOnce(pending.promise);
+  await act(async () => refreshButton().click());
+  expect(refreshButton().disabled).toBe(true);
+  await mount(false);
+  await act(async () => {
+    if (result === "success") pending.resolve(snapshot);
+    else pending.reject(new Error("stale-error"));
+  });
+  expect(host.querySelector(".settings-toast")).toBeNull();
 });
 
 it("ignores an old unmounted read when a reopened panel already received newer icons", async () => {

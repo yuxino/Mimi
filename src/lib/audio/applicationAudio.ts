@@ -8,7 +8,7 @@ const copy = {
   en: SUPPLEMENTAL_EN.applicationAudio_copy,
   zh: {
     title: "采集应用", all: "全部应用", application: "应用",
-    search: "搜索应用", refresh: "刷新应用列表", loading: "正在加载应用…",
+    search: "搜索应用", refresh: "刷新应用列表", refreshed: "应用列表已刷新。", loading: "正在加载应用…",
     empty: "没有找到应用，请打开目标应用后刷新。", noMatch: "没有匹配的应用。", missing: "不可用",
     unavailable: "所选应用已不可用，请打开应用后重新选择，或选择全部应用。",
     unsupported: "应用声音采集支持 macOS 和 Windows 11（build 20348 及以上）。",
@@ -17,7 +17,7 @@ const copy = {
   },
   ja: {
     title: "音声を取得するアプリ", all: "すべてのアプリ", application: "アプリ",
-    search: "アプリを検索", refresh: "アプリ一覧を更新", loading: "アプリを読み込み中…",
+    search: "アプリを検索", refresh: "アプリ一覧を更新", refreshed: "アプリ一覧を更新しました。", loading: "アプリを読み込み中…",
     empty: "アプリが見つかりません。対象のアプリを開いて更新してください。", noMatch: "一致するアプリがありません。", missing: "利用不可",
     unavailable: "選択したアプリを利用できません。アプリを開いて選び直すか、すべてのアプリを選択してください。",
     unsupported: "アプリ音声の取得は macOS と Windows 11（ビルド 20348 以降）に対応しています。",
@@ -30,7 +30,7 @@ const playbackStreamCopy = {
   en: SUPPLEMENTAL_EN.playbackStream_copy,
   zh: {
     title: "采集音频流", all: "全部系统声音", application: "音频流",
-    search: "搜索音频流", refresh: "刷新音频流", loading: "正在加载音频流…",
+    search: "搜索音频流", refresh: "刷新音频流", refreshed: "音频流列表已刷新。", loading: "正在加载音频流…",
     empty: "没有找到音频流，请先播放声音再刷新。", noMatch: "没有匹配的音频流。", missing: "不可用",
     unavailable: "所选音频流已不可用，请播放声音后重新选择，或选择全部系统声音。",
     unsupported: "音频流采集需要 Linux 上的 PulseAudio 或 PipeWire-Pulse。",
@@ -39,7 +39,7 @@ const playbackStreamCopy = {
   },
   ja: {
     title: "取得する音声ストリーム", all: "すべてのシステム音声", application: "音声ストリーム",
-    search: "音声ストリームを検索", refresh: "音声ストリームを更新", loading: "音声ストリームを読み込み中…",
+    search: "音声ストリームを検索", refresh: "音声ストリームを更新", refreshed: "音声ストリーム一覧を更新しました。", loading: "音声ストリームを読み込み中…",
     empty: "音声ストリームがありません。音を再生して更新してください。", noMatch: "一致する音声ストリームがありません。", missing: "利用不可",
     unavailable: "この音声ストリームは利用できません。音を再生して選び直すか、すべてのシステム音声を選択してください。",
     unsupported: "音声ストリームの取得には Linux の PulseAudio または PipeWire-Pulse が必要です。",
