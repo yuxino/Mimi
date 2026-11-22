@@ -83,8 +83,8 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
             await { activePackage() == context.packageName }
             check(!MimiService.isStarting && !MimiService.isRunning)
             if (video == null) context.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            else shell("am start -W -a android.intent.action.VIEW -d content://media/external/video/media/$video " +
-                "-t video/mp4 --grant-read-uri-permission")
+            else shell("am start -W --user current -a android.intent.action.VIEW " +
+                "-d content://media/external/video/media/$video -t video/mp4")
             await { activePackage()?.let { it != context.packageName && it != "com.android.systemui" } == true }
             val previousApp = checkNotNull(activePackage())
 
@@ -162,7 +162,8 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
             await { edge(start) != null }
             check(!MimiService.isStarting && !MimiService.isRunning && activePackage() == previousApp)
             shot("07-edge-expanded")
-            tap(checkNotNull(edge(start)))
+            stage = "start from the visible edge command"
+            tap(edgeCommand(start))
             waitForConsent()
             consent.respondToEmulatorConsent(true)
             await { MimiService.isRunning && activePackage() == previousApp }
@@ -184,7 +185,12 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
             tap(checkNotNull(edge(tucked)))
             val stop = label(R.string.stop_capture)
             await { edge(stop) != null && MimiService.isRunning }
-            tap(checkNotNull(edge(stop)))
+            val character = checkNotNull(edge(stop))
+            tap(character)
+            val stopCommand = edgeCommand(stop)
+            check(MimiService.isRunning && !MimiService.isStopping &&
+                !stopCommand.contains(character.centerX(), character.centerY()))
+            tap(stopCommand)
             stopped()
             if (args?.getString("screen_lock_resume") == "true") checkResumeAfterUnlock(previousApp, chunks)
             check(chunks.get() > 0 && (video == null || nonzeroChunks.get() > 0))
@@ -323,7 +329,24 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
             stage = "unlock offers resume without starting capture"
             shell("input keyevent KEYCODE_WAKEUP")
             shell("wm dismiss-keyguard")
-            await { power.isInteractive && !keyguard.isKeyguardLocked && hasNotification("caption_shortcuts") }
+            try {
+                await { power.isInteractive && !keyguard.isKeyguardLocked && hasNotification("caption_shortcuts") }
+            } catch (timeout: IllegalStateException) {
+                var diagnostic = ""
+                onMain {
+                    // Read only on failure in the unminified debug APK. Keep the private
+                    // continuation out of the product API and leave the original timing alone.
+                    val pending = runCatching {
+                        val field = host.javaClass.getDeclaredField("continuation").apply { isAccessible = true }
+                        (field.get(host) as CaptionUnlockContinuation).pending.toString()
+                    }.getOrDefault("unavailable")
+                    diagnostic = "interactive=${power.isInteractive},keyguard=${keyguard.isKeyguardLocked}," +
+                        "deviceLocked=${keyguard.isDeviceLocked},canPost=${CaptionShortcutNotification.canPost(context)}," +
+                        "shortcutsNotice=${hasNotification("caption_shortcuts")},idleOptIn=${host.showNotification}," +
+                        "pending=$pending,running=${MimiService.isRunning},lastCaptureError=${MimiService.lastCaptureError}"
+                }
+                throw IllegalStateException("${timeout.message}; $diagnostic", timeout)
+            }
             check(!MimiService.isRunning && !MimiService.isStarting && chunks.get() == stoppedAt)
             shell("cmd statusbar expand-notifications")
             tapSystem(label(R.string.shortcut_resume_captions), "10-unlock-resume")
@@ -393,13 +416,18 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
     private fun edge(description: String): Rect? {
         var bounds: Rect? = null
         onMain {
-            val view = WindowInspector.getGlobalWindowViews().firstOrNull { it.isShown && it.contentDescription == description }
-            if (view != null) {
-                val p = IntArray(2).also(view::getLocationOnScreen)
-                bounds = Rect(p[0], p[1], p[0] + view.width, p[1] + view.height)
-            }
+            bounds = CaptionShortcutWindows.character(description, dp(48))?.let(CaptionShortcutWindows::bounds)
         }
         return bounds
+    }
+
+    private fun edgeCommand(label: String): Rect {
+        var bounds: Rect? = null
+        await {
+            onMain { bounds = CaptionShortcutWindows.command(label)?.let(CaptionShortcutWindows::bounds) }
+            bounds != null
+        }
+        return checkNotNull(bounds)
     }
 
     /** Android returns focus to the player before SystemUI releases its full-screen touch region. */

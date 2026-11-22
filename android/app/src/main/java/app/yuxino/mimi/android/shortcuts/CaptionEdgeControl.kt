@@ -5,7 +5,6 @@ import android.content.BroadcastReceiver
 import android.content.ComponentCallbacks
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.hardware.display.DisplayManager
@@ -18,7 +17,6 @@ import android.util.Log
 import android.view.Display
 import android.view.WindowManager
 import android.widget.Toast
-import androidx.core.content.ContextCompat
 import app.yuxino.mimi.android.R
 import app.yuxino.mimi.android.capture.MimiService
 import app.yuxino.mimi.android.localization.InterfaceLanguage
@@ -48,12 +46,7 @@ internal class CaptionEdgeControl(context: Context, private val preferences: Sha
         if (enabled == value) return
         enabled = value
         if (value) {
-            val filter = IntentFilter().apply {
-                addAction(Intent.ACTION_SCREEN_OFF)
-                addAction(Intent.ACTION_SCREEN_ON)
-                addAction(Intent.ACTION_USER_PRESENT)
-            }
-            ContextCompat.registerReceiver(app, screen, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+            app.registerCaptionScreenEvents(screen)
             app.registerComponentCallbacks(configuration)
             MimiService.addStateListener(sessionChanged)
             main.post(reconcile)

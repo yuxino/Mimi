@@ -23,9 +23,12 @@ internal class CaptionShortcutHost(private val application: Application) {
     private val main = Handler(Looper.getMainLooper())
     private val refreshNotification = Runnable { updateNotification() }
     private var observingNotification = false
-    private val notificationEvents = object : BroadcastReceiver() {
+    private val screenEvents = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) = updateNotification()
+    }
+    private val noticeDismissed = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == CaptionShortcutNotification.ACTION_DISMISSED) continuation.dismiss()
+            continuation.dismiss()
             updateNotification()
         }
     }
@@ -61,17 +64,15 @@ internal class CaptionShortcutHost(private val application: Application) {
         if (enabled) {
             MimiService.addStateListener(onSessionChanged)
             InterfaceLanguage.addListener(onSessionChanged)
-            ContextCompat.registerReceiver(application, notificationEvents, IntentFilter().apply {
-                addAction(Intent.ACTION_USER_PRESENT)
-                addAction(Intent.ACTION_SCREEN_ON)
-                addAction(Intent.ACTION_SCREEN_OFF)
-                addAction(CaptionShortcutNotification.ACTION_DISMISSED)
-            }, ContextCompat.RECEIVER_NOT_EXPORTED)
+            application.registerCaptionScreenEvents(screenEvents)
+            ContextCompat.registerReceiver(application, noticeDismissed,
+                IntentFilter(CaptionShortcutNotification.ACTION_DISMISSED), ContextCompat.RECEIVER_NOT_EXPORTED)
         } else {
             MimiService.removeStateListener(onSessionChanged)
             InterfaceLanguage.removeListener(onSessionChanged)
             main.removeCallbacks(refreshNotification)
-            application.unregisterReceiver(notificationEvents)
+            application.unregisterReceiver(screenEvents)
+            application.unregisterReceiver(noticeDismissed)
         }
     }
 

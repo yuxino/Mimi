@@ -17,6 +17,7 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import androidx.core.animation.doOnEnd
 import androidx.core.view.ViewCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat
 import app.yuxino.mimi.android.R
 import app.yuxino.mimi.android.localization.InterfaceLanguage
 import kotlin.math.roundToInt
@@ -32,6 +33,8 @@ internal class CaptionEdgeWindow(
         override fun getAccessibilityClassName(): CharSequence = ImageButton::class.java.name
     }
     private val artwork = CaptionEdgeArtwork(context)
+    private val command = CaptionEdgeCommand(context)
+    private var side = initial.nearestSide()
     private val accessibility = context.getSystemService(AccessibilityManager::class.java)
     private val touchSize = dp(48)
     private val slop = ViewConfiguration.get(context).scaledTouchSlop
@@ -47,6 +50,7 @@ internal class CaptionEdgeWindow(
             setFitInsetsIgnoringVisibility(true)
         }
     }
+    private val commandParams = WindowManager.LayoutParams().apply { copyFrom(params) }
     private var travelX = 0
     private var travelY = 0
     private var added = false
@@ -55,7 +59,7 @@ internal class CaptionEdgeWindow(
     private var settling: ValueAnimator? = null
     private var currentLabel = 0
     private val updateFrame = Runnable { if (added) measureFrame() }
-    private val tuck = Runnable { dock(placement.nearest(travelX, travelY), animate = true) }
+    private val tuck = Runnable { dock(placement.nearestSide(), animate = true) }
     private val explorationChanged = AccessibilityManager.TouchExplorationStateChangeListener {
         if (it) { cancelSettle(); present(null) }
         scheduleTuck()
@@ -63,26 +67,47 @@ internal class CaptionEdgeWindow(
 
     init {
         button.addView(artwork, FrameLayout.LayoutParams(touchSize, touchSize))
+        artwork.face(side)
+        command.setOnClickListener {
+            if (command.isEnabled && command.isShown) {
+                toggle()
+                scheduleTuck()
+            }
+        }
+        command.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> button.removeCallbacks(tuck)
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> scheduleTuck()
+            }
+            false
+        }
         button.isFocusable = true
         button.filterTouchesWhenObscured = true
         // An inward drag on a docked button shares the system Back gesture's starting edge.
         button.systemGestureExclusionRects = listOf(Rect(0, 0, touchSize, touchSize))
         button.setOnClickListener {
-            if (tucked != null) present(null) else toggle()
+            present(null)
             scheduleTuck()
         }
-        @SuppressLint("ClickableViewAccessibility") // Real taps and TalkBack both use the view's ordinary performClick.
+        // The portrait and label share one screen-reader target so focus stays on it
+        // when the label opens. A physical tap on the portrait only reveals the label.
+        ViewCompat.replaceAccessibilityAction(button, AccessibilityActionCompat.ACTION_CLICK, null) { _, _ ->
+            if (!button.isEnabled) false else {
+                if (tucked == null) toggle() else button.performClick()
+                scheduleTuck()
+                true
+            }
+        }
+        @SuppressLint("ClickableViewAccessibility") // Completed taps use the portrait's ordinary performClick.
         button.setOnTouchListener { _, event -> touch(event) }
         button.setOnApplyWindowInsetsListener { _, insets ->
             button.post(updateFrame)
             insets
         }
         ViewCompat.addAccessibilityAction(button, InterfaceLanguage.context(context).getString(R.string.caption_edge_move)) { _, _ ->
-            val edge = when (placement.nearest(travelX, travelY)) {
+            val edge = when (placement.nearestSide()) {
                 CaptionEdge.LEFT -> CaptionEdge.RIGHT
                 CaptionEdge.RIGHT -> CaptionEdge.LEFT
-                CaptionEdge.TOP -> CaptionEdge.BOTTOM
-                CaptionEdge.BOTTOM -> CaptionEdge.TOP
             }
             button.removeCallbacks(tuck)
             dock(edge)
@@ -92,11 +117,19 @@ internal class CaptionEdgeWindow(
     }
 
     fun show() {
-        present(null)
+        placement = placement.dock(side)
+        tucked = side
         refreshAction()
         measureFrame()
         manager.addView(button, params)
+        try {
+            manager.addView(command, commandParams)
+        } catch (failure: RuntimeException) {
+            manager.removeViewImmediate(button)
+            throw failure
+        }
         added = true
+        present(if (accessibility.isTouchExplorationEnabled) null else side)
         accessibility.addTouchExplorationStateChangeListener(explorationChanged)
         scheduleTuck()
     }
@@ -108,10 +141,10 @@ internal class CaptionEdgeWindow(
         button.removeCallbacks(tuck)
         button.removeCallbacks(updateFrame)
         gesture = null
-        try {
-            manager.removeViewImmediate(button)
-        } catch (_: IllegalArgumentException) {
-            // WindowManager may already have removed this display's window.
+        for (view in listOf(command, button)) {
+            try { manager.removeViewImmediate(view) } catch (_: IllegalArgumentException) {
+                // A removed display may have already released either window.
+            }
         }
     }
 
@@ -128,8 +161,9 @@ internal class CaptionEdgeWindow(
         if (gesture != null) endPress()
         button.isEnabled = state == CaptionShortcutState.INACTIVE || state == CaptionShortcutState.ACTIVE
         describeAction()
-        val stop = state == CaptionShortcutState.ACTIVE || state == CaptionShortcutState.STOPPING
-        artwork.setStop(stop)
+        command.setLabel(InterfaceLanguage.context(context).getString(label))
+        command.isEnabled = button.isEnabled
+        updateCommand()
         val status = when (state) {
             CaptionShortcutState.INACTIVE -> R.string.shortcut_captions_off
             CaptionShortcutState.ACTIVE -> R.string.notification_title
@@ -170,17 +204,47 @@ internal class CaptionEdgeWindow(
     private fun moveWindow() {
         val x = placement.left(travelX)
         val y = placement.top(travelY)
-        artwork.place(x, travelX - x, y, travelY - y)
-        if (params.x == x && params.y == y) return
-        params.x = x
-        params.y = y
-        if (added) manager.updateViewLayout(button, params)
+        if (params.x != x || params.y != y) {
+            params.x = x
+            params.y = y
+            if (added) manager.updateViewLayout(button, params)
+        }
+        updateCommand()
     }
 
     private fun present(edge: CaptionEdge?) {
         tucked = edge
-        artwork.showAction(edge == null)
         describeAction()
+        updateCommand()
+    }
+
+    private fun updateCommand() {
+        if (!added) return
+        if (tucked != null || gesture?.dragging == true) {
+            command.visibility = View.GONE
+            return
+        }
+        // The bubble starts just beyond the visible 20 dp portrait. Its center and the
+        // portrait's center lie in separate touch areas even on the compact docked edge.
+        val rightSide = side == CaptionEdge.RIGHT
+        val gap = dp(30)
+        val end = params.x + touchSize - gap
+        val start = params.x + gap
+        val available = if (rightSide) end else travelX + touchSize - start
+        val width = command.measuredWidthWithin(available)
+        val x = if (rightSide) end - width else start
+        if (commandParams.x != x || commandParams.y != params.y || commandParams.width != width) {
+            commandParams.x = x
+            commandParams.y = params.y
+            commandParams.width = width
+            manager.updateViewLayout(command, commandParams)
+        }
+        command.visibility = View.VISIBLE
+    }
+
+    private fun face(edge: CaptionEdge) {
+        side = edge
+        artwork.face(edge)
     }
 
     private fun cancelSettle() {
@@ -191,6 +255,7 @@ internal class CaptionEdgeWindow(
 
     private fun dock(edge: CaptionEdge, animate: Boolean = false) {
         cancelSettle()
+        if (gesture == null) face(edge)
         val from = placement
         val target = from.dock(edge)
         if (!animate || from == target || !ValueAnimator.areAnimatorsEnabled()) {
@@ -227,7 +292,10 @@ internal class CaptionEdgeWindow(
         val dragged = gesture?.dragging == true
         gesture = null
         button.isPressed = false
-        if (dragged) artwork.showAction(tucked == null)
+        if (dragged) {
+            face(placement.nearestSide())
+            updateCommand()
+        }
         scheduleTuck()
     }
 
@@ -235,9 +303,8 @@ internal class CaptionEdgeWindow(
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 button.removeCallbacks(tuck)
-                val revealing = tucked != null || settling != null
                 cancelSettle()
-                gesture = CaptionEdgeGesture(event.rawX, event.rawY, slop, params.x, params.y, startedTucked = revealing)
+                gesture = CaptionEdgeGesture(event.rawX, event.rawY, slop, params.x, params.y)
                 button.isPressed = true
                 present(null)
             }
@@ -249,14 +316,14 @@ internal class CaptionEdgeWindow(
                 }
                 if (press.update(event.rawX, event.rawY)) {
                     button.isPressed = false
-                    artwork.showAction(false)
+                    if (command.visibility == View.VISIBLE) command.visibility = View.GONE
                     placement = placement.moved(press.left(event.rawX), press.top(event.rawY), travelX, travelY)
                     moveWindow()
                 }
                 if (event.actionMasked == MotionEvent.ACTION_UP) {
                     val inside = event.x >= 0 && event.y >= 0 && event.x < button.width && event.y < button.height
-                    val tap = press.activates(event.eventTime - event.downTime, ViewConfiguration.getLongPressTimeout(), inside)
-                    if (press.dragging) savePosition(placement.dock(placement.nearest(travelX, travelY)))
+                    val tap = press.isTap(event.eventTime - event.downTime, ViewConfiguration.getLongPressTimeout(), inside)
+                    if (press.dragging) savePosition(placement.dock(placement.nearestSide()))
                     endPress()
                     if (tap) button.performClick()
                 }

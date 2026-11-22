@@ -1,9 +1,9 @@
 package app.yuxino.mimi.android.shortcuts
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.animation.ValueAnimator
 import android.app.Activity
 import android.app.Instrumentation
-import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Rect
@@ -20,29 +20,27 @@ import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.WindowManager
-import android.view.inspector.WindowInspector
+import android.view.accessibility.AccessibilityNodeInfo
 import app.yuxino.mimi.android.CaptureProbeActivity
 import app.yuxino.mimi.android.MimiApplication
 import app.yuxino.mimi.android.R
 import app.yuxino.mimi.android.capture.MimiService
 import app.yuxino.mimi.android.localization.InterfaceLanguage
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-/** Actual light-right screen pixels across the normal edge gestures; no capture or provider. */
+/** Uses real overlay windows above an ordinary clickable activity. No service or provider runs. */
 internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
     private val context get() = test.targetContext
     private val host get() = (context.applicationContext as MimiApplication).captionShortcuts
+    private val start get() = InterfaceLanguage.context(context).getString(R.string.start_capture)
+    private val reveal get() = InterfaceLanguage.context(context).getString(R.string.shortcut_reveal_edge)
     private var bounds = Rect()
     private var heldSince: Long? = null
     private var stage = "setup"
     private val touchTrace = mutableListOf<String>()
     private fun dp(value: Int) = (value * context.resources.displayMetrics.density).roundToInt()
-    private fun label(resource: Int) = InterfaceLanguage.context(context).getString(resource)
-    private fun artwork(button: View) = (button as ViewGroup).getChildAt(0) as CaptionEdgeArtwork
-    private fun actionOpacity(art: CaptionEdgeArtwork) = (art.actionOpacity * 255).roundToInt()
+
     private fun ui(action: () -> Unit) {
         var failure: Throwable? = null
         test.runOnMainSync { try { action() } catch (error: Throwable) { failure = error } }
@@ -50,157 +48,142 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
         failure?.let { throw it }
     }
 
-    private fun edge(resource: Int): View {
-        val finalOpacity = if (resource == R.string.shortcut_reveal_edge) 0 else 255
+    private fun <T : Any> await(observe: () -> T?): T {
         val deadline = SystemClock.elapsedRealtime() + 5_000
         do {
-            var found: View? = null
-            ui {
-                found = WindowInspector.getGlobalWindowViews().singleOrNull {
-                    it.isShown && it.contentDescription == label(resource) && it.width == dp(48) && it.height == dp(48)
-                }?.takeIf { actionOpacity(artwork(it)) == finalOpacity }
-            }
-            found?.let { return it }
+            var result: T? = null
+            ui { result = observe() }
+            result?.let { return it }
             SystemClock.sleep(25)
         } while (SystemClock.elapsedRealtime() < deadline)
-        error("edge_stability_timeout: $stage")
+        error("edge_timeout: $stage")
     }
 
-    private fun frame(view: View): Rect = Rect().also { rect ->
+    private fun character(label: String) = await { CaptionShortcutWindows.character(label, dp(48)) }
+    private fun frame(view: View): Rect {
+        lateinit var result: Rect
+        ui { result = CaptionShortcutWindows.bounds(view) }
+        return result
+    }
+
+    private fun commandBounds(right: Boolean, root: Rect): Rect {
+        val command = await { CaptionShortcutWindows.command(start) }
+        val result = frame(command)
+        check(result.height() == dp(48) && result.width() >= dp(48) &&
+            (if (right) result.centerX() < root.left else result.centerX() >= root.right) &&
+            !result.contains(root.centerX(), root.centerY()) && result.centerY() in root.top until root.bottom) { "edge_command_wrong_frame: $stage, $root, $result" }
         ui {
-            val position = IntArray(2).also(view::getLocationOnScreen)
-            rect.set(position[0], position[1], position[0] + view.width, position[1] + view.height)
+            fun hasAccessibilityTarget(view: View): Boolean {
+                if (view.importantForAccessibility == View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS) return false
+                return view.isImportantForAccessibility || (view is ViewGroup &&
+                    (0 until view.childCount).any { hasAccessibilityTarget(view.getChildAt(it)) })
+            }
+            check(!hasAccessibilityTarget(command)) { "edge_command_duplicates_accessible_button" }
+        }
+        return result
+    }
+
+    /** Perform the same framework accessibility action that assistive services send. */
+    private fun clickAccessibleCharacter(label: String) {
+        val automation = test.uiAutomation
+        val originalFlags = automation.serviceInfo.flags
+        automation.serviceInfo = automation.serviceInfo.apply {
+            flags = originalFlags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        }
+        try {
+            // Query outside the UI thread: AccessibilityInteractionClient calls the app
+            // to populate the node and dispatch the action to its accessibility delegate.
+            val deadline = SystemClock.elapsedRealtime() + 5_000
+            do {
+                val matches = automation.windows.mapNotNull { it.root }.filter { it.packageName == context.packageName }
+                    .flatMap { it.findAccessibilityNodeInfosByText(label) }
+                    .filter { it.isVisibleToUser && it.isClickable && it.contentDescription == label }
+                if (matches.isNotEmpty()) {
+                    check(matches.size == 1 && matches.single().performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                        "edge_accessible_click_failed: $stage, matches=${matches.size}"
+                    }
+                    return
+                }
+                SystemClock.sleep(25)
+            } while (SystemClock.elapsedRealtime() < deadline)
+            error("edge_accessible_character_missing: $stage")
+        } finally {
+            automation.serviceInfo = automation.serviceInfo.apply { flags = originalFlags }
         }
     }
 
-    private fun pixels(resource: Int): IntArray {
-        val current = frame(edge(resource))
-        if (bounds.isEmpty) bounds = current
-        check(current == bounds && current.right == context.resources.displayMetrics.widthPixels) { "edge_window_moved: $stage" }
-        return pixels(current)
+    private fun tucked(): View = await {
+        CaptionShortcutWindows.character(reveal, dp(48))?.takeIf { CaptionShortcutWindows.command(start) == null }
     }
 
     private fun pixels(frame: Rect): IntArray {
-        SystemClock.sleep(80) // Let the observed state reach the native compositor.
+        SystemClock.sleep(80) // Wait for the native compositor after the layout/focus observation.
         val screen = checkNotNull(test.uiAutomation.takeScreenshot())
         try {
-            val backdrop = if (frame.left >= dp(8)) frame.left - dp(8) else frame.right + dp(8)
-            check(screen.getPixel(backdrop, frame.centerY()) == LIGHT) { "edge_backdrop_is_not_fixed_light" }
+            val backdropX = if (frame.centerX() > screen.width / 2) dp(8) else screen.width - dp(8)
+            check(screen.getPixel(backdropX, frame.centerY()) == LIGHT) { "edge_backdrop_changed: $stage" }
             return IntArray(frame.width() * frame.height()).also {
                 screen.getPixels(it, 0, frame.width(), frame.left, frame.top, frame.width(), frame.height())
             }
         } finally { screen.recycle() }
     }
 
-    private fun pixelBounds(pixels: IntArray, selected: (Int) -> Boolean): Rect {
-        val result = Rect()
-        for (index in pixels.indices) if (selected(pixels[index])) {
-            val x = index % bounds.width()
-            val y = index / bounds.width()
-            result.union(x, y, x + 1, y + 1)
-        }
-        return result
-    }
-
-    private fun tabBounds(pixels: IntArray): Rect {
-        val tab = pixelBounds(pixels) { it != LIGHT }
-        check(tab.width() in dp(25)..dp(30) && tab.height() in dp(24)..dp(28)) {
-            "edge_tab_size: $stage, $tab"
-        }
-        return tab
-    }
-
-    private fun checkDocked(pixels: IntArray, side: CaptionEdge) {
-        val tab = tabBounds(pixels)
-        for (offset in -dp(5)..dp(5)) {
-            val x = when (side) {
-                CaptionEdge.LEFT -> 0
-                CaptionEdge.RIGHT -> bounds.width() - 1
-                else -> tab.centerX() + offset
-            }
-            val y = when (side) {
-                CaptionEdge.TOP -> 0
-                CaptionEdge.BOTTOM -> bounds.height() - 1
-                else -> tab.centerY() + offset
-            }
-            check(pixels[y * bounds.width() + x] != LIGHT) { "edge_tab_does_not_meet_$side: $stage, $tab" }
+    // The label may overlap the transparent padding of the 48dp hit target. Its window
+    // must never cover a painted part of the character or change pixels outside the label.
+    private fun checkCharacterWithCommand(idle: IntArray, root: Rect, command: Rect) {
+        val expanded = pixels(root)
+        for (index in idle.indices) if (idle[index] != expanded[index]) {
+            val x = root.left + index % root.width()
+            val y = root.top + index / root.width()
+            check(idle[index] == LIGHT && command.contains(x, y)) { "edge_character_changed: $stage at ($x,$y)" }
         }
     }
 
-    // Include antialiasing and rounding around the central 18 x 14.4dp artwork.
-    private fun markArea(tab: Rect) = Rect(
-        tab.centerX() - dp(10), tab.centerY() - dp(8),
-        tab.centerX() + dp(10) + 1, tab.centerY() + dp(8) + 1,
-    )
-
-    private fun waveInk(color: Int) = Color.blue(color) > 120 && Color.blue(color) - Color.red(color) > 35
-
-    private fun waveBounds(pixels: IntArray): Rect {
-        val wave = pixelBounds(pixels, ::waveInk)
-        check(wave.width() >= dp(11) && wave.height() >= dp(4) && markArea(tabBounds(pixels)).contains(wave)) {
-            "edge_wave_missing_or_misplaced: $stage, $wave"
+    private fun characterInk(pixels: IntArray): Rect {
+        val ink = Rect()
+        var painted = 0
+        var dark = 0
+        for (i in pixels.indices) {
+            val color = pixels[i]
+            if (color == LIGHT) continue
+            val x = i % bounds.width()
+            val y = i / bounds.width()
+            ink.union(x, y, x + 1, y + 1)
+            painted++
+            if (maxOf(Color.red(color), Color.green(color), Color.blue(color)) < 80) dark++
         }
-        return wave
+        check(ink.height() in dp(15)..dp(32) && ink.width() in dp(7)..dp(32) && dark < painted / 3) {
+            "edge_character_missing_or_dark_backplate: $stage, ink=$ink painted=$painted dark=$dark"
+        }
+        return ink
     }
 
-    private fun checkOnlyMarkChanged(before: IntArray, after: IntArray) {
-        val tab = tabBounds(before)
-        val mark = markArea(tab)
-        check(tab == tabBounds(after)) { "edge_tab_outline_changed: $stage" }
-        var changed = false
-        for (index in before.indices) if (before[index] != after[index]) {
-            val x = index % bounds.width()
-            val y = index / bounds.width()
-            check(mark.contains(x, y)) { "edge_pixels_changed_outside_mark: $stage, ($x,$y), mark=$mark" }
-            changed = true
-        }
-        check(changed) { "edge_mark_did_not_change: $stage" }
-    }
-
-    private fun checkActionShape(pixels: IntArray, stop: Boolean) {
-        val mark = markArea(tabBounds(pixels))
-        check(pixels.none(::waveInk)) { "edge_wave_still_visible_behind_action: $stage" }
-        fun bright(x: Int, y: Int): Boolean {
-            val color = pixels[y * bounds.width() + x]
-            return Color.red(color) > 155 && abs(Color.red(color) - Color.blue(color)) < 25 && color != LIGHT
-        }
-        val glyph = Rect()
-        for (y in mark.top until mark.bottom) for (x in mark.left until mark.right) {
-            if (bright(x, y)) glyph.union(x, y, x + 1, y + 1)
-        }
-        check(glyph.width() >= dp(5) && glyph.height() >= dp(5)) { "edge_action_too_small: $stage, $glyph" }
-        fun heightAt(x: Int) = (glyph.top until glyph.bottom).count { bright(x, it) }
-        val left = heightAt(glyph.left + glyph.width() / 4)
-        val right = heightAt(glyph.right - 1 - glyph.width() / 4)
-        // A right-facing play triangle tapers towards its tip on either side of the screen.
-        val correct = if (stop) {
-            minOf(left, right) >= glyph.height() * 3 / 4 && abs(glyph.width() - glyph.height()) <= dp(2)
-        } else {
-            left - right >= glyph.height() / 4
-        }
-        check(correct) { "edge_action_shape: $stage, stop=$stop glyph=$glyph columns=($left,$right)" }
-    }
-
-    private fun touch(action: Int, x: Float = bounds.exactCenterX()) {
+    private fun touch(action: Int, x: Float = bounds.exactCenterX(), y: Float = bounds.exactCenterY()) {
         val now = SystemClock.uptimeMillis()
         if (action == MotionEvent.ACTION_DOWN) heldSince = now
-        val event = MotionEvent.obtain(checkNotNull(heldSince), now, action,
-            x, bounds.exactCenterY(), 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
+        val event = MotionEvent.obtain(checkNotNull(heldSince), now, action, x, y, 0)
+            .apply { source = InputDevice.SOURCE_TOUCHSCREEN }
         try { check(test.uiAutomation.injectInputEvent(event, true)) { "edge_touch_rejected" } }
         finally { event.recycle() }
-        touchTrace.add("${MotionEvent.actionToString(action)}($x,${bounds.exactCenterY()})@$now")
+        touchTrace.add("${MotionEvent.actionToString(action)}($x,$y)@$now")
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) heldSince = null
     }
 
+    private fun tap(rect: Rect) {
+        touch(MotionEvent.ACTION_DOWN, rect.exactCenterX(), rect.exactCenterY())
+        touch(MotionEvent.ACTION_UP, rect.exactCenterX(), rect.exactCenterY())
+    }
+
     private fun checkDragAcrossDisplay() {
-        touch(MotionEvent.ACTION_DOWN); touch(MotionEvent.ACTION_UP)
-        val button = edge(R.string.start_capture)
+        tap(bounds)
+        val button = character(start)
+        commandBounds(right = true, bounds)
         touch(MotionEvent.ACTION_DOWN)
         var fingerX = bounds.exactCenterX()
         fun moveAndHold(x: Float): Rect {
             val deadline = SystemClock.elapsedRealtime() + 2_000
-            // A physical drag delivers a path and then stationary samples while held.
-            // Keep the final center assertion independent of the injected coordinates.
+            // A physical drag delivers a path, then stationary samples. Observe the actual
+            // window and the absence of the companion window independently of the injected path.
             for (step in 1..8) {
                 touch(MotionEvent.ACTION_MOVE, fingerX + (x - fingerX) * step / 8)
                 SystemClock.sleep(16)
@@ -215,126 +198,61 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
                 var hidden = false
                 ui {
                     val params = button.layoutParams as WindowManager.LayoutParams
-                    val opacity = actionOpacity(artwork(button))
-                    hidden = opacity == 0
-                    val state = "frame=$current,params=(${params.x},${params.y}),opacity=$opacity," +
-                        "pressed=${button.isPressed},label=${button.contentDescription}"
+                    hidden = CaptionShortcutWindows.command(start) == null
+                    val state = "frame=$current,params=(${params.x},${params.y}),commandHidden=$hidden,pressed=${button.isPressed}"
                     if (observations.lastOrNull() != state) observations.add(state)
                 }
                 if (abs(current.exactCenterX() - x) <= 1 && hidden) return current
                 SystemClock.sleep(20)
             } while (SystemClock.elapsedRealtime() < deadline)
-            error("dragged_edge_or_action_did_not_settle_at_x=$x; observed=$observations; inputs=${touchTrace.takeLast(5)}")
+            error("dragged_edge_did_not_settle_at_x=$x; observed=$observations; inputs=${touchTrace.takeLast(5)}")
         }
         stage = "held across display midpoint"
         val middle = bounds.right / 2f
         val approaching = pixels(moveAndHold(middle + 1f))
-        val dropX = bounds.width().toFloat() // Leave room for a real idle snap.
+        characterInk(approaching)
+        var commandDuringDrag = false
+        val watch = ViewTreeObserver.OnPreDrawListener {
+            if (CaptionShortcutWindows.command(start) != null) commandDuringDrag = true
+            true
+        }
+        val dropX = bounds.width().toFloat() // Leave room for the three-second sideways snap.
         val drop: Rect
-        val dragged: IntArray
-        var peakOpacity = 0
-        val watchDrag = ViewTreeObserver.OnPreDrawListener {
-            peakOpacity = maxOf(peakOpacity, actionOpacity(artwork(button)))
-            true
-        }
-        ui { button.viewTreeObserver.addOnPreDrawListener(watchDrag) }
+        ui { button.viewTreeObserver.addOnPreDrawListener(watch) }
         try {
-            val midpoint = pixels(moveAndHold(middle))
-            val crossed = pixels(moveAndHold(middle - 1f))
-            val first = waveBounds(approaching)
-            for (sample in listOf(midpoint, crossed)) {
-                val next = waveBounds(sample)
-                check(abs(first.exactCenterX() - next.exactCenterX()) <= dp(1) &&
-                    abs(first.exactCenterY() - next.exactCenterY()) <= dp(1)) {
-                    "edge_mark_jumped_crossing_display: $first to $next"
-                }
+            for (x in listOf(middle, middle - 1f)) {
+                val crossed = pixels(moveAndHold(x))
+                check(approaching.contentEquals(crossed)) { "edge_character_moved_or_flipped_at_midpoint: $x" }
             }
-            stage = "held near left edge"
+            stage = "held near left side"
             drop = moveAndHold(dropX)
-            dragged = pixels(drop)
-            waveBounds(dragged)
-        } finally {
-            ui { button.viewTreeObserver.removeOnPreDrawListener(watchDrag) }
-        }
-        check(peakOpacity == 0) { "edge_action_flashed_during_drag: $peakOpacity/255" }
-        stage = "released near left edge"
+            characterInk(pixels(drop))
+        } finally { ui { button.viewTreeObserver.removeOnPreDrawListener(watch) } }
+        check(!commandDuringDrag) { "edge_command_flashed_during_drag" }
+        stage = "release on left"
         touch(MotionEvent.ACTION_UP, dropX)
-        val reopened = frame(edge(R.string.start_capture))
-        check(reopened == drop) { "edge_moved_on_drag_release" }
-        val showingPlay = pixels(reopened)
-        checkOnlyMarkChanged(dragged, showingPlay)
-        checkActionShape(showingPlay, stop = false)
-        stage = "docked at left edge"
-        val docked = frame(edge(R.string.shortcut_reveal_edge))
-        check(drop.left > docked.left && docked.left == 0 && docked.top == bounds.top) { "drag_did_not_dock_left: $docked" }
+        val released = frame(character(start))
+        check(released == drop) { "edge_root_moved_on_release: $drop to $released" }
+        commandBounds(right = false, released)
+        stage = "tucked on left"
+        val docked = frame(tucked())
+        check(docked.left == 0 && docked.left < drop.left && docked.top == bounds.top) { "edge_did_not_dock_left: $docked" }
         val idle = pixels(docked)
-        checkDocked(idle, CaptionEdge.LEFT)
-        waveBounds(idle)
-    }
-
-    /** Reverse the action during a real draw, without estimating when a frame will run. */
-    private fun checkActionTransition(): String {
-        val button = edge(R.string.shortcut_reveal_edge)
-        lateinit var art: CaptionEdgeArtwork
-        ui { art = artwork(button) }
-        if (!ValueAnimator.areAnimatorsEnabled()) {
-            ui {
-                art.showAction(true)
-                check(actionOpacity(art) == 255) { "disabled_animation_delayed_reveal" }
-                art.showAction(false)
-                check(actionOpacity(art) == 0) { "disabled_animation_delayed_retuck" }
-            }
-            return "disabled: immediate"
-        }
-
-        val finished = CountDownLatch(1)
-        var turningOpacity = -1
-        var afterTurn = -1
-        var fallingOpacity = -1
-        var lastDraw = -1
-        val draw = ViewTreeObserver.OnPreDrawListener {
-            lastDraw = actionOpacity(art)
-            if (turningOpacity < 0 && lastDraw in 96..254) {
-                turningOpacity = lastDraw
-                art.showAction(false)
-                afterTurn = actionOpacity(art)
-            } else if (lastDraw in 1 until turningOpacity) {
-                fallingOpacity = lastDraw
-            } else if ((turningOpacity >= 0 && lastDraw == 0) || lastDraw == 255) {
-                finished.countDown()
-            }
-            true
-        }
-        try {
-            ui {
-                art.viewTreeObserver.addOnPreDrawListener(draw)
-                art.showAction(true)
-                check(actionOpacity(art) == 0) { "edge_action_flashed_on_reveal" }
-            }
-            val completed = finished.await(5, TimeUnit.SECONDS)
-            ui {
-                check(completed && afterTurn == turningOpacity && fallingOpacity > 0 && lastDraw == 0) {
-                    "edge_action_transition_incomplete: turn=$turningOpacity after=$afterTurn falling=$fallingOpacity last=$lastDraw"
-                }
-            }
-            return "reversed at $turningOpacity/255, drew $fallingOpacity/255 on return"
-        } finally {
-            ui { art.viewTreeObserver.removeOnPreDrawListener(draw) }
-        }
+        val ink = characterInk(idle)
+        check(ink.centerX() < docked.width() / 2) { "edge_character_faces_away_from_left_side: $ink" }
+        tap(docked)
+        val opened = frame(character(start))
+        check(opened == docked) { "left_edge_moved_on_reveal" }
+        checkCharacterWithCommand(idle, opened, commandBounds(right = false, opened))
     }
 
     fun run() {
         var activity: CaptureProbeActivity? = null
         var window: CaptionEdgeWindow? = null
-        lateinit var windowContext: Context
         var originalEdge: Boolean? = null
         var toggles = 0
-        var actionMotion = ""
+        var backdropClicks = 0
         var failure: Throwable? = null
-        fun openWindow(placement: CaptionEdgePlacement) {
-            window?.close()
-            window = CaptionEdgeWindow(windowContext, placement, { toggles++ }, {}).also { it.show() }
-        }
         try {
             check(Build.VERSION.SDK_INT >= 29 && Build.HARDWARE in setOf("ranchu", "goldfish")) { "Use an isolated emulator" }
             check(Settings.canDrawOverlays(context)) { "Grant the overlay permission before this test" }
@@ -344,64 +262,69 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as CaptureProbeActivity
             ui {
                 val backdrop = checkNotNull(activity)
-                backdrop.setContentView(View(backdrop).apply { setBackgroundColor(LIGHT) })
+                backdrop.setContentView(View(backdrop).apply {
+                    setBackgroundColor(LIGHT)
+                    setOnClickListener { backdropClicks++ }
+                })
                 val display = context.getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)
-                windowContext = if (Build.VERSION.SDK_INT >= 30) context.createDisplayContext(checkNotNull(display))
+                val windowContext = if (Build.VERSION.SDK_INT >= 30) context.createDisplayContext(checkNotNull(display))
                     .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null) else context
-                openWindow(CaptionEdgePlacement(1f, .5f))
+                window = CaptionEdgeWindow(windowContext, CaptionEdgePlacement(1f, .5f), { toggles++ }, {}).also { it.show() }
             }
-            stage = "tucked reference"
-            val reference = pixels(R.string.shortcut_reveal_edge)
-            waveBounds(reference)
-            checkDocked(reference, CaptionEdge.RIGHT)
+            stage = "right tucked"
+            bounds = frame(tucked())
+            check(bounds.right == context.resources.displayMetrics.widthPixels)
+            val idle = pixels(bounds)
+            val ink = characterInk(idle)
+            check(ink.centerX() > bounds.width() / 2) { "edge_character_faces_away_from_right_side: $ink" }
             SystemClock.sleep(270)
-            check(reference.contentEquals(pixels(R.string.shortcut_reveal_edge))) { "idle_edge_pulsed" }
+            check(idle.contentEquals(pixels(bounds))) { "idle_edge_pulsed" }
             stage = "first physical tap"
-            touch(MotionEvent.ACTION_DOWN); SystemClock.sleep(70); touch(MotionEvent.ACTION_UP)
-            val expanded = pixels(R.string.start_capture)
-            checkOnlyMarkChanged(reference, expanded)
-            checkActionShape(expanded, stop = false)
-            stage = "held"
-            touch(MotionEvent.ACTION_DOWN); SystemClock.sleep(120)
-            check(pixels(R.string.start_capture).contentEquals(expanded)) { "holding_edge_changed_artwork" }
-            stage = "stop and play artwork while held"
-            val button = edge(R.string.start_capture)
-            ui { artwork(button).setStop(true) }
-            val stopped = pixels(R.string.start_capture)
-            checkOnlyMarkChanged(expanded, stopped)
-            checkActionShape(stopped, stop = true)
-            ui { artwork(button).setStop(false) }
-            val remaining = ViewConfiguration.getLongPressTimeout() + 100L -
-                (SystemClock.uptimeMillis() - checkNotNull(heldSince))
-            if (remaining > 0) SystemClock.sleep(remaining)
+            tap(bounds)
+            val button = character(start)
+            val command = commandBounds(right = true, bounds)
+            ui { check(button.createAccessibilityNodeInfo().isClickable) { "edge_has_no_accessible_action" } }
+            check(frame(button) == bounds && toggles == 0) { "edge_character_moved_or_started_on_reveal" }
+            checkCharacterWithCommand(idle, bounds, command)
+            stage = "long press"
+            touch(MotionEvent.ACTION_DOWN)
+            SystemClock.sleep(ViewConfiguration.getLongPressTimeout().toLong() + 100)
+            checkCharacterWithCommand(idle, bounds, command)
             touch(MotionEvent.ACTION_UP)
             val released = SystemClock.elapsedRealtime()
-            stage = "released"
-            check(pixels(R.string.start_capture).contentEquals(expanded)) { "released_edge_changed_artwork" }
-            stage = "three second retuck"
-            val retucked = pixels(R.string.shortcut_reveal_edge)
+            checkCharacterWithCommand(idle, bounds, command)
+            check(toggles == 0) { "long_press_activated_edge" }
+            stage = "three-second retuck"
+            check(frame(tucked()) == bounds && pixels(bounds).contentEquals(idle)) { "retuck_changed_character" }
             check(SystemClock.elapsedRealtime() - released in 2_500L..5_000L) { "edge_retuck_timing" }
-            check(reference.contentEquals(retucked)) { "edge_retuck_changed_logo" }
-            check(toggles == 0) { "edge_reveal_or_hold_activated_a_toggle" }
-            stage = "action transition"
-            actionMotion = checkActionTransition()
-            stage = "drag from revealed right edge"
+            stage = "retired command lets a physical tap through"
+            tap(command)
+            await { Unit.takeIf { backdropClicks == 1 && toggles == 0 } }
+            stage = "physical tap on command"
+            tap(bounds)
+            tap(commandBounds(right = true, bounds))
+            await { Unit.takeIf { toggles == 1 && backdropClicks == 1 } }
+            tucked()
+            stage = "second physical tap on character keeps the command open"
+            tap(bounds)
+            character(start)
+            SystemClock.sleep(1_650)
+            tap(bounds)
+            SystemClock.sleep(1_650)
+            commandBounds(right = true, bounds)
+            check(toggles == 1 && backdropClicks == 1) { "repeated_character_tap_activated_a_command" }
+            tucked()
+            stage = "accessibility click on the tucked character"
+            clickAccessibleCharacter(reveal)
+            character(start)
+            check(toggles == 1) { "tucked_accessible_click_started_captions" }
+            stage = "accessibility click on the available action"
+            clickAccessibleCharacter(start)
+            await { Unit.takeIf { toggles == 2 } }
+            tucked()
+            stage = "drag across display"
             checkDragAcrossDisplay()
-            check(toggles == 0) { "drag_activated_a_toggle" }
-            for (side in listOf(CaptionEdge.TOP, CaptionEdge.BOTTOM)) {
-                stage = "upright play on $side"
-                ui { openWindow(CaptionEdgePlacement(.5f, if (side == CaptionEdge.TOP) 0f else 1f)) }
-                val current = frame(edge(R.string.start_capture))
-                check(if (side == CaptionEdge.TOP) current.bottom < bounds.top else current.top > bounds.bottom) {
-                    "edge_window_did_not_move_to_$side: $current"
-                }
-                val play = pixels(current)
-                checkDocked(play, side)
-                checkActionShape(play, stop = false)
-                val wave = pixels(frame(edge(R.string.shortcut_reveal_edge)))
-                checkOnlyMarkChanged(play, wave)
-                waveBounds(wave)
-            }
+            check(toggles == 2 && backdropClicks == 1) { "drag_fired_a_click" }
         } catch (error: Throwable) { failure = error }
         finally {
             try {
@@ -414,7 +337,8 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
         val error = failure
         test.finish(if (error == null) Activity.RESULT_OK else Activity.RESULT_CANCELED, Bundle().apply {
             putString("stream", if (error == null)
-                "Caption edge stability passed: light-right; 48dp; four docked edges; upright play; centered wave/play/stop; retuck identical; continuous drag across to left; no toggle; $actionMotion.\n"
+                "Caption edge stability passed: 48dp; fixed character; independent start command; tap-through after retuck; " +
+                    "single accessible action; cross-screen drag; animations enabled=${ValueAnimator.areAnimatorsEnabled()}.\n"
             else "Caption edge stability failed at $stage: ${error.javaClass.simpleName}: ${error.message}\n")
         })
     }
