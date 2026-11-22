@@ -5,6 +5,7 @@ import android.animation.ValueAnimator
 import android.app.Activity
 import android.app.Instrumentation
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Rect
 import android.hardware.display.DisplayManager
@@ -65,6 +66,31 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
         lateinit var result: Rect
         ui { result = CaptionShortcutWindows.bounds(view) }
         return result
+    }
+
+    private fun checkConfigurationDuringReveal() {
+        val app = context.applicationContext as MimiApplication
+        ui { host.showEdge = true }
+        try {
+            val portrait = tucked()
+            tap(frame(portrait))
+            val command = await { CaptionShortcutWindows.command(startCommand) }
+            val tokens = await { checkNotNull(portrait.windowToken) to checkNotNull(command.windowToken) }
+            fun checkOriginalWindows() = ui {
+                check(CaptionShortcutWindows.character(startDescription, dp(48)) === portrait &&
+                    CaptionShortcutWindows.command(startCommand) === command &&
+                    portrait.windowToken === tokens.first && command.windowToken === tokens.second) {
+                    "configuration_replaced_or_tucked_visible_command"
+                }
+            }
+            ui { app.onConfigurationChanged(Configuration(app.resources.configuration)) }
+            checkOriginalWindows()
+            tap(frame(portrait))
+            checkOriginalWindows()
+            check(!MimiService.isRunning && !MimiService.isStarting) { "second_portrait_tap_started_captions" }
+        } finally {
+            ui { host.showEdge = false }
+        }
     }
 
     private fun commandBounds(right: Boolean, root: Rect): Rect {
@@ -270,6 +296,10 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
                     setBackgroundColor(LIGHT)
                     setOnClickListener { backdropClicks++ }
                 })
+            }
+            stage = "configuration delivered between two taps on the visible host shortcut"
+            checkConfigurationDuringReveal()
+            ui {
                 val display = context.getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)
                 val windowContext = if (Build.VERSION.SDK_INT >= 30) context.createDisplayContext(checkNotNull(display))
                     .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null) else context
@@ -329,6 +359,21 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
             stage = "drag across display"
             checkDragAcrossDisplay()
             check(toggles == 2 && backdropClicks == 1) { "drag_fired_a_click" }
+            stage = "hold the visible command past its three-second timeout"
+            val heldCommand = await { CaptionShortcutWindows.command(startCommand) }
+            val touchTarget = frame(heldCommand)
+            touch(MotionEvent.ACTION_DOWN, touchTarget.exactCenterX(), touchTarget.exactCenterY())
+            await { heldCommand.takeIf { it.isShown && it.isPressed } }
+            SystemClock.sleep(3_150)
+            ui {
+                check(CaptionShortcutWindows.command(startCommand) === heldCommand && heldCommand.isPressed &&
+                    toggles == 2 && backdropClicks == 1) { "edge_command_tucked_or_fired_while_held" }
+            }
+            check(frame(heldCommand) == touchTarget) { "edge_command_moved_under_finger" }
+            touch(MotionEvent.ACTION_UP, touchTarget.exactCenterX(), touchTarget.exactCenterY())
+            await { Unit.takeIf { toggles == 3 } }
+            tucked()
+            check(toggles == 3 && backdropClicks == 1) { "held_edge_command_did_not_fire_exactly_once" }
         } catch (error: Throwable) { failure = error }
         finally {
             try {

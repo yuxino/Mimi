@@ -2,6 +2,7 @@ package app.yuxino.mimi.android.shortcuts
 
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Rect
 import android.os.LocaleList
 import android.view.View
 import android.view.View.MeasureSpec
@@ -22,17 +23,26 @@ internal fun checkCaptionEdgeCommandLayout(context: Context) {
         val touchHeight = (48 * density).roundToInt()
         val availableWidth = ((320 - 26) * density).roundToInt()
         val command = CaptionEdgeCommand(localized).apply { visibility = View.VISIBLE }
-        for ((label, icon) in listOf(R.string.start_action to R.drawable.ic_play, R.string.stop_action to R.drawable.ic_stop)) {
+        for (label in listOf(R.string.start_action, R.string.stop_action)) {
             val text = localized.getString(label)
-            command.setAction(text, icon)
+            command.setLabel(text)
             val width = command.measuredWidthWithin(availableWidth)
-            command.measure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
-                MeasureSpec.makeMeasureSpec(touchHeight, MeasureSpec.EXACTLY))
-            command.layout(0, 0, width, touchHeight)
-
             val views = ArrayList<View>()
             command.findViewsWithText(views, text, View.FIND_VIEWS_WITH_TEXT)
             val field = views.filterIsInstance<TextView>().single { it.text.toString() == text }
+            for (side in CaptionEdge.entries) {
+                command.alignToPortrait(side)
+                command.measure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(touchHeight, MeasureSpec.EXACTLY))
+                command.layout(0, 0, width, touchHeight)
+                val labelBounds = Rect(0, 0, field.width, field.height)
+                command.offsetDescendantRectToMyCoords(field, labelBounds)
+                val expectedLeft = if (side == CaptionEdge.LEFT) 0 else width - labelBounds.width()
+                check(labelBounds.width() in 1..width && labelBounds.height() in 1..touchHeight &&
+                    labelBounds.left == expectedLeft && labelBounds.top == (touchHeight - labelBounds.height()) / 2) {
+                    "Misaligned $language '$text' on $side at font scale $scale: label=$labelBounds, target=${width}x$touchHeight"
+                }
+            }
             val layout = checkNotNull(field.layout)
             check(width in touchHeight..availableWidth && layout.lineCount == 1 && layout.getEllipsisCount(0) == 0 &&
                 layout.getLineEnd(0) == text.length &&

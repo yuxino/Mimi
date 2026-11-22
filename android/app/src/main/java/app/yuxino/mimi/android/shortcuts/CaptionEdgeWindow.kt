@@ -3,6 +3,8 @@ package app.yuxino.mimi.android.shortcuts
 import android.annotation.SuppressLint
 import android.animation.ValueAnimator
 import android.content.Context
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Build
@@ -31,13 +33,19 @@ internal class CaptionEdgeWindow(
     private val manager = context.getSystemService(WindowManager::class.java)
     private val button = object : FrameLayout(context) {
         override fun getAccessibilityClassName(): CharSequence = ImageButton::class.java.name
+        override fun onConfigurationChanged(newConfig: Configuration) {
+            super.onConfigurationChanged(newConfig)
+            post(updateResources)
+        }
     }
-    private val artwork = CaptionEdgeArtwork(context)
-    private val command = CaptionEdgeCommand(context)
+    private var artwork = CaptionEdgeArtwork(context)
+    // WindowManager and touch dispatch keep these two roots even if fonts or artwork need reloading.
+    private val command = CaptionEdgeCommand(InterfaceLanguage.context(context))
     private var side = initial.nearestSide()
     private val accessibility = context.getSystemService(AccessibilityManager::class.java)
-    private val touchSize = dp(48)
-    private val slop = ViewConfiguration.get(context).scaledTouchSlop
+    private var touchSize = dp(48)
+    private var slop = ViewConfiguration.get(context).scaledTouchSlop
+    private val renderedConfig = Configuration(InterfaceLanguage.context(context).resources.configuration)
     @SuppressLint("RtlHardcoded") // Offsets are physical pixels from the left of WindowManager's fitted frame.
     private val params = WindowManager.LayoutParams(touchSize, touchSize,
         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -58,7 +66,9 @@ internal class CaptionEdgeWindow(
     private var tucked: CaptionEdge? = null
     private var settling: ValueAnimator? = null
     private var currentLabel = 0
+    private var moveActionId = View.NO_ID
     private val updateFrame = Runnable { if (added) measureFrame() }
+    private val updateResources = Runnable { if (added) refreshConfiguration() }
     private val tuck = Runnable { dock(placement.nearestSide(), animate = true) }
     private val explorationChanged = AccessibilityManager.TouchExplorationStateChangeListener {
         if (it) { cancelSettle(); present(null) }
@@ -66,7 +76,7 @@ internal class CaptionEdgeWindow(
     }
 
     init {
-        button.addView(artwork, FrameLayout.LayoutParams(touchSize, touchSize))
+        button.addView(artwork)
         artwork.face(side)
         command.setOnClickListener {
             if (command.isEnabled && command.isShown) {
@@ -104,7 +114,12 @@ internal class CaptionEdgeWindow(
             button.post(updateFrame)
             insets
         }
-        ViewCompat.addAccessibilityAction(button, InterfaceLanguage.context(context).getString(R.string.caption_edge_move)) { _, _ ->
+        setMoveActionLabel(InterfaceLanguage.context(context))
+    }
+
+    private fun setMoveActionLabel(localized: Context) {
+        if (moveActionId != View.NO_ID) ViewCompat.removeAccessibilityAction(button, moveActionId)
+        moveActionId = ViewCompat.addAccessibilityAction(button, localized.getString(R.string.caption_edge_move)) { _, _ ->
             val edge = when (placement.nearestSide()) {
                 CaptionEdge.LEFT -> CaptionEdge.RIGHT
                 CaptionEdge.RIGHT -> CaptionEdge.LEFT
@@ -114,6 +129,34 @@ internal class CaptionEdgeWindow(
             savePosition(placement)
             true
         }
+    }
+
+    /** A configuration dispatch can accompany returning from consent with both touches still in flight. */
+    fun refreshConfiguration() {
+        val localized = InterfaceLanguage.context(context)
+        val config = localized.resources.configuration
+        val changes = renderedConfig.diff(config)
+        if (changes and VISUAL_CONFIGURATION != 0) {
+            touchSize = dp(48)
+            slop = ViewConfiguration.get(context).scaledTouchSlop
+            button.removeView(artwork)
+            artwork = CaptionEdgeArtwork(localized)
+            button.addView(artwork)
+            artwork.face(side)
+            command.reloadAppearance(localized)
+            button.systemGestureExclusionRects = listOf(Rect(0, 0, touchSize, touchSize))
+            setMoveActionLabel(localized)
+            params.title = localized.getString(R.string.shortcut_edge_label)
+            params.width = touchSize
+            params.height = touchSize
+            commandParams.title = params.title
+            commandParams.height = touchSize
+            manager.updateViewLayout(button, params)
+            manager.updateViewLayout(command, commandParams)
+            refreshAction(reloadLabels = true)
+        }
+        renderedConfig.setTo(config)
+        measureFrame()
     }
 
     fun show() {
@@ -140,6 +183,7 @@ internal class CaptionEdgeWindow(
         accessibility.removeTouchExplorationStateChangeListener(explorationChanged)
         button.removeCallbacks(tuck)
         button.removeCallbacks(updateFrame)
+        button.removeCallbacks(updateResources)
         gesture = null
         for (view in listOf(command, button)) {
             try { manager.removeViewImmediate(view) } catch (_: IllegalArgumentException) {
@@ -148,7 +192,7 @@ internal class CaptionEdgeWindow(
         }
     }
 
-    fun refreshAction() {
+    fun refreshAction(reloadLabels: Boolean = false) {
         val state = CaptionShortcutActions.state()
         val label = when (state) {
             CaptionShortcutState.INACTIVE -> R.string.start_capture
@@ -156,17 +200,18 @@ internal class CaptionEdgeWindow(
             CaptionShortcutState.STARTING -> R.string.home_starting_status
             CaptionShortcutState.STOPPING -> R.string.stopping_capture
         }
-        if (label == currentLabel) return
+        if (label == currentLabel && !reloadLabels) return
+        if (label != currentLabel && gesture != null) endPress()
         currentLabel = label
-        if (gesture != null) endPress()
         button.isEnabled = state == CaptionShortcutState.INACTIVE || state == CaptionShortcutState.ACTIVE
         describeAction()
         val localized = InterfaceLanguage.context(context)
-        when (state) {
-            CaptionShortcutState.INACTIVE -> command.setAction(localized.getString(R.string.start_action), R.drawable.ic_play)
-            CaptionShortcutState.ACTIVE -> command.setAction(localized.getString(R.string.stop_action), R.drawable.ic_stop)
-            else -> command.setAction(localized.getString(label), null)
+        val visibleLabel = when (state) {
+            CaptionShortcutState.INACTIVE -> R.string.start_action
+            CaptionShortcutState.ACTIVE -> R.string.stop_action
+            else -> label
         }
+        command.setLabel(localized.getString(visibleLabel))
         command.isEnabled = button.isEnabled
         updateCommand()
         val status = when (state) {
@@ -231,6 +276,7 @@ internal class CaptionEdgeWindow(
         }
         // The bubble starts just beyond the visible 20 dp portrait. Its center and the
         // portrait's center lie in separate touch areas even on the compact docked edge.
+        command.alignToPortrait(side)
         val rightSide = side == CaptionEdge.RIGHT
         val insetFromEdge = dp(26)
         val end = params.x + touchSize - insetFromEdge
@@ -340,5 +386,11 @@ internal class CaptionEdgeWindow(
             }
         }
         return true
+    }
+
+    private companion object {
+        val VISUAL_CONFIGURATION = ActivityInfo.CONFIG_DENSITY or ActivityInfo.CONFIG_FONT_SCALE or
+            ActivityInfo.CONFIG_LOCALE or ActivityInfo.CONFIG_LAYOUT_DIRECTION or
+            (if (Build.VERSION.SDK_INT >= 31) ActivityInfo.CONFIG_FONT_WEIGHT_ADJUSTMENT else 0)
     }
 }

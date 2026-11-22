@@ -33,7 +33,10 @@ internal class CaptionEdgeControl(context: Context, private val preferences: Sha
     private val refreshAction = Runnable { window?.refreshAction() }
     private val sessionChanged: () -> Unit = { main.post(refreshAction) }
     private val configuration = object : ComponentCallbacks {
-        override fun onConfigurationChanged(newConfig: Configuration) = recreateWindow()
+        override fun onConfigurationChanged(newConfig: Configuration) {
+            main.removeCallbacks(reconcile)
+            main.post(reconcile)
+        }
         override fun onLowMemory() = Unit
     }
     private val screen = object : BroadcastReceiver() {
@@ -70,18 +73,15 @@ internal class CaptionEdgeControl(context: Context, private val preferences: Sha
     private fun unlocked() = app.getSystemService(PowerManager::class.java).isInteractive &&
         !app.getSystemService(KeyguardManager::class.java).isKeyguardLocked
 
-    private fun recreateWindow() {
-        hide()
-        main.removeCallbacks(reconcile)
-        if (enabled) main.post(reconcile)
-    }
-
     private fun reconcileWindow() {
         if (!enabled || ownUiVisible || !unlocked() || !Settings.canDrawOverlays(app)) {
             hide()
             return
         }
-        if (window != null) return
+        window?.let {
+            it.refreshConfiguration()
+            return
+        }
         val display = app.getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY) ?: return
         try {
             val context = if (Build.VERSION.SDK_INT >= 30) app.createDisplayContext(display)
