@@ -266,7 +266,7 @@ adb shell am instrument -w -e caption_scroll_probe true app.yuxino.mimi.android.
 ```
 
 For `edge_stability`, grant the development app permission to display over other apps.
-On a fixed light background, it taps and holds the docked icon and checks that only the action badge changes before the icon tucks again.
+On a fixed light background, it taps and holds the docked portrait, checks the play and stop symbols on its inward-facing tab, and compares the portrait pixels through reveal and retreat.
 
 For `caption_shortcuts`, use a blank emulator with host microphone input disabled.
 Enable the two shortcuts in More and add the Mimi captions tile in Android Quick Settings.

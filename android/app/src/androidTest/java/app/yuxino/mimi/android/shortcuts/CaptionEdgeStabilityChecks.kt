@@ -27,6 +27,7 @@ import app.yuxino.mimi.android.capture.MimiService
 import app.yuxino.mimi.android.localization.InterfaceLanguage
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** Actual light-right screen pixels across the normal edge gestures; no capture or provider. */
@@ -39,10 +40,7 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
     private fun dp(value: Int) = (value * context.resources.displayMetrics.density).roundToInt()
     private fun label(resource: Int) = InterfaceLanguage.context(context).getString(resource)
     private fun artwork(button: View) = (button as ViewGroup).getChildAt(0) as CaptionEdgeArtwork
-    private fun badgeOpacity(art: CaptionEdgeArtwork): Int {
-        val badge = art.getChildAt(1)
-        return if (badge.isShown) (badge.alpha * 255).roundToInt() else 0
-    }
+    private fun actionOpacity(art: CaptionEdgeArtwork) = (art.actionOpacity * 255).roundToInt()
     private fun ui(action: () -> Unit) {
         var failure: Throwable? = null
         test.runOnMainSync { try { action() } catch (error: Throwable) { failure = error } }
@@ -58,7 +56,7 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
             ui {
                 found = WindowInspector.getGlobalWindowViews().singleOrNull {
                     it.isShown && it.contentDescription == label(resource) && it.width == dp(48) && it.height == dp(48)
-                }?.takeIf { badgeOpacity(artwork(it)) == finalOpacity }
+                }?.takeIf { actionOpacity(artwork(it)) == finalOpacity }
             }
             found?.let { return it }
             SystemClock.sleep(25)
@@ -66,59 +64,123 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
         error("edge_stability_timeout: $stage")
     }
 
-    private fun pixels(resource: Int): IntArray {
-        val view = edge(resource)
+    private fun frame(view: View): Rect = Rect().also { rect ->
         ui {
             val position = IntArray(2).also(view::getLocationOnScreen)
-            val current = Rect(position[0], position[1], position[0] + view.width, position[1] + view.height)
-            if (bounds.isEmpty) bounds = current
-            check(current == bounds && current.right == context.resources.displayMetrics.widthPixels) { "edge_window_moved: $stage" }
+            rect.set(position[0], position[1], position[0] + view.width, position[1] + view.height)
         }
+    }
+
+    private fun pixels(resource: Int): IntArray {
+        val current = frame(edge(resource))
+        if (bounds.isEmpty) bounds = current
+        check(current == bounds && current.right == context.resources.displayMetrics.widthPixels) { "edge_window_moved: $stage" }
+        return pixels(current)
+    }
+
+    private fun pixels(frame: Rect): IntArray {
         SystemClock.sleep(80) // Let the observed state reach the native compositor.
         val screen = checkNotNull(test.uiAutomation.takeScreenshot())
         try {
-            check(screen.getPixel(bounds.left - dp(8), bounds.centerY()) == LIGHT) { "edge_backdrop_is_not_fixed_light" }
-            return IntArray(bounds.width() * bounds.height()).also {
-                screen.getPixels(it, 0, bounds.width(), bounds.left, bounds.top, bounds.width(), bounds.height())
+            val backdrop = if (frame.left >= dp(8)) frame.left - dp(8) else frame.right + dp(8)
+            check(screen.getPixel(backdrop, frame.centerY()) == LIGHT) { "edge_backdrop_is_not_fixed_light" }
+            return IntArray(frame.width() * frame.height()).also {
+                screen.getPixels(it, 0, frame.width(), frame.left, frame.top, frame.width(), frame.height())
             }
         } finally { screen.recycle() }
     }
 
-    private fun checkBadgeOnly(reference: IntArray, current: IntArray) {
-        val changed = Rect()
-        for (index in reference.indices) if (reference[index] != current[index]) {
+    private fun tuckedPortrait(reference: IntArray): Rect {
+        val portrait = Rect()
+        var painted = 0
+        for (index in reference.indices) if (reference[index] != LIGHT) {
             val x = index % bounds.width()
             val y = index / bounds.width()
-            changed.union(x, y, x + 1, y + 1)
+            portrait.union(x, y, x + 1, y + 1)
+            painted++
         }
-        check(!changed.isEmpty) { "edge_action_badge_not_painted: $stage" }
-        check(changed.left >= bounds.width() / 2 && changed.top >= bounds.height() / 2 &&
-            changed.width() <= dp(16) && changed.height() <= dp(16)) {
-            "edge_logo_flashed: $stage; changedBounds=$changed, maximumBadge=${dp(16)}px"
-        }
+        check(portrait.width() in dp(28)..dp(32) && portrait.height() in dp(28)..dp(32) &&
+            painted >= portrait.width() * portrait.height() / 2) { "docked_edge_portrait_missing: $portrait" }
+        return portrait
     }
 
-    private fun touch(action: Int) {
+    private fun checkInwardActionOnly(before: IntArray, after: IntArray, portrait: Rect, dockedRight: Boolean = true) {
+        // A wing can meet the antialiased inner rim. The portrait interior and the
+        // screen-edge side must keep their exact screenshot pixels throughout.
+        val innerRadius = minOf(portrait.width(), portrait.height()) / 2f - dp(1)
+        var changed = false
+        for (index in before.indices) if (before[index] != after[index]) {
+            val x = index % bounds.width()
+            val y = index / bounds.width()
+            val dx = x + .5f - portrait.exactCenterX()
+            val dy = y + .5f - portrait.exactCenterY()
+            val inward = if (dockedRight) x < bounds.width() / 2 else x >= bounds.width() / 2
+            check(inward && y in portrait.top until portrait.bottom &&
+                dx * dx + dy * dy >= innerRadius * innerRadius) {
+                "edge_portrait_or_outer_rim_changed: $stage; pixel=($x,$y), portrait=$portrait"
+            }
+            changed = true
+        }
+        check(changed) { "inward_edge_action_not_painted: $stage" }
+    }
+
+    private fun touch(action: Int, x: Float = bounds.exactCenterX()) {
         val now = SystemClock.uptimeMillis()
         if (action == MotionEvent.ACTION_DOWN) heldSince = now
         val event = MotionEvent.obtain(checkNotNull(heldSince), now, action,
-            bounds.exactCenterX(), bounds.exactCenterY(), 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
+            x, bounds.exactCenterY(), 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
         try { check(test.uiAutomation.injectInputEvent(event, true)) { "edge_touch_rejected" } }
         finally { event.recycle() }
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) heldSince = null
     }
 
-    /** Retarget the same attached badge during a real draw, without estimating when a frame will run. */
-    private fun checkBadgeTransition(): String {
+    private fun checkDragAcrossDisplay() {
+        touch(MotionEvent.ACTION_DOWN); touch(MotionEvent.ACTION_UP)
+        val button = edge(R.string.start_capture)
+        touch(MotionEvent.ACTION_DOWN)
+        fun moveAndHold(x: Float): Rect {
+            touch(MotionEvent.ACTION_MOVE, x)
+            val deadline = SystemClock.elapsedRealtime() + 2_000
+            do {
+                val current = frame(button)
+                var hidden = false
+                ui { hidden = actionOpacity(artwork(button)) == 0 }
+                if (abs(current.exactCenterX() - x) <= 1 && hidden) return current
+                SystemClock.sleep(20)
+            } while (SystemClock.elapsedRealtime() < deadline)
+            error("dragged_edge_or_action_did_not_settle_at_x=$x")
+        }
+        stage = "held at display midpoint"
+        val middle = moveAndHold(bounds.right / 2f)
+        tuckedPortrait(pixels(middle))
+        stage = "held near left edge"
+        val dropX = bounds.width().toFloat() // Leave room for a real idle snap.
+        val drop = moveAndHold(dropX)
+        val dragged = pixels(drop)
+        val portrait = tuckedPortrait(dragged)
+        check(portrait.centerX() < drop.width() / 2)
+        stage = "released near left edge"
+        touch(MotionEvent.ACTION_UP, dropX)
+        val reopened = frame(edge(R.string.start_capture))
+        check(reopened == drop) { "edge_moved_on_drag_release" }
+        checkInwardActionOnly(dragged, pixels(reopened), portrait, dockedRight = false)
+        stage = "docked at left edge"
+        val docked = frame(edge(R.string.shortcut_reveal_edge))
+        check(drop.left > docked.left && docked.left == 0 && docked.top == bounds.top) { "drag_did_not_dock_left: $docked" }
+        tuckedPortrait(pixels(docked))
+    }
+
+    /** Reverse the action during a real draw, without estimating when a frame will run. */
+    private fun checkActionTransition(): String {
         val button = edge(R.string.shortcut_reveal_edge)
         lateinit var art: CaptionEdgeArtwork
         ui { art = artwork(button) }
         if (!ValueAnimator.areAnimatorsEnabled()) {
             ui {
                 art.showAction(true)
-                check(badgeOpacity(art) == 255) { "disabled_animation_delayed_reveal" }
+                check(actionOpacity(art) == 255) { "disabled_animation_delayed_reveal" }
                 art.showAction(false)
-                check(badgeOpacity(art) == 0) { "disabled_animation_delayed_retuck" }
+                check(actionOpacity(art) == 0) { "disabled_animation_delayed_retuck" }
             }
             return "disabled: immediate"
         }
@@ -129,11 +191,11 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
         var fallingOpacity = -1
         var lastDraw = -1
         val draw = ViewTreeObserver.OnPreDrawListener {
-            lastDraw = badgeOpacity(art)
+            lastDraw = actionOpacity(art)
             if (turningOpacity < 0 && lastDraw in 96..254) {
                 turningOpacity = lastDraw
                 art.showAction(false)
-                afterTurn = badgeOpacity(art)
+                afterTurn = actionOpacity(art)
             } else if (lastDraw in 1 until turningOpacity) {
                 fallingOpacity = lastDraw
             } else if ((turningOpacity >= 0 && lastDraw == 0) || lastDraw == 255) {
@@ -145,12 +207,12 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
             ui {
                 art.viewTreeObserver.addOnPreDrawListener(draw)
                 art.showAction(true)
-                check(badgeOpacity(art) == 0) { "edge_badge_flashed_on_reveal" }
+                check(actionOpacity(art) == 0) { "edge_action_flashed_on_reveal" }
             }
             val completed = finished.await(5, TimeUnit.SECONDS)
             ui {
                 check(completed && afterTurn == turningOpacity && fallingOpacity > 0 && lastDraw == 0) {
-                    "edge_badge_transition_incomplete: turn=$turningOpacity after=$afterTurn falling=$fallingOpacity last=$lastDraw"
+                    "edge_action_transition_incomplete: turn=$turningOpacity after=$afterTurn falling=$fallingOpacity last=$lastDraw"
                 }
             }
             return "reversed at $turningOpacity/255, drew $fallingOpacity/255 on return"
@@ -164,7 +226,7 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
         var window: CaptionEdgeWindow? = null
         var originalEdge: Boolean? = null
         var toggles = 0
-        var badgeMotion = ""
+        var actionMotion = ""
         var failure: Throwable? = null
         try {
             check(Build.VERSION.SDK_INT >= 29 && Build.HARDWARE in setOf("ranchu", "goldfish")) { "Use an isolated emulator" }
@@ -183,27 +245,37 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
             }
             stage = "tucked reference"
             val reference = pixels(R.string.shortcut_reveal_edge)
-            check(reference.count { it != LIGHT } >= 32) { "edge_logo_not_painted" }
+            val portrait = tuckedPortrait(reference)
+            check(portrait.left > bounds.width() / 4 && portrait.contains(bounds.width() - dp(8), bounds.height() / 2))
             stage = "first physical tap"
             touch(MotionEvent.ACTION_DOWN); SystemClock.sleep(70); touch(MotionEvent.ACTION_UP)
-            checkBadgeOnly(reference, pixels(R.string.start_capture))
+            val expanded = pixels(R.string.start_capture)
+            checkInwardActionOnly(reference, expanded, portrait)
             stage = "held"
             touch(MotionEvent.ACTION_DOWN); SystemClock.sleep(120)
-            checkBadgeOnly(reference, pixels(R.string.start_capture))
+            check(pixels(R.string.start_capture).contentEquals(expanded)) { "holding_edge_changed_artwork" }
+            stage = "stop and play artwork while held"
+            val button = edge(R.string.start_capture)
+            ui { artwork(button).setStop(true) }
+            checkInwardActionOnly(expanded, pixels(R.string.start_capture), portrait)
+            ui { artwork(button).setStop(false) }
             val remaining = ViewConfiguration.getLongPressTimeout() + 100L -
                 (SystemClock.uptimeMillis() - checkNotNull(heldSince))
             if (remaining > 0) SystemClock.sleep(remaining)
             touch(MotionEvent.ACTION_UP)
             val released = SystemClock.elapsedRealtime()
             stage = "released"
-            checkBadgeOnly(reference, pixels(R.string.start_capture))
+            check(pixels(R.string.start_capture).contentEquals(expanded)) { "released_edge_changed_artwork" }
             stage = "three second retuck"
             val retucked = pixels(R.string.shortcut_reveal_edge)
             check(SystemClock.elapsedRealtime() - released in 2_500L..5_000L) { "edge_retuck_timing" }
             check(reference.contentEquals(retucked)) { "edge_retuck_changed_logo" }
             check(toggles == 0) { "edge_reveal_or_hold_activated_a_toggle" }
-            stage = "badge transition"
-            badgeMotion = checkBadgeTransition()
+            stage = "action transition"
+            actionMotion = checkActionTransition()
+            stage = "drag from revealed right edge"
+            checkDragAcrossDisplay()
+            check(toggles == 0) { "drag_activated_a_toggle" }
         } catch (error: Throwable) { failure = error }
         finally {
             try {
@@ -216,7 +288,7 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
         val error = failure
         test.finish(if (error == null) Activity.RESULT_OK else Activity.RESULT_CANCELED, Bundle().apply {
             putString("stream", if (error == null)
-                "Caption edge stability passed: light-right; 48dp; badge-only changes; retuck identical; no toggle; $badgeMotion.\n"
+                "Caption edge stability passed: light-right; 48dp; fixed portrait; inward play/stop; retuck identical; drag across to left; no toggle; $actionMotion.\n"
             else "Caption edge stability failed at $stage: ${error.javaClass.simpleName}: ${error.message}\n")
         })
     }
