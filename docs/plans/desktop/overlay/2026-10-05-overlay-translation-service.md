@@ -6,6 +6,13 @@ immersive mode, position lock and close. Keep a 156 px maximum for the capsule,
 including on an embedded surface. Preserve the full accessible language label
 when its visible text truncates. At the supported 360 px minimum width all six
 actions retain 24 px targets and remain separate from the capsule.
+While paused, the closed capsule shows the localized pause label with its
+opening arrow. Its tooltip and accessible name include the full language pair,
+and opening the panel exposes both language selectors. On resume, the pair
+returns to the capsule. The microphone and recording marks retain their meaning
+in either state. Keep this entry between 80 and 156 px; use a conventional
+compact pause label (such as Russian “Пауза”) without shortening its accessible
+description.
 The empty drag area moves the window. Collapse and expand through their
 explicit buttons.
 
