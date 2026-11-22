@@ -20,7 +20,7 @@ Set up your credentials on the phone; they do not sync from the desktop app.
 
 ## Using subtitles
 
-- **Start or stop from another app.** In **More → Caption shortcuts**, add **Mimi captions** to Quick Settings. The floating edge button and idle notification have separate switches, both off by default. Turning either off leaves the other shortcut and active captions unchanged. Drag the button to place it. After three seconds it tucks against the nearest edge. Tap to reveal it, then tap to start or stop. Starting system audio opens Android’s sharing prompt each time. Stopping releases capture.
+- **Start or stop from another app.** In **More → Caption shortcuts**, add **Mimi captions** to Quick Settings. The floating edge button and idle notification have separate switches, both off by default. Turning either off leaves the other shortcut and active captions unchanged. Drag the button to place it. After three seconds it settles against the nearest edge with Mimi’s blue ribbon showing. Tap once to reveal the play or stop symbol in its place, then tap again to operate captions. Starting system audio opens Android’s sharing prompt each time. Stopping releases capture.
 - **Find other settings.** More also contains **Interface language** and **Help and about**: the usage guide, content-free capture diagnostics, installed version and update check. Captions contains the selected service, input, languages and display controls. During an active session, every page keeps its status and Stop action available.
 - **Continue after unlocking.** If locking the phone interrupts system-audio captions, Mimi offers **Continue captions** after unlock when notifications are allowed. Tap it and confirm sharing to return to the video. You can dismiss the reminder or start again from the tile. Microphone sessions stay stopped.
 - **Audio input:** system audio is selected by default. Choose **Microphone** or **Both** to translate your voice. Both keeps the inputs separate and labels their captions. Stop before switching inputs. System-only capture never opens the microphone, but Android still requires audio-recording permission for playback capture.
@@ -266,7 +266,7 @@ adb shell am instrument -w -e caption_scroll_probe true app.yuxino.mimi.android.
 ```
 
 For `edge_stability`, grant the development app permission to display over other apps.
-On a fixed light background, it taps and holds the docked portrait, checks the play and stop symbols on its inward-facing tab, and compares the portrait pixels through reveal and retreat.
+On a fixed light background, it taps and holds the docked tab, checks the change from the ribbon to play and stop, and verifies that its outer shape stays still as the symbols change.
 
 For `caption_shortcuts`, use a blank emulator with host microphone input disabled.
 Enable the two shortcuts in More and add the Mimi captions tile in Android Quick Settings.

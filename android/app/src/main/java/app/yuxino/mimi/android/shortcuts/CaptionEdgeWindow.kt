@@ -168,9 +168,9 @@ internal class CaptionEdgeWindow(
     }
 
     private fun moveWindow() {
-        artwork.place(placement, placement.nearest(travelX, travelY))
         val x = placement.left(travelX)
         val y = placement.top(travelY)
+        artwork.place(x, travelX - x, y, travelY - y)
         if (params.x == x && params.y == y) return
         params.x = x
         params.y = y
