@@ -29,6 +29,8 @@ internal object InterfaceLanguage {
     private val listeners = CopyOnWriteArraySet<() -> Unit>()
 
     fun bind(activity: AppCompatActivity, picker: Spinner) {
+        // Restoring an old view selection after a system language change would write it back.
+        picker.isSaveFromParentEnabled = false
         picker.adapter = ArrayAdapter(activity, R.layout.mimi_spinner_item,
             labelIds.map(activity::getString)).apply {
             setDropDownViewResource(R.layout.mimi_spinner_dropdown)

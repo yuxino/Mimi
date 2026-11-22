@@ -20,6 +20,10 @@ Set up your credentials on the phone; they do not sync from the desktop app.
 
 ## Using subtitles
 
+- **Start or stop from another app.** In **More → Caption shortcuts**, add **Mimi captions** to Android Quick Settings. The same page has separate switches for the floating button and the notification that offers Start while captions are off. Both are off by default. You can turn either off during an active session. The running notification offers Stop. On a fresh Android 13 or later installation, the first start from inside Mimi can ask once for notification permission. You can also enable notifications here later. Starting from a shortcut goes straight to the required capture permissions.
+- **Use the floating shortcut.** Drag Mimi to the left or right edge. Tap the character, then tap **Start** or **Stop** beside it. The text follows your system font size and stays available while you press it. After three idle seconds it disappears and Mimi stays at the edge. Starting system audio opens Android’s sharing prompt each time. Stopping captions ends capture.
+- **Find other settings.** More also contains **Interface language** and **Help and about**: the usage guide, content-free capture diagnostics, installed version and update check. Captions contains the selected service, input, languages and display controls. During an active session, every page keeps its status and Stop action available.
+- **Continue after unlocking.** If locking the phone interrupts a system-audio-only session, Mimi offers **Continue captions** after unlock when notifications are allowed, even if the idle notification is switched off. Tap it and confirm sharing to return to the video, or dismiss it. Sessions using the microphone stay stopped.
 - **Audio input:** system audio is selected by default. Choose **Microphone** or **Both** to translate your voice. Both keeps the inputs separate and labels their captions. Stop before switching inputs. System-only capture never opens the microphone, but Android still requires audio-recording permission for playback capture.
 - **No subtitles:** make sure captions are running, a saved service is selected, and speech is playing. Some apps block playback capture; protected audio cannot be captured. Android asks for playback-capture consent each time you start system audio.
 - **Recent captions:** new installs keep the three most recent confirmed captions in memory; existing installations keep their previous setting. You can change that limit. Stopping leaves these captions readable; the next session clears them.
@@ -38,12 +42,14 @@ code does not prove availability on every device; see [verification status](#ver
 
 ## Features
 
-- **Main interface** — Captions, Services and More share one page shell and a
-  persistent status/Start/Stop footer. Captions contains language choices, one
+- **Main interface** — Captions, Services and More share one page shell. Captions
+  always keeps its primary Start/Stop action, configured Services can start directly,
+  and all pages retain session controls while starting, running or stopping.
+  Idle More omits that footer. Captions contains language choices, one
   live/sample preview, display mode and immersion. Width, font, color and
   opacity are directly adjustable beside the pinned preview on that same page. Services owns service
-  selection and setup; More contains interface language, diagnostics and the
-  setup guide. Switching sections retains their scroll positions.
+  selection and setup; More puts caption shortcuts first, followed by interface
+  language and Help and about. Switching sections retains their scroll positions.
 - **System-audio capture** — `MediaProjection` + `AudioPlaybackCapture`
   (API 29+). Requires Android’s `RECORD_AUDIO` runtime grant for playback capture;
   never uses a microphone source unless selected. Captures what other apps play
@@ -253,10 +259,24 @@ adb shell am instrument -w -e theme light app.yuxino.mimi.android.dev.test/app.y
 adb shell am instrument -w -e theme dark app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e overlay_preview true -e theme light app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e overlay_interaction true app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
+adb shell am instrument -w -e edge_stability true app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
+adb shell am instrument -w -e caption_shortcuts true -e host_microphone_disabled true app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e interface_language true -e theme light app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e overlay_listening true -e locale zh-Hans app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e caption_scroll_probe true app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 ```
+
+For `edge_stability`, grant the development app permission to display over other apps.
+On a fixed background, tap the character to reveal the separate Start or Stop text button. Check that the portrait stays still as the action appears or retracts, and that dragging it leaves capture unchanged. Hold the command while changing the app language or system font size. Its label should update in place and releasing it should perform the action once.
+
+On an isolated Android 13 or later emulator, pass `-e notification_offer fresh`, `denied`, `granted` or `upgrade` to `UiSmokeInstrumentation` with the matching install and system permission state. These checks read the actual Android permission and exercise the stored first-start decision, then restore the app preference. They do not start capture.
+
+For `caption_shortcuts`, use a blank emulator with host microphone input disabled.
+Enable the two shortcuts in More and add the Mimi captions tile in Android Quick Settings.
+Pass `-e media_id <id>` to use a guest-local video from Android's media library. The
+check accepts Android's real playback-sharing dialog and discards captured audio locally.
+On an emulator without a device credential, add `-e screen_lock_resume true` to
+exercise screen off, unlock and fresh sharing consent with the idle notification disabled.
 
 The interface-language check requires a blank, idle emulator. It exercises the
 native picker, settings recreation and localized overlay controls without capture
@@ -418,7 +438,7 @@ can miss Firefox controls; verify the player after a native short press.
 
 ## Known limits
 
-- MediaProjection requires user consent on every start (platform rule).
+- Every new system-audio session requires Android’s MediaProjection consent, including after unlock. Mimi uses the same prompt on devices with Shizuku.
 - DRM-protected output and apps that disallow playback capture cannot be captured.
 - Provider VAD can hold sentences open when background music is continuous;
   complete current subtitles remain readable until replaced or the session ends.

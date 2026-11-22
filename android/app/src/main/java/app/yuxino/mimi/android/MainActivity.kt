@@ -1,12 +1,7 @@
 package app.yuxino.mimi.android
 
-import android.Manifest
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.media.projection.MediaProjectionManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -23,7 +18,6 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.doOnNextLayout
 import app.yuxino.mimi.android.captions.CaptionDisplayMode
@@ -33,6 +27,8 @@ import app.yuxino.mimi.android.captions.ImmersiveModeHelp
 import app.yuxino.mimi.android.captions.SubtitlePreviewView
 import app.yuxino.mimi.android.capture.CaptureHealth
 import app.yuxino.mimi.android.capture.CaptureInput
+import app.yuxino.mimi.android.capture.CaptureStartFlow
+import app.yuxino.mimi.android.capture.CaptureStartResult
 import app.yuxino.mimi.android.capture.MimiService
 import app.yuxino.mimi.android.localization.InterfaceLanguage
 import app.yuxino.mimi.android.localization.languageDisplayName
@@ -45,6 +41,7 @@ import app.yuxino.mimi.android.services.presentation.translationProviderIcon
 import app.yuxino.mimi.android.sessions.SessionStorageControls
 import app.yuxino.mimi.android.settings.AppearanceControls
 import app.yuxino.mimi.android.settings.SettingsStore
+import app.yuxino.mimi.android.shortcuts.CaptionShortcutSettings
 import app.yuxino.mimi.android.ui.HelpUi
 import app.yuxino.mimi.android.ui.layout.applySystemBarInsets
 import app.yuxino.mimi.android.updates.AppUpdateControls
@@ -55,9 +52,9 @@ import com.google.android.material.snackbar.Snackbar
 class MainActivity : AppCompatActivity() {
 
     private lateinit var startStop: MaterialButton
-    private var starting = false
-    private var pendingCaptureInput: CaptureInput? = null
-    private var pendingStartRequest: Long? = null
+    private lateinit var captureStart: CaptureStartFlow
+    private val starting: Boolean get() = captureStart.starting
+    private val pendingCaptureInput: CaptureInput? get() = captureStart.input
     private lateinit var guide: FirstRunGuide
     private val immersiveHelp = ImmersiveModeHelp(this)
     private val previewHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -71,6 +68,8 @@ class MainActivity : AppCompatActivity() {
     private val sectionScroll = SparseIntArray()
     private var currentSection = R.id.tab_caption
     private var lastSessionState: Pair<Boolean, Boolean>? = null
+    // Only a complete refresh publishes availability; null preserves its error across tabs.
+    private var configuredService: Boolean? = null
     private val subtitleListener = object : app.yuxino.mimi.android.provider.SubtitleBus.Listener {
         override fun onSubtitleChanged() { previewHandler.removeCallbacks(previewUpdate); previewHandler.post(previewUpdate) }
     }
@@ -79,17 +78,12 @@ class MainActivity : AppCompatActivity() {
         refreshUi()
     } }
 
-    private val projectionManager: MediaProjectionManager by lazy {
-        getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        starting = savedInstanceState?.getBoolean("starting") ?: false
-        pendingCaptureInput = savedInstanceState?.getString("pending_capture_input")?.let(CaptureInput::request)
-        pendingStartRequest = savedInstanceState?.getLong("pending_start_request")?.takeIf { it != 0L }
-        reconcileServiceStart()
-        permissionOnly = savedInstanceState?.getBoolean("permission_only") ?: false
+        captureStart = CaptureStartFlow(this, savedInstanceState?.getBundle("capture_start"),
+            onChanged = { if (::startStop.isInitialized) refreshUi() },
+            onFinished = { result -> if (result == CaptureStartResult.SETUP_REQUIRED) openSettings() },
+            fromMainScreen = true)
         val firstRunPrefs = getSharedPreferences("first_run", 0)
         if (!firstRunPrefs.contains("seen") && java.io.File(applicationInfo.dataDir, "shared_prefs/mimi_secure.xml").exists()) {
             firstRunPrefs.edit().putBoolean("seen", true).apply()
@@ -110,7 +104,7 @@ class MainActivity : AppCompatActivity() {
         startStop = findViewById(R.id.start_stop)
         findViewById<View>(R.id.first_run_guide).setOnClickListener { guide.open() }
         if (savedInstanceState?.getBoolean("guide_open") == true) guide.open(savedInstanceState.getInt("guide_step"), savedInstanceState.getString("guide_provider"), savedInstanceState.getString("guide_profile"))
-        else if (guide.shouldOpen()) guide.open()
+        else if (intent.getStringExtra("settings_section") != "services" && guide.shouldOpen()) guide.open()
         findViewById<View>(R.id.service_settings).setOnClickListener { openSettings() }
         findViewById<View>(R.id.source_language_action).setOnClickListener { showLanguages(source = true) }
         findViewById<View>(R.id.target_language_action).setOnClickListener { showLanguages(source = false) }
@@ -160,10 +154,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        outState.putBoolean("starting", starting)
-        outState.putString("pending_capture_input", pendingCaptureInput?.id)
-        outState.putLong("pending_start_request", pendingStartRequest ?: 0L)
-        outState.putBoolean("permission_only", permissionOnly)
+        outState.putBundle("capture_start", captureStart.saveState())
         outState.putBoolean("guide_open", guide.showing)
         outState.putInt("guide_step", guide.step)
         outState.putString("guide_provider", guide.providerId)
@@ -180,9 +171,15 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        reconcileServiceStart()
         lastSessionState = null
         refreshUi()
         appearance.sync()
+    }
+
+    override fun onDestroy() {
+        captureStart.onDestroy()
+        super.onDestroy()
     }
 
     private fun openSettings() {
@@ -193,12 +190,15 @@ class MainActivity : AppCompatActivity() {
         R.id.tab_general to R.id.general_panel)
 
     private fun bindSections(savedInstanceState: Bundle?) {
+        // Material applies its themed padding during construction. Clear the
+        // leading content inset afterwards so these list actions align with labels.
+        for (id in listOf(R.id.first_run_guide, R.id.copy_capture_diagnostics)) {
+            findViewById<MaterialButton>(id).apply { setPaddingRelative(0, paddingTop, paddingEnd, paddingBottom) }
+        }
         InterfaceLanguage.bind(this, findViewById(R.id.interface_language))
         appUpdates = AppUpdateControls(this)
-        findViewById<LinearLayout>(R.id.general_panel).apply {
-            addView(appUpdates, indexOfChild(findViewById(R.id.interface_language)) + 1,
-                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(28) })
-        }
+        findViewById<LinearLayout>(R.id.app_updates_container).addView(appUpdates, LinearLayout.LayoutParams(-1, -2))
+        findViewById<LinearLayout>(R.id.caption_shortcuts_container).addView(CaptionShortcutSettings(this), LinearLayout.LayoutParams(-1, -2))
         appearance = AppearanceControls(this) { enabled ->
             if (enabled) immersiveHelp.requestEnable(onConfirmed = {
                 runCatching { SettingsStore.setImmersiveSubtitles(this, true) }
@@ -208,11 +208,11 @@ class MainActivity : AppCompatActivity() {
             else { immersiveHelp.dismiss(); SettingsStore.setImmersiveSubtitles(this, false) }
         }
         findViewById<LinearLayout>(R.id.home_panel).apply {
-            addView(appearance, indexOfChild(findViewById(R.id.service_settings)), LinearLayout.LayoutParams(-1, -2))
+            addView(appearance, LinearLayout.LayoutParams(-1, -2))
         }
         sessionStorage = SessionStorageControls(this)
         findViewById<LinearLayout>(R.id.home_panel).apply {
-            addView(sessionStorage, indexOfChild(findViewById(R.id.service_settings)), LinearLayout.LayoutParams(-1, -2))
+            addView(sessionStorage, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
         }
         val tabs = findViewById<RadioGroup>(R.id.settings_tabs)
         val scroll = findViewById<ScrollView>(R.id.settings_scroll)
@@ -227,6 +227,7 @@ class MainActivity : AppCompatActivity() {
             sections.forEach { (tab, panel) -> findViewById<View>(panel).visibility = if (tab == selected) View.VISIBLE else View.GONE }
             findViewById<CaptionWorkspace>(R.id.caption_workspace).showsPreview = selected == R.id.tab_caption
             currentSection = selected
+            syncSessionControls()
             appUpdates.setPageVisible(selected == R.id.tab_general)
             back.isEnabled = selected != R.id.tab_caption
             scroll.post { if (currentSection == selected) scroll.scrollTo(0, sectionScroll[selected]) }
@@ -300,6 +301,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshUi() {
         try { refreshAvailableUi() } catch (_: Exception) {
+            configuredService = null
+            syncSessionControls()
             startStop.isEnabled = MimiService.isRunning && !MimiService.isStopping
             if (MimiService.isRunning) {
                 startStop.setText(if (MimiService.isStopping) R.string.stopping_capture else R.string.stop_capture)
@@ -311,6 +314,13 @@ class MainActivity : AppCompatActivity() {
             findViewById<View>(R.id.status_hint).visibility = View.VISIBLE
             findViewById<View>(R.id.status_help).visibility = View.GONE
         }
+    }
+
+    private fun syncSessionControls() {
+        val active = starting || MimiService.isStarting || MimiService.isRunning || MimiService.isStopping
+        val visible = configuredService == null || currentSection == R.id.tab_caption || active ||
+            currentSection == R.id.tab_service && configuredService == true
+        findViewById<View>(R.id.session_controls).visibility = if (visible) View.VISIBLE else View.GONE
     }
 
     private fun refreshAvailableUi() {
@@ -410,6 +420,8 @@ class MainActivity : AppCompatActivity() {
         if (running || app.yuxino.mimi.android.provider.SubtitleBus.hasRetainedContent) {
             refreshLivePreview()
         }
+        configuredService = keyOk
+        syncSessionControls()
     }
 
     private fun refreshLivePreview() {
@@ -497,126 +509,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
-    private fun requestNotificationPermissionIfNeeded() {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            ActivityCompat.requestPermissions(
-                this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIFICATIONS,
-            )
-        }
-    }
-
-    private var permissionOnly = false
-
-    private fun beginStartFlow(permissionOnly: Boolean = false) {
-        if (starting || MimiService.isStarting || MimiService.isRunning || MimiService.isStopping) return
-        this.permissionOnly = permissionOnly
-        val input = pendingCaptureInput ?: SettingsStore.captureInput(this).also { pendingCaptureInput = it }
-        if (!Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, R.string.need_overlay_permission, Toast.LENGTH_LONG).show()
-            starting = true
-            refreshUi()
-            ActivityCompat.startActivityForResult(this,
-                Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:$packageName"),
-                ), REQ_OVERLAY, null,
-            )
-            return
-        }
-        if (!SettingsStore.isConfigured(this)) {
-            pendingCaptureInput = null
-            Toast.makeText(this, R.string.need_api_key, Toast.LENGTH_LONG).show()
-            openSettings()
-            return
-        }
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            starting = true
-            refreshUi()
-            Toast.makeText(this, if (input.usesMicrophone) R.string.microphone_permission_hint else R.string.need_audio_permission, Toast.LENGTH_LONG).show()
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), REQ_AUDIO)
-            return
-        }
-        if (permissionOnly) { pendingCaptureInput = null; refreshUi(); return }
-        if (!input.needsProjection) {
-            startSelectedCapture(MimiService.microphoneIntent(this))
-            return
-        }
-        starting = true
-        refreshUi()
-        projectionManager.createScreenCaptureIntent().let {
-            ActivityCompat.startActivityForResult(this, it, REQ_PROJECTION, null)
-        }
-    }
+    private fun beginStartFlow(permissionOnly: Boolean = false) = captureStart.begin(permissionOnly)
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQ_AUDIO) starting = false
-        if (requestCode == REQ_AUDIO && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
-            beginStartFlow(permissionOnly)
-        } else if (requestCode == REQ_AUDIO) {
-            pendingCaptureInput = null
-            getSharedPreferences("first_run", 0).edit().putBoolean("audio-denied", true).apply()
-            Toast.makeText(this, getString(R.string.guide_audio_denied), Toast.LENGTH_LONG).show()
-            refreshUi()
-        }
+        captureStart.onRequestPermissionsResult(requestCode, grantResults)
     }
 
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQ_OVERLAY) {
-            starting = false
-            if (Settings.canDrawOverlays(this)) beginStartFlow(permissionOnly)
-            else {
-                pendingCaptureInput = null
-                getSharedPreferences("first_run", 0).edit().putBoolean("overlay-denied", true).apply()
-            }
-            refreshUi()
-        }
-        if (requestCode == REQ_PROJECTION) {
-            starting = false
-            val input = pendingCaptureInput
-            if (resultCode == Activity.RESULT_OK && data != null && input?.needsProjection == true) {
-                getSharedPreferences("first_run", 0).edit().remove("projection-denied").apply()
-                startSelectedCapture(MimiService.startIntent(this, resultCode, data, input))
-            } else {
-                pendingCaptureInput = null
-                getSharedPreferences("first_run", 0).edit().putBoolean("projection-denied", true).apply()
-                Toast.makeText(this, getString(R.string.guide_projection_denied), Toast.LENGTH_LONG).show()
-            }
-            refreshUi()
-        }
+        captureStart.onActivityResult(requestCode, resultCode, data)
     }
 
-    private fun reconcileServiceStart() {
-        val request = pendingStartRequest ?: return
-        if (!MimiService.startPending(request)) {
-            pendingStartRequest = null
-            starting = false
-        }
-    }
-
-    private fun startSelectedCapture(intent: Intent) {
-        pendingCaptureInput = null
-        starting = true
-        try {
-            val request = MimiService.prepareStart(this)
-            pendingStartRequest = request
-            MimiService.startFromActivity(this, intent.putExtra(MimiService.EXTRA_START_REQUEST, request))
-            requestNotificationPermissionIfNeeded()
-        } catch (_: RuntimeException) {
-            pendingStartRequest?.let(MimiService::cancelStartRequest)
-            pendingStartRequest = null
-            starting = false
-            Toast.makeText(this, R.string.capture_failed, Toast.LENGTH_LONG).show()
-        }
-        refreshUi()
-    }
+    private fun reconcileServiceStart() = captureStart.reconcileServiceStart()
 
     private fun stopService() {
         try { startService(MimiService.stopIntent(this)) }
@@ -624,10 +530,4 @@ class MainActivity : AppCompatActivity() {
         refreshUi()
     }
 
-    companion object {
-        private const val REQ_NOTIFICATIONS = 11
-        private const val REQ_PROJECTION = 12
-        private const val REQ_AUDIO = 13
-        private const val REQ_OVERLAY = 14
-    }
 }

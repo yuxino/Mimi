@@ -4,7 +4,7 @@
     <string name="settings_language_system">Как в системе</string>
     <string name="settings_language_failed">Не удалось изменить язык интерфейса. Повторите попытку.</string>
     <string name="settings_back">Назад</string>
-    <string name="settings_advanced">Расширенные настройки</string>
+    <string name="more_help_and_about">Помощь и информация</string>
     <string name="settings_font">Размер субтитров</string>
     <string name="settings_color">Цвет субтитров</string>
     <string name="settings_opacity">Непрозрачность субтитров</string>

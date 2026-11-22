@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_heading">Быстрый доступ к субтитрам</string>
+    <string name="shortcut_help">Через три секунды кнопка сворачивается у края экрана. Нажмите, чтобы развернуть её. Когда субтитры выключены, их можно включить из уведомления. Перед каждым новым захватом системного звука Android запрашивает разрешение.</string>
+    <string name="shortcut_edge_label">Плавающая кнопка у края экрана</string>
+    <string name="shortcut_notification_label">Уведомление при выключенных субтитрах</string>
+    <string name="shortcut_add_tile">Добавить в быстрые настройки</string>
+    <string name="shortcut_tile_label">Субтитры Mimi</string>
+    <string name="shortcut_tile_manual">Откройте быстрые настройки, нажмите «Изменить» и добавьте «Субтитры Mimi».</string>
+    <string name="shortcut_tile_already_added">Плитка уже в быстрых настройках.</string>
+    <string name="shortcut_captions_off">Субтитры выключены</string>
+    <string name="shortcut_notifications_blocked">Разрешите уведомления, чтобы использовать эту функцию.</string>
+    <string name="shortcut_open_settings">Настройки</string>
+    <string name="shortcut_settings_unavailable">Не удалось открыть системные настройки.</string>
+    <string name="caption_edge_move">Переместить к противоположному краю</string>
+    <string name="shortcut_reveal_edge">Развернуть кнопку субтитров</string>
+    <string name="shortcut_resume_captions">Продолжить субтитры</string>
+    <string name="shortcut_captions_paused">Субтитры приостановлены</string>
+    <string name="shortcut_resume_after_unlock">Блокировка экрана прервала трансляцию.</string>
+</resources>

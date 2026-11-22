@@ -1,5 +1,5 @@
 <resources>
-    <string name="guide_open">開始使用指南</string>
+    <string name="guide_open">使用說明</string>
     <string name="guide_intro">選擇翻譯服務</string>
     <string name="guide_saved_hint">準備好服務憑證，儲存到手機的加密儲存。儲存不會發起網路驗證，也不代表驗證成功。</string>
     <string name="guide_saved">憑證已儲存 · 連線會在試用時驗證</string>

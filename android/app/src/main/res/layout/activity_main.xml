@@ -18,7 +18,7 @@
         <ImageView
             android:layout_width="32dp"
             android:layout_height="32dp"
-            android:src="@drawable/mimi_brand"
+            android:src="@drawable/mimi_brand_small"
             android:contentDescription="@string/brand_description" />
         <LinearLayout
             android:id="@+id/home_heading"
@@ -40,7 +40,8 @@
         android:layout_marginBottom="12dp">
         <RadioButton
             android:id="@+id/tab_caption"
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
+            android:minWidth="48dp"
             android:layout_height="wrap_content"
             android:minHeight="48dp"
             android:paddingVertical="8dp"
@@ -55,7 +56,8 @@
             android:fontFamily="sans-serif-medium" />
         <RadioButton
             android:id="@+id/tab_service"
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
+            android:minWidth="48dp"
             android:layout_height="wrap_content"
             android:minHeight="48dp"
             android:paddingVertical="8dp"
@@ -70,7 +72,8 @@
             android:fontFamily="sans-serif-medium" />
         <RadioButton
             android:id="@+id/tab_general"
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
+            android:minWidth="48dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:minHeight="48dp"
@@ -285,6 +288,17 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:visibility="gone">
+                <LinearLayout
+                    android:id="@+id/caption_shortcuts_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="24dp"
+                    android:layout_marginBottom="24dp"
+                    android:background="@color/mimi_border" />
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -301,36 +315,53 @@
                     android:background="@drawable/settings_field"
                     android:popupBackground="@color/mimi_bg"
                     android:spinnerMode="dropdown" />
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="24dp"
+                    android:layout_marginBottom="24dp"
+                    android:background="@color/mimi_border" />
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="28dp"
-                    android:text="@string/settings_advanced"
-                    android:textSize="16sp"
+                    android:text="@string/more_help_and_about"
+                    android:textSize="17sp"
+                    android:fontFamily="sans-serif-medium"
                     android:textColor="@color/mimi_text" />
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/copy_capture_diagnostics"
-                    style="@style/Widget.Mimi.Button.Secondary"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="end"
-                    android:layout_marginTop="12dp"
-                    android:minHeight="48dp"
-                    android:text="@string/copy_capture_diagnostics"
-                    android:textAllCaps="false" />
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/first_run_guide"
                     style="?attr/borderlessButtonStyle"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:minHeight="48dp"
+                    android:gravity="start|center_vertical"
                     android:text="@string/guide_open"
                     android:textAllCaps="false"
-                    android:layout_marginTop="24dp" />
+                    app:icon="@drawable/ic_chevron"
+                    app:iconGravity="end"
+                    app:iconTint="@color/mimi_muted" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/copy_capture_diagnostics"
+                    style="?attr/borderlessButtonStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="start|center_vertical"
+                    android:minHeight="48dp"
+                    android:text="@string/copy_capture_diagnostics"
+                    android:textAllCaps="false" />
+                <LinearLayout
+                    android:id="@+id/app_updates_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="vertical" />
             </LinearLayout>
         </LinearLayout>
     </app.yuxino.mimi.android.ui.layout.ControlScrollView>
     </app.yuxino.mimi.android.captions.CaptionWorkspace>
     <app.yuxino.mimi.android.ui.layout.SessionControlsLayout
+        android:id="@+id/session_controls"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"

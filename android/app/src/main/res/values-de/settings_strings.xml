@@ -4,7 +4,7 @@
     <string name="settings_language_system">Systemsprache</string>
     <string name="settings_language_failed">Oberflächensprache konnte nicht geändert werden. Erneut versuchen.</string>
     <string name="settings_back">Zurück</string>
-    <string name="settings_advanced">Erweiterte Einstellungen</string>
+    <string name="more_help_and_about">Hilfe und Info</string>
     <string name="settings_font">Untertitelgröße</string>
     <string name="settings_color">Untertitelfarbe</string>
     <string name="settings_opacity">Untertiteldeckkraft</string>

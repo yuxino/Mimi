@@ -16,8 +16,9 @@
     <string name="openai_realtime_service_error">OpenAI 서비스에 오류가 발생했습니다. 잠시 후 다시 시도하세요.</string>
     <string name="need_api_key">먼저 설정에서 API 키를 추가하세요.</string>
     <string name="notification_channel">자막 서비스</string>
-    <string name="notification_title">Mimi가 재생 소리를 캡처하고 있습니다</string>
-    <string name="notification_text">실시간 자막 및 번역 실행 중</string>
+    <string name="notification_title">자막이 켜져 있습니다</string>
+    <string name="notification_text">다른 앱의 오디오 캡처 중</string>
+    <string name="start_action">시작</string>
     <string name="stop_action">중지</string>
     <string name="overlay_exit_immersive">몰입 자막 종료</string>
     <string name="overlay_adjust">자막 조정</string>

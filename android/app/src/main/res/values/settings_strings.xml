@@ -9,7 +9,7 @@
     <string name="settings_language_system">Follow system</string>
     <string name="settings_language_failed">Could not change the interface language. Try again.</string>
     <string name="settings_back">Back</string>
-    <string name="settings_advanced">Advanced settings</string>
+    <string name="more_help_and_about">Help and about</string>
     <string name="settings_font">Caption size</string>
     <string name="settings_color">Caption color</string>
     <string name="settings_opacity">Caption opacity</string>

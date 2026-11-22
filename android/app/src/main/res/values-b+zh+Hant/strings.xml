@@ -16,8 +16,9 @@
     <string name="openai_realtime_service_error">OpenAI 服務發生錯誤，請稍後重試。</string>
     <string name="need_api_key">請先在設定中填寫 API Key。</string>
     <string name="notification_channel">字幕服務</string>
-    <string name="notification_title">Mimi 正在捕獲系統音訊</string>
-    <string name="notification_text">即時字幕與翻譯運行中</string>
+    <string name="notification_title">字幕已開啟</string>
+    <string name="notification_text">正在擷取其他應用程式的音訊</string>
+    <string name="start_action">開始</string>
     <string name="stop_action">停止</string>
     <string name="overlay_exit_immersive">退出沉浸</string>
     <string name="overlay_adjust">調整字幕</string>
