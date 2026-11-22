@@ -37,6 +37,7 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
     private var bounds = Rect()
     private var heldSince: Long? = null
     private var stage = "setup"
+    private val touchTrace = mutableListOf<String>()
     private fun dp(value: Int) = (value * context.resources.displayMetrics.density).roundToInt()
     private fun label(resource: Int) = InterfaceLanguage.context(context).getString(resource)
     private fun artwork(button: View) = (button as ViewGroup).getChildAt(0) as CaptionEdgeArtwork
@@ -131,6 +132,7 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
             x, bounds.exactCenterY(), 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
         try { check(test.uiAutomation.injectInputEvent(event, true)) { "edge_touch_rejected" } }
         finally { event.recycle() }
+        touchTrace.add("${MotionEvent.actionToString(action)}($x,${bounds.exactCenterY()})@$now")
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) heldSince = null
     }
 
@@ -138,17 +140,35 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
         touch(MotionEvent.ACTION_DOWN); touch(MotionEvent.ACTION_UP)
         val button = edge(R.string.start_capture)
         touch(MotionEvent.ACTION_DOWN)
+        var fingerX = bounds.exactCenterX()
         fun moveAndHold(x: Float): Rect {
-            touch(MotionEvent.ACTION_MOVE, x)
             val deadline = SystemClock.elapsedRealtime() + 2_000
+            // A physical drag delivers a path and then stationary samples while held.
+            // Keep the final center assertion independent of the injected coordinates.
+            for (step in 1..8) {
+                touch(MotionEvent.ACTION_MOVE, fingerX + (x - fingerX) * step / 8)
+                SystemClock.sleep(16)
+            }
+            fingerX = x
+            touch(MotionEvent.ACTION_MOVE, x)
+            SystemClock.sleep(16)
+            touch(MotionEvent.ACTION_MOVE, x)
+            val observations = mutableListOf<String>()
             do {
                 val current = frame(button)
                 var hidden = false
-                ui { hidden = actionOpacity(artwork(button)) == 0 }
+                ui {
+                    val params = button.layoutParams as WindowManager.LayoutParams
+                    val opacity = actionOpacity(artwork(button))
+                    hidden = opacity == 0
+                    val state = "frame=$current,params=(${params.x},${params.y}),opacity=$opacity," +
+                        "pressed=${button.isPressed},label=${button.contentDescription}"
+                    if (observations.lastOrNull() != state) observations.add(state)
+                }
                 if (abs(current.exactCenterX() - x) <= 1 && hidden) return current
                 SystemClock.sleep(20)
             } while (SystemClock.elapsedRealtime() < deadline)
-            error("dragged_edge_or_action_did_not_settle_at_x=$x")
+            error("dragged_edge_or_action_did_not_settle_at_x=$x; observed=$observations; inputs=${touchTrace.takeLast(5)}")
         }
         stage = "held at display midpoint"
         val middle = moveAndHold(bounds.right / 2f)
