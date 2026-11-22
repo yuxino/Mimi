@@ -53,7 +53,6 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
         val nonzeroChunks = AtomicLong()
         val video = args?.getString("media_id")?.toLongOrNull()
         val noNotificationPermission = args?.getString("shortcut_without_notifications") == "true"
-        val originalEdge = host.showEdge
         val engine = object : ProviderEngine {
             override val sampleRateHz = 16_000
             override fun start() = Unit
@@ -64,8 +63,11 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
             override fun stop() = Unit
         }
         var profile: String? = null
+        var edgeBeforePreferenceCheck: Boolean? = null
         val result = runCatching {
             check(Build.VERSION.SDK_INT >= 35 && args?.getString("host_microphone_disabled") == "true")
+            // The instrumentation worker may start before MimiApplication.onCreate has returned.
+            test.waitForIdleSync()
             consent.verifyEmulatorConsentMode()
             check(SettingsStore.profiles(context).isEmpty() && SettingsStore.captureInput(context) == CaptureInput.SYSTEM)
             check(!MimiService.isRunning && !MimiService.isStarting && !MimiService.isStopping)
@@ -146,7 +148,10 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
             }
             await { hasNotification("capture") && !hasNotification("caption_shortcuts") }
             shot("03-returned-to-playback")
-            if (args?.getString("edge_preference") == "true") checkEdgePreferenceDuringPlayback(previousApp, chunks)
+            if (args?.getString("edge_preference") == "true") {
+                edgeBeforePreferenceCheck = host.showEdge
+                checkEdgePreferenceDuringPlayback(previousApp, chunks)
+            }
 
             stage = "stop from tile"
             tile("04-tile-on")
@@ -225,7 +230,7 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
                 if (MimiService.isRunning) onMain { context.startService(MimiService.stopIntent(context)) }
                 await { !MimiService.isRunning && !MimiService.isStopping }
                 onMain {
-                    host.showEdge = originalEdge
+                    edgeBeforePreferenceCheck?.let { host.showEdge = it }
                     check(SettingsStore.deleteProfile(context, checkNotNull(profile)))
                 }
             }
@@ -422,8 +427,29 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
         shell("cmd statusbar expand-settings")
         fun pager() = systemNode { it.viewIdResourceName?.endsWith("/qs_pager") == true }
         fun page() = systemNode { it.viewIdResourceName?.endsWith("/footer_page_indicator") == true }?.contentDescription
-        // The compact shade also exposes tile_label before the expanded pager accepts input.
-        await { pager() != null && page() != null }
+        // SystemUI can leave only the compact notification shade open. A second pull opens its pager.
+        val settleMs = context.resources.getInteger(android.R.integer.config_mediumAnimTime)
+        var compactSince = 0L
+        var pulled = false
+        await {
+            val expanded = pager() != null
+            if (!expanded && !pulled) {
+                val compact = systemNode { it.viewIdResourceName?.endsWith("/quick_qs_panel") == true }
+                val now = SystemClock.elapsedRealtime()
+                when {
+                    compact == null -> compactSince = 0L
+                    compactSince == 0L -> compactSince = now
+                    now - compactSince >= settleMs -> {
+                        val bounds = Rect().also(compact::getBoundsInScreen)
+                        val x = bounds.centerX()
+                        val endY = context.resources.displayMetrics.heightPixels * 3 / 4
+                        shell("input swipe $x ${bounds.top + dp(16)} $x $endY 440")
+                        pulled = true
+                    }
+                }
+            }
+            expanded && page() != null
+        }
         val name = label(R.string.shortcut_tile_label)
         // SystemUI may first draw the previous language on this page while the tile service binds.
         // Stay on the installed tile's page; tapSystem still waits for the exact current language.
