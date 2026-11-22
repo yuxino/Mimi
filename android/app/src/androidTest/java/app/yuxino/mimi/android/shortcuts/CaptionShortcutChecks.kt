@@ -191,7 +191,7 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
             check(!MimiService.isStarting && !MimiService.isRunning && activePackage() == previousApp)
             shot("07-edge-expanded")
             stage = "start from the visible edge command"
-            tap(edgeCommand(start))
+            tap(edgeCommand(label(R.string.start_action)))
             waitForConsent()
             consent.respondToEmulatorConsent(true)
             await { MimiService.isRunning && activePackage() == previousApp }
@@ -215,7 +215,7 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
             await { edge(stop) != null && MimiService.isRunning }
             val character = checkNotNull(edge(stop))
             tap(character)
-            val stopCommand = edgeCommand(stop)
+            val stopCommand = edgeCommand(label(R.string.stop_action))
             check(MimiService.isRunning && !MimiService.isStopping &&
                 !stopCommand.contains(character.centerX(), character.centerY()))
             shot("17-edge-stop")

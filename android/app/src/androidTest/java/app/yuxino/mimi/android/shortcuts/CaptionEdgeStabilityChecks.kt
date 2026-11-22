@@ -33,7 +33,8 @@ import kotlin.math.roundToInt
 internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
     private val context get() = test.targetContext
     private val host get() = (context.applicationContext as MimiApplication).captionShortcuts
-    private val start get() = InterfaceLanguage.context(context).getString(R.string.start_capture)
+    private val startDescription get() = InterfaceLanguage.context(context).getString(R.string.start_capture)
+    private val startCommand get() = InterfaceLanguage.context(context).getString(R.string.start_action)
     private val reveal get() = InterfaceLanguage.context(context).getString(R.string.shortcut_reveal_edge)
     private var bounds = Rect()
     private var heldSince: Long? = null
@@ -67,7 +68,7 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
     }
 
     private fun commandBounds(right: Boolean, root: Rect): Rect {
-        val command = await { CaptionShortcutWindows.command(start) }
+        val command = await { CaptionShortcutWindows.command(startCommand) }
         val result = frame(command)
         check(result.height() == dp(48) && result.width() >= dp(48) &&
             (if (right) result.centerX() < root.left else result.centerX() >= root.right) &&
@@ -113,7 +114,7 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
     }
 
     private fun tucked(): View = await {
-        CaptionShortcutWindows.character(reveal, dp(48))?.takeIf { CaptionShortcutWindows.command(start) == null }
+        CaptionShortcutWindows.character(reveal, dp(48))?.takeIf { CaptionShortcutWindows.command(startCommand) == null }
     }
 
     private fun pixels(frame: Rect): IntArray {
@@ -176,7 +177,7 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
 
     private fun checkDragAcrossDisplay() {
         tap(bounds)
-        val button = character(start)
+        val button = character(startDescription)
         commandBounds(right = true, bounds)
         touch(MotionEvent.ACTION_DOWN)
         var fingerX = bounds.exactCenterX()
@@ -198,7 +199,7 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
                 var hidden = false
                 ui {
                     val params = button.layoutParams as WindowManager.LayoutParams
-                    hidden = CaptionShortcutWindows.command(start) == null
+                    hidden = CaptionShortcutWindows.command(startCommand) == null
                     val state = "frame=$current,params=(${params.x},${params.y}),commandHidden=$hidden,pressed=${button.isPressed}"
                     if (observations.lastOrNull() != state) observations.add(state)
                 }
@@ -213,7 +214,7 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
         characterInk(approaching)
         var commandDuringDrag = false
         val watch = ViewTreeObserver.OnPreDrawListener {
-            if (CaptionShortcutWindows.command(start) != null) commandDuringDrag = true
+            if (CaptionShortcutWindows.command(startCommand) != null) commandDuringDrag = true
             true
         }
         val dropX = bounds.width().toFloat() // Leave room for the three-second sideways snap.
@@ -231,7 +232,7 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
         check(!commandDuringDrag) { "edge_command_flashed_during_drag" }
         stage = "release on left"
         touch(MotionEvent.ACTION_UP, dropX)
-        val released = frame(character(start))
+        val released = frame(character(startDescription))
         check(released == drop) { "edge_root_moved_on_release: $drop to $released" }
         commandBounds(right = false, released)
         stage = "tucked on left"
@@ -241,7 +242,7 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
         val ink = characterInk(idle)
         check(ink.centerX() < docked.width() / 2) { "edge_character_faces_away_from_left_side: $ink" }
         tap(docked)
-        val opened = frame(character(start))
+        val opened = frame(character(startDescription))
         check(opened == docked) { "left_edge_moved_on_reveal" }
         checkCharacterWithCommand(idle, opened, commandBounds(right = false, opened))
     }
@@ -257,6 +258,9 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
             check(Build.VERSION.SDK_INT >= 29 && Build.HARDWARE in setOf("ranchu", "goldfish")) { "Use an isolated emulator" }
             check(Settings.canDrawOverlays(context)) { "Grant the overlay permission before this test" }
             check(!MimiService.isRunning && !MimiService.isStarting && !MimiService.isStopping)
+            stage = "localized command layout"
+            ui { checkCaptionEdgeCommandLayout(context) }
+            stage = "setup"
             ui { originalEdge = host.showEdge; host.showEdge = false }
             activity = test.startActivitySync(Intent(context, CaptureProbeActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as CaptureProbeActivity
@@ -281,7 +285,7 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
             check(idle.contentEquals(pixels(bounds))) { "idle_edge_pulsed" }
             stage = "first physical tap"
             tap(bounds)
-            val button = character(start)
+            val button = character(startDescription)
             val command = commandBounds(right = true, bounds)
             ui { check(button.createAccessibilityNodeInfo().isClickable) { "edge_has_no_accessible_action" } }
             check(frame(button) == bounds && toggles == 0) { "edge_character_moved_or_started_on_reveal" }
@@ -307,7 +311,7 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
             tucked()
             stage = "second physical tap on character keeps the command open"
             tap(bounds)
-            character(start)
+            character(startDescription)
             SystemClock.sleep(1_650)
             tap(bounds)
             SystemClock.sleep(1_650)
@@ -316,10 +320,10 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
             tucked()
             stage = "accessibility click on the tucked character"
             clickAccessibleCharacter(reveal)
-            character(start)
+            character(startDescription)
             check(toggles == 1) { "tucked_accessible_click_started_captions" }
             stage = "accessibility click on the available action"
-            clickAccessibleCharacter(start)
+            clickAccessibleCharacter(startDescription)
             await { Unit.takeIf { toggles == 2 } }
             tucked()
             stage = "drag across display"

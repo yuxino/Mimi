@@ -3,6 +3,7 @@ package app.yuxino.mimi.android.shortcuts
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.text.TextUtils
@@ -16,21 +17,24 @@ import kotlin.math.roundToInt
 /** A separate, transient touch target. When hidden, the underlying player gets this space back. */
 internal class CaptionEdgeCommand(context: Context) : FrameLayout(context) {
     private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
+    private val ink = Color.rgb(248, 248, 246)
     private val label = TextView(context).apply {
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-        setTextColor(Color.rgb(47, 39, 46))
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+        setTextColor(ink)
+        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         gravity = Gravity.CENTER
         maxLines = 2
         ellipsize = TextUtils.TruncateAt.END
-        setPadding(dp(10), dp(3), dp(10), dp(3))
-        minHeight = dp(28)
+        compoundDrawablePadding = dp(3)
+        setPaddingRelative(dp(8), dp(1), dp(10), dp(1))
+        minHeight = dp(26)
         background = GradientDrawable().apply {
-            setColor(Color.rgb(253, 249, 251))
-            cornerRadius = dp(9).toFloat()
-            setStroke(dp(1), Color.rgb(199, 187, 195))
+            setColor(Color.argb(239, 37, 37, 39))
+            cornerRadius = dp(24).toFloat()
+            setStroke(1, Color.argb(60, 255, 255, 255))
         }
         isDuplicateParentStateEnabled = true
-        foreground = RippleDrawable(ColorStateList.valueOf(0x22352B33), null, background.constantState?.newDrawable())
+        foreground = RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), null, background.constantState?.newDrawable())
     }
 
     init {
@@ -41,7 +45,14 @@ internal class CaptionEdgeCommand(context: Context) : FrameLayout(context) {
         addView(label, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER))
     }
 
-    fun setLabel(value: String) { label.text = value }
+    fun setAction(text: String, icon: Int?) {
+        label.text = text
+        val symbol = icon?.let { context.getDrawable(it)?.mutate() }?.apply {
+            setTint(ink)
+            setBounds(0, 0, dp(16), dp(16))
+        }
+        label.setCompoundDrawablesRelative(symbol, null, null, null)
+    }
 
     fun measuredWidthWithin(maxWidth: Int): Int {
         measure(MeasureSpec.makeMeasureSpec(maxWidth.coerceAtLeast(1), MeasureSpec.AT_MOST),

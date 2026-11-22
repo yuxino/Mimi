@@ -161,7 +161,12 @@ internal class CaptionEdgeWindow(
         if (gesture != null) endPress()
         button.isEnabled = state == CaptionShortcutState.INACTIVE || state == CaptionShortcutState.ACTIVE
         describeAction()
-        command.setLabel(InterfaceLanguage.context(context).getString(label))
+        val localized = InterfaceLanguage.context(context)
+        when (state) {
+            CaptionShortcutState.INACTIVE -> command.setAction(localized.getString(R.string.start_action), R.drawable.ic_play)
+            CaptionShortcutState.ACTIVE -> command.setAction(localized.getString(R.string.stop_action), R.drawable.ic_stop)
+            else -> command.setAction(localized.getString(label), null)
+        }
         command.isEnabled = button.isEnabled
         updateCommand()
         val status = when (state) {
@@ -169,7 +174,7 @@ internal class CaptionEdgeWindow(
             CaptionShortcutState.ACTIVE -> R.string.notification_title
             else -> label
         }
-        ViewCompat.setStateDescription(button, InterfaceLanguage.context(context).getString(status))
+        ViewCompat.setStateDescription(button, localized.getString(status))
     }
 
     private fun describeAction() {
@@ -227,9 +232,9 @@ internal class CaptionEdgeWindow(
         // The bubble starts just beyond the visible 20 dp portrait. Its center and the
         // portrait's center lie in separate touch areas even on the compact docked edge.
         val rightSide = side == CaptionEdge.RIGHT
-        val gap = dp(30)
-        val end = params.x + touchSize - gap
-        val start = params.x + gap
+        val insetFromEdge = dp(26)
+        val end = params.x + touchSize - insetFromEdge
+        val start = params.x + insetFromEdge
         val available = if (rightSide) end else travelX + touchSize - start
         val width = command.measuredWidthWithin(available)
         val x = if (rightSide) end - width else start

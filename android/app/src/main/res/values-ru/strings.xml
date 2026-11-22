@@ -18,6 +18,7 @@
     <string name="notification_channel">Служба субтитров</string>
     <string name="notification_title">Субтитры включены</string>
     <string name="notification_text">Идёт захват звука из других приложений</string>
+    <string name="start_action">Запустить</string>
     <string name="stop_action">Остановить</string>
     <string name="overlay_exit_immersive">Выйти из иммерсивного режима</string>
     <string name="overlay_adjust">Настроить субтитры</string>
