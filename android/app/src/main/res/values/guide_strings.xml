@@ -1,5 +1,5 @@
 <resources>
-    <string name="guide_open">Getting started</string>
+    <string name="guide_open">Usage guide</string>
     <string name="guide_intro">Choose a translation service</string>
     <string name="guide_saved_hint">Save your service credentials in encrypted storage on this phone. Saving does not contact the service or verify authentication.</string>
     <string name="guide_saved">Credentials saved · connection is checked during the trial</string>

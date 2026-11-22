@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_heading">字幕快捷入口</string>
+    <string name="shortcut_help">悬浮球闲置三秒后会贴边收起，轻点即可展开。字幕关闭时，可以从通知里重新开启。每次采集系统声音前，Android 都会请你确认共享。</string>
+    <string name="shortcut_edge_label">屏边悬浮球</string>
+    <string name="shortcut_notification_label">字幕关闭时保留通知</string>
+    <string name="shortcut_add_tile">添加到快捷设置</string>
+    <string name="shortcut_tile_label">Mimi 字幕</string>
+    <string name="shortcut_tile_manual">下拉快捷设置，点「编辑」，再添加「Mimi 字幕」。</string>
+    <string name="shortcut_tile_already_added">「Mimi 字幕」已在快捷设置中。</string>
+    <string name="shortcut_captions_off">字幕已关闭</string>
+    <string name="shortcut_notifications_blocked">允许 Mimi 发送通知后即可使用此入口。</string>
+    <string name="shortcut_open_settings">设置</string>
+    <string name="shortcut_settings_unavailable">无法打开系统设置。</string>
+    <string name="caption_edge_move">移到屏幕另一侧</string>
+    <string name="shortcut_reveal_edge">展开字幕按钮</string>
+    <string name="shortcut_resume_captions">继续字幕</string>
+    <string name="shortcut_captions_paused">字幕已暂停</string>
+    <string name="shortcut_resume_after_unlock">锁屏中断了屏幕共享。</string>
+</resources>

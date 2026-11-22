@@ -3,7 +3,7 @@
     <string name="settings_language_system">ตามระบบ</string>
     <string name="settings_language_failed">เปลี่ยนภาษาอินเทอร์เฟซไม่ได้ ลองอีกครั้ง</string>
     <string name="settings_back">กลับ</string>
-    <string name="settings_advanced">การตั้งค่าขั้นสูง</string>
+    <string name="more_help_and_about">ความช่วยเหลือและเกี่ยวกับ</string>
     <string name="settings_font">ขนาดคำบรรยาย</string>
     <string name="settings_color">สีคำบรรยาย</string>
     <string name="settings_opacity">ความทึบคำบรรยาย</string>

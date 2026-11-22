@@ -9,6 +9,7 @@ import { applicationAudioCopy } from "../../../lib/audio/applicationAudio";
 import { mergeSettingsSnapshot } from "../../../lib/settings/settingsState";
 import type { AudioInput, AudioSource, SessionStateEvent } from "../../../lib/types";
 import { CaptureStatusRow } from "./CaptureStatusRow";
+import { SettingsToastRegion } from "../../settings/feedback/SettingsToast";
 import type { SystemAudioTarget } from "../../../lib/types";
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), switchAudioInput: vi.fn(), switchSystemAudioTarget: vi.fn() }));
@@ -41,7 +42,7 @@ afterEach(async () => {
   await act(async () => root.unmount()); host.remove(); useStore.setState(initial, true);
   setStoredUiLanguage("system"); vi.restoreAllMocks(); vi.clearAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers();
 });
-async function mount(disabled = false) { await act(async () => root.render(<CaptureStatusRow disabled={disabled} />)); }
+async function mount(disabled = false) { await act(async () => root.render(<><SettingsToastRegion /><CaptureStatusRow disabled={disabled} /></>)); }
 function row(source: AudioSource) { return host.querySelector<HTMLElement>(`[data-audio-source="${source}"]`)!; }
 function toggle(source: AudioSource) { return row(source).querySelector<HTMLButtonElement>('[role="switch"]')!; }
 function description(source: AudioSource) { return row(source).querySelector('.settings-help-control__description')?.textContent ?? ""; }
@@ -231,6 +232,26 @@ it("explains a known microphone permission failure without exposing raw errors",
   expect(host.querySelector('[role="alert"]')?.textContent).toContain("system privacy settings");
 });
 
+it("reports a failed panel refresh outside the input row and announces a successful retry", async () => {
+  vi.stubGlobal("navigator", { userAgent: "Macintosh" });
+  const list = vi.fn()
+    .mockRejectedValueOnce(new Error("synthetic-private-error"))
+    .mockResolvedValueOnce({ supported: true, applications: [{ id: "test.player", name: "Player" }] });
+  mocks.invoke.mockImplementation(async command => command === "audio_applications" ? list() : system);
+  await mount();
+  const refresh = host.querySelector<HTMLButtonElement>(".application-audio-picker__refresh")!;
+  await act(async () => refresh.click());
+  expect(host.querySelector(".settings-toast[role=alert]")?.textContent).toBe(applicationAudioCopy().failed);
+  expect(row("system").querySelector("[role=alert]")).toBeNull();
+  expect(host.textContent).not.toContain("synthetic-private-error");
+  await act(async () => refresh.click());
+  expect(host.querySelectorAll(".settings-toast")).toHaveLength(1);
+  expect(host.querySelector(".settings-toast[role=status]")?.textContent).toBe(applicationAudioCopy().refreshed);
+  expect(list).toHaveBeenCalledTimes(2);
+  expect(mocks.switchSystemAudioTarget).not.toHaveBeenCalled();
+  expect(mocks.switchAudioInput).not.toHaveBeenCalled();
+});
+
 it.each([false, true])("selects a real application from the floating panel while paused=%s", async isPaused => {
   vi.stubGlobal("navigator", { userAgent: "Macintosh" });
   Element.prototype.scrollIntoView = vi.fn();
@@ -248,6 +269,7 @@ it.each([false, true])("selects a real application from the floating panel while
   expect(useStore.getState().session.isPaused).toBe(isPaused);
   expect(target.textContent).toContain("Player");
   expect(mocks.switchAudioInput).not.toHaveBeenCalled();
+  expect(host.querySelector(".settings-toast")).toBeNull();
 });
 
 it.each(["en", "zh", "ja"] as const)("searches applications by text in the floating panel in %s", async language => {
@@ -293,7 +315,7 @@ it("locks the input switches while an application change is pending and maps kno
   expect(mocks.switchAudioInput).not.toHaveBeenCalled();
   await act(async () => reject("application_audio_unavailable"));
   expect(toggle("microphone").disabled).toBe(false);
-  expect(host.querySelector('[role="alert"]')?.textContent).toBe(applicationAudioCopy().unavailable);
+  expect(host.querySelector('.settings-toast[role="alert"]')?.textContent).toBe(applicationAudioCopy().unavailable);
   expect(target.textContent).toContain(applicationAudioCopy().all);
 });
 

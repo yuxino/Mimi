@@ -16,7 +16,14 @@ import { inflateSync } from "node:zlib";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const iconDir = join(repoRoot, "src-tauri", "icons");
+const androidResources = join(repoRoot, "android", "app", "src", "main", "res");
 const sourceIcon = join(iconDir, "app-icon-source.png");
+const androidCopies = [
+  ["icon.png", "drawable-nodpi/mimi_brand.png"],
+  ["64x64.png", "drawable-xhdpi/mimi_brand_small.png"],
+  ["128x128.png", "drawable-xxxhdpi/mimi_brand_small.png"],
+  ["tray-template.png", "drawable-xhdpi/ic_mimi.png"],
+];
 const desktopPngs = [
   ["32x32.png", 32],
   ["64x64.png", 64],
@@ -332,6 +339,11 @@ function verifyIcons() {
   }
   validateIcns(join(iconDir, "icon.icns"));
   validateIco(join(iconDir, "icon.ico"));
+  for (const [source, resource] of androidCopies) {
+    if (!readFileSync(join(androidResources, resource)).equals(readFileSync(join(iconDir, source)))) {
+      fail(`${resource}: expected Mimi's ${source}; run npm run icons:generate`);
+    }
+  }
 
   const config = JSON.parse(readFileSync(join(repoRoot, "src-tauri", "tauri.conf.json"), "utf8"));
   const configured = config.bundle?.icon;
@@ -374,6 +386,9 @@ function generateIcons() {
       const target = join(iconDir, name);
       if (name === "icon.icns") writeFileSync(target, canonicalizeIcns(readFileSync(generated)));
       else copyFileSync(generated, target);
+    }
+    for (const [source, resource] of androidCopies) {
+      copyFileSync(join(iconDir, source), join(androidResources, resource));
     }
   } finally {
     rmSync(temporaryOutput, { recursive: true, force: true });

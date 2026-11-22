@@ -52,6 +52,7 @@ export const OVERLAY = {
   enterImmersiveMode: "몰입 모드 시작",
   lockPosition: "자막 위치 고정",
   unlockPosition: "자막 위치 고정 해제",
+  unlockPositionShort: "고정 해제",
   moreSettings: "추가 설정…",
   controlActionFailed: "작업을 완료할 수 없습니다. 다시 시도하세요.",
   originalOnly: "원문만",

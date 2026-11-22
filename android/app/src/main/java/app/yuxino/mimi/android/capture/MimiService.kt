@@ -37,6 +37,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import app.yuxino.mimi.android.MainActivity
+import app.yuxino.mimi.android.MimiApplication
 import app.yuxino.mimi.android.R
 import app.yuxino.mimi.android.captions.CaptionAdjustmentSwitch
 import app.yuxino.mimi.android.captions.CaptionDisplayMode
@@ -78,10 +79,10 @@ class MimiService : Service() {
     private val healthTick = object : Runnable {
         override fun run() {
             if (lanes.isEmpty()) return
-            if (!android.provider.Settings.canDrawOverlays(this@MimiService) ||
-                ContextCompat.checkSelfPermission(this@MimiService, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED ||
-                getSystemService(android.app.KeyguardManager::class.java).isDeviceLocked ||
-                !getSystemService(android.os.PowerManager::class.java).isInteractive) {
+            val permissionsValid = capturePermissionsValid()
+            val locked = screenLocked()
+            if (!permissionsValid || locked) {
+                queueUnlockContinuation(permissionsValid, locked)
                 lastCaptureError = "capture.permission_or_lock_changed"
                 stopEverything()
                 return
@@ -91,6 +92,18 @@ class MimiService : Service() {
             renderBus()
             mainHandler.postDelayed(this, 1_000)
         }
+    }
+
+    private fun capturePermissionsValid(): Boolean = android.provider.Settings.canDrawOverlays(this) &&
+        ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+    private fun screenLocked(): Boolean = getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked ||
+        !getSystemService(android.os.PowerManager::class.java).isInteractive
+
+    private fun queueUnlockContinuation(permissionsValid: Boolean, locked: Boolean) {
+        (application as MimiApplication).captionShortcuts.onLockInterruption(captureInput,
+            active = isRunning && mediaProjection != null && lanes.isNotEmpty(), preview = previewMode,
+            stopping = finishingSession || isStopping, permissionsValid = permissionsValid, locked = locked)
     }
     private fun updateCaptureObservations() {
         val now = SystemClock.elapsedRealtime()
@@ -233,6 +246,7 @@ class MimiService : Service() {
 
     private fun handleStartCommand(intent: Intent?): Int {
         if (intent?.action == ACTION_STOP) {
+            (application as MimiApplication).captionShortcuts.onCaptureStartingOrUserStop()
             startOwner?.first?.let(::completeStartRequest)
             finishSession()
             return START_NOT_STICKY
@@ -251,7 +265,9 @@ class MimiService : Service() {
             return START_NOT_STICKY
         }
         if (isRunning || overlayView != null) return START_NOT_STICKY
-        val testEngines = if (intent?.action == ACTION_CAPTURE_TEST &&
+        // Instrumentation can exercise the ordinary consent/shortcut path with an
+        // in-process discard engine. A fresh visible-activity request is still required.
+        val testEngines = if ((intent?.action == null || intent.action == ACTION_CAPTURE_TEST) &&
             applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) captureEnginesForTests else null
         if (intent?.action == ACTION_CAPTURE_TEST && testEngines == null) {
             stopSelf()
@@ -323,6 +339,9 @@ class MimiService : Service() {
             PendingIntent.FLAG_IMMUTABLE,
         )
         return Notification.Builder(this, CHANNEL_ID)
+            .apply {
+                if (Build.VERSION.SDK_INT >= 31) setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
+            }
             .setSmallIcon(R.drawable.ic_mimi)
             .setContentTitle(interfaceString(R.string.notification_title))
             .setContentText(interfaceString(if (captureInput == CaptureInput.MICROPHONE) R.string.notification_microphone_text else if (captureInput == CaptureInput.BOTH) R.string.capture_both_source_hint else R.string.notification_text))
@@ -360,6 +379,7 @@ class MimiService : Service() {
             val callback = object : MediaProjection.Callback() {
                 override fun onStop() {
                     if (generation == sessionGeneration) {
+                        queueUnlockContinuation(capturePermissionsValid(), screenLocked())
                         lastCaptureError = "capture.projection_stopped"
                         stopEverything()
                     }
@@ -1187,7 +1207,9 @@ class MimiService : Service() {
         internal fun prepareStart(context: Context): Long {
             check(!isRunning && !isStopping) { "capture_session_active" }
             val request = startGate.begin()
+            (context.applicationContext as MimiApplication).captionShortcuts.onCaptureStartingOrUserStop()
             lastCaptureError = null
+            stateListeners.forEach { it() }
             val appContext = context.applicationContext
             Handler(Looper.getMainLooper()).postDelayed({
                 if (startPending(request)) {
@@ -1211,7 +1233,7 @@ class MimiService : Service() {
 
         private val ownUiOwners = CopyOnWriteArraySet<android.app.Activity>()
         private var ownUiChanged: (() -> Unit)? = null
-        private val ownUiVisible: Boolean get() = ownUiOwners.isNotEmpty()
+        internal val ownUiVisible: Boolean get() = ownUiOwners.isNotEmpty()
         internal fun setOwnUiVisible(owner: android.app.Activity, visible: Boolean) {
             val changed = if (visible) ownUiOwners.add(owner) else ownUiOwners.remove(owner)
             if (changed) ownUiChanged?.invoke()

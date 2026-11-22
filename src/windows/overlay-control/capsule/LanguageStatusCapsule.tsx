@@ -57,6 +57,7 @@ export function LanguageStatusCapsule({
     ? I18N.overlay.closeControls
     : unlock ? I18N.overlay.unlockPosition : I18N.overlay.openControls;
   const compact = capsuleLabels(settings, transientPhase);
+  const pausedIsland = !expanded && !unlock && transientPhase === "paused";
   const sources = audioInputLabel(settings.audioInput, settings.systemAudioTarget);
   const phaseLabel = isStopping ? I18N.overlay.stopping : OVERLAY_ACTIVITY_PHASES[phase].accessibilityLabel;
   const sourceLabel = compact.source === I18N.settings.recognitionServiceDefault ? compact.source : status.source;
@@ -99,7 +100,7 @@ export function LanguageStatusCapsule({
 
   const pulse = <PulseRing phase={phase} compact motionEnabled={pulseOn} animationVisible={animationVisible} pulseStyle={settings.pulseStyle} />;
   const phaseBadge = transientPhase && (expanded || transientPhase !== "translating") &&
-    !(transientPhase === "paused" && audioRecording === "paused") &&
+    !(expanded && transientPhase === "paused" && audioRecording === "paused") &&
     <span className="overlay-control-island__phase">{compact.phase}</span>;
   const recording = <RecordingIndicator status={audioRecording} compact={!expanded} language={effectiveUiLanguage()} />;
 
@@ -134,6 +135,7 @@ export function LanguageStatusCapsule({
       type="button"
       className="overlay-control-island"
       data-unlock={unlock ? "" : undefined}
+      data-paused={pausedIsland ? "" : undefined}
       onClick={onToggle}
       title={title}
       aria-label={unlock ? actionLabel : accessibleLabel}
@@ -146,17 +148,17 @@ export function LanguageStatusCapsule({
       {unlock ? <>
         <Icon name={unlock.failure ? "exclamation-triangle" : "unlock"} className="overlay-control-island__unlock" />
         <span className="overlay-control-island__summary" role={unlock.failure ? "alert" : undefined}>
-          <strong>{unlock.failure ?? actionLabel}</strong>
+          <strong>{unlock.failure ?? I18N.overlay.unlockPositionShort}</strong>
         </span>
         {recording}
       </> : <>
         <span className="overlay-control-island__activity">{pulse}</span>
         <AudioInputIndicator input={settings.audioInput} target={settings.systemAudioTarget} />
-        <span className="overlay-control-island__summary">
+        {!pausedIsland && <span className="overlay-control-island__summary">
           <strong>{compact.source}</strong>
           <span aria-hidden="true">{status.separator}</span>
           <span>{compact.target}</span>
-        </span>
+        </span>}
         {phaseBadge}
         {recording}
         <Icon name="chevron-down" />

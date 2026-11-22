@@ -3,7 +3,7 @@
     <string name="settings_language_system">システムに合わせる</string>
     <string name="settings_language_failed">表示言語を変更できませんでした。もう一度お試しください。</string>
     <string name="settings_back">戻る</string>
-    <string name="settings_advanced">詳細設定</string>
+    <string name="more_help_and_about">ヘルプとアプリ情報</string>
     <string name="settings_font">字幕の大きさ</string>
     <string name="settings_color">字幕の色</string>
     <string name="settings_opacity">字幕の不透明度</string>

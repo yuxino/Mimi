@@ -4,7 +4,7 @@
     <string name="settings_language_system">Langue du système</string>
     <string name="settings_language_failed">Impossible de changer la langue de l’interface. Réessayez.</string>
     <string name="settings_back">Retour</string>
-    <string name="settings_advanced">Réglages avancés</string>
+    <string name="more_help_and_about">Aide et à propos</string>
     <string name="settings_font">Taille des sous-titres</string>
     <string name="settings_color">Couleur des sous-titres</string>
     <string name="settings_opacity">Opacité des sous-titres</string>

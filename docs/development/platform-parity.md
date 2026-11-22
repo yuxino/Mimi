@@ -16,6 +16,11 @@ protocol regressions exercise that same implementation.
 `shared/translation-contracts.json` and `shared/realtime-display-contracts.json`
 provide common synthetic wire and display cases.
 
+Android’s Quick Settings tile, optional screen-edge button and idle notification
+control the same capture service as its main screen. A new system-audio session
+requires fresh Android consent. Desktop keeps its native tray and keyboard
+shortcuts. See the [Android interaction design](../plans/android/2026-11-21-caption-shortcuts.md).
+
 ## xAI recognition and text translation
 
 Desktop and Android expose xAI streaming ASR through their existing independent

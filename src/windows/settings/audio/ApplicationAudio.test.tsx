@@ -62,11 +62,13 @@ it.each(["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th", "ru"] as const)("off
   expect(trigger().textContent).toContain(text().all);
   await open();
   expect(invoke).toHaveBeenCalledExactlyOnceWith("audio_applications");
+  expect(host.querySelector(".settings-toast")).toBeNull();
   expect(switchTarget).not.toHaveBeenCalled();
   expect([...document.querySelectorAll('[role="option"]')].map(node => node.textContent)).toEqual([text().all, "Player", "Chat"]);
   expect(document.querySelectorAll('[role="option"] .mimi-select__icon[aria-hidden="true"] svg')).toHaveLength(3);
   await choose("Player");
   expect(switchTarget).toHaveBeenCalledExactlyOnceWith({ kind: "application", ...applications[0] });
+  expect(host.querySelector(".settings-toast")).toBeNull();
   expect(save).not.toHaveBeenCalled();
   expect(useStore.getState().settings.recordSessionAudio).toBe(false);
 });
@@ -148,6 +150,34 @@ it("searches applications and returns to all audio through the same picker", asy
   expect(useStore.getState().settings.systemAudioTarget).toEqual({ kind: "system" });
 });
 
+it.each(["success", "failure"] as const)("keeps a manual refresh's %s feedback when its still-loading menu opens", async result => {
+  let complete!: () => void;
+  vi.mocked(invoke).mockReturnValueOnce(new Promise((resolve, reject) => {
+    complete = () => result === "success"
+      ? resolve({ supported: true, applications })
+      : reject(new Error("synthetic-private-error"));
+  }));
+  await render();
+  await act(async () => refresh().click());
+  expect(refresh().disabled).toBe(true);
+  await open();
+  expect(trigger().getAttribute("aria-expanded")).toBe("true");
+  expect(invoke).toHaveBeenCalledExactlyOnceWith("audio_applications");
+  expect(host.querySelector(".settings-toast")).toBeNull();
+  const searchField = document.activeElement;
+  expect(searchField).toBe(document.querySelector(".mimi-select__search"));
+  await act(async () => complete());
+  const notice = host.querySelector(".settings-toast");
+  expect(host.querySelectorAll(".settings-toast")).toHaveLength(1);
+  expect(notice?.getAttribute("role")).toBe(result === "success" ? "status" : "alert");
+  expect(notice?.textContent).toBe(result === "success" ? text().refreshed : text().failed);
+  expect(document.activeElement).toBe(searchField);
+  expect(refresh().disabled).toBe(false);
+  expect([...document.querySelectorAll('[role="option"]')].map(option => option.textContent))
+    .toEqual(result === "success" ? [text().all, "Player", "Chat"] : [text().all]);
+  expect(switchTarget).not.toHaveBeenCalled();
+});
+
 it("shows an unavailable saved app without making it selectable or changing it silently", async () => {
   useStore.setState({ settings: { ...useStore.getState().settings, systemAudioTarget: { kind: "application", id: "gone", name: "Old player" } } });
   await render();
@@ -155,7 +185,13 @@ it("shows an unavailable saved app without making it selectable or changing it s
   expect(trigger().querySelector('.mimi-select__icon svg')).not.toBeNull();
   await act(async () => refresh().click());
   expect(trigger().textContent).toContain("Old player · Unavailable");
-  expect(host.querySelector('[role="alert"]')?.textContent).toBe(text().unavailable);
+  expect(host.querySelector('.application-audio-picker [role="alert"]')?.textContent).toBe(text().unavailable);
+  const notice = host.querySelector('.settings-toast[role="status"]');
+  expect(notice).not.toBeNull();
+  expect(notice?.textContent).toBe(text().refreshed);
+  await act(async () => notice!.querySelector("button")!.click());
+  expect(host.querySelector(".settings-toast")).toBeNull();
+  expect(host.querySelector('.application-audio-picker [role="alert"]')?.textContent).toBe(text().unavailable);
   expect(switchTarget).not.toHaveBeenCalled();
   await open();
   expect([...document.querySelectorAll('[role="option"]')].some(node => node.textContent?.includes("Old player"))).toBe(false);
@@ -166,11 +202,12 @@ it("shows an unavailable saved app without making it selectable or changing it s
 it("reports list failures safely and allows refresh to an empty result with All applications still available", async () => {
   vi.mocked(invoke).mockRejectedValueOnce(new Error("private-window-title"));
   await render(); await open();
-  expect(host.querySelector('[role="alert"]')?.textContent).toBe(text().failed);
+  expect(host.querySelector('.settings-toast[role="alert"]')?.textContent).toBe(text().failed);
   expect(host.textContent).not.toContain("private-window-title");
   vi.mocked(invoke).mockResolvedValueOnce({ supported: true, applications: [] });
   await act(async () => refresh().click());
   expect(refresh().title).toBe(text().empty);
+  expect(host.querySelector('.settings-toast[role="status"]')?.textContent).toBe(text().empty);
   expect(host.querySelector('[role="alert"]')).toBeNull();
   expect([...document.querySelectorAll('[role="option"]')].map(node => node.textContent)).toEqual([text().all]);
 });
@@ -281,6 +318,8 @@ it("honors the existing native list capability without new settings fields", asy
   await render(); await open();
   expect(trigger().disabled).toBe(true);
   expect(refresh().disabled).toBe(true);
+  expect(host.querySelector('.settings-toast[role="alert"]')?.textContent).toBe(text().unsupported);
+  expect(host.querySelector('[role="status"]')).toBeNull();
   expect(switchTarget).not.toHaveBeenCalled();
 });
 
