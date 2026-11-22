@@ -8,6 +8,7 @@ Settings and the floating panel must use the same compact searchable source pick
 
 ## Implementation boundaries
 
+- While enumeration is pending, users can navigate the previous list. Keep an explicitly highlighted application by ID when the results change. If that application disappears, Enter leaves the menu open until the user picks another row.
 - Permit audio-input switching in Settings and the floating control panel. Permit enumeration and the new target-switch command in these same two surfaces only.
 - Switch an application's capture target through the serialized session lifecycle. Preserve confirmed subtitles and paused/idle state; reconnect a listening system-audio session. Seal the old generation before resetting drafts and confirmation watermarks, including when the input type stays unchanged.
 - A target change must not silently widen capture to all applications when a selected application exits. Display a recoverable error and let the user explicitly choose another target.
