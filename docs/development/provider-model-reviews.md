@@ -4,6 +4,13 @@
 每轮记录核对日期、源码、官方来源、范围、结论及下一步；实际模型对比结果
 另入[集成实测记录](integration-runs.md)。本页不保存媒体、译文或账户信息。
 
+## 2026-11-23 · v1.7.7 桌面交互修复发布前复核
+
+从 `v1.7.6` 到 `ab47ef3e`，共享运行时、服务文案及语言目录没有变动。本轮仅核对官方文档。
+
+- Google 将于 12 月 1 日把 `gemini-2.5-flash` 的请求转到 `gemini-3.5-flash-lite`，把 `gemini-2.5-pro` 转到 `gemini-3.8-flash`，并按新模型计费。使用这两个自填文字模型的配置需在该日前核对兼容性和费用。Mimi 的 Gemini 文字预设没有预填模型，内置 3.5 同传、识别均未公布关闭日期。[Google 模型生命周期及迁移说明](https://aistudio.google.com/docs/deprecations)
+- OpenAI 和 Azure 的实时语音退役表、xAI 和 DeepSeek 的滚动别名与 11 月 21 日的记录一致。腾讯轻量／标准和 Qwen-MT 的候选均仍在官方目录；继续按 11 月 21 日的顺序做同样本对照，未新增质量或时延实测。[OpenAI](https://developers.openai.com/api/docs/deprecations) · [Azure](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/model-retirement-schedule?view=foundry) · [xAI](https://docs.x.ai/developers/release-notes) · [DeepSeek](https://api-docs.deepseek.com/updates/) · [腾讯](https://cloud.tencent.com/document/product/1093/127565) · [Qwen-MT](https://help.aliyun.com/zh/model-studio/machine-translation)
+
 ## 2026-11-21 · v1.7.6 桌面悬停读数
 
 OpenAI 同传的输出字幕按增量事件返回。桌面可以据已接收的当前译稿显示进度。Mimi 的这条路线已有接口往返计时，未提供逐句翻译耗时样本。此次修复只消费已有会话状态。沿用当日其他供应商的核对记录，模型及调用方式保持原配置。[实时翻译事件](https://developers.openai.com/api/docs/guides/realtime-translation) · [当前模型](https://developers.openai.com/api/docs/models/gpt-realtime-translate)
