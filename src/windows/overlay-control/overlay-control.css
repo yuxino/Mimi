@@ -160,6 +160,14 @@
   flex: 0 0 18px;
 }
 
+.overlay-control-island[data-paused] {
+  min-width: 80px;
+}
+
+.overlay-control-island[data-paused] > .overlay-control-island__phase {
+  max-width: none;
+}
+
 .overlay-control-island__activity > [data-pulse-style] {
   position: absolute;
   top: 50%;
