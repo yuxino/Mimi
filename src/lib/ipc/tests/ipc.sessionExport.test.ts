@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import { sessionExport, sessionHistoryRename, sessionArchiveAudio } from "../../ipc";
+import { sessionExport, sessionHistoryDeleteMany, sessionHistoryRename, sessionArchiveAudio } from "../../ipc";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(undefined) }));
 beforeEach(() => vi.mocked(invoke).mockClear());
@@ -35,4 +35,9 @@ it.each(["Product review", ""])("renames only the selected session with title %j
 it.each([undefined, "system", "microphone"] as const)("reads current audio with explicit source %s", async source => {
   await sessionArchiveAudio(source);
   expect(invoke).toHaveBeenCalledExactlyOnceWith("session_archive_audio", { audioSource: source ?? null });
+});
+
+it("sends the exact session ids for batch deletion", async () => {
+  await sessionHistoryDeleteMany(["saved-A", "saved-B"]);
+  expect(invoke).toHaveBeenCalledExactlyOnceWith("session_history_delete_many", { ids: ["saved-A", "saved-B"] });
 });

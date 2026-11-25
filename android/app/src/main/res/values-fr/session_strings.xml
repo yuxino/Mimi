@@ -44,6 +44,17 @@
     <string name="session_history_deleted">Session supprimée</string>
     <string name="session_history_exported">Sous-titres exportés</string>
     <string name="session_history_delete_error">Suppression impossible. Réessayez.</string>
+    <string name="session_history_select">Sélectionner</string>
+    <string name="session_history_done">Terminé</string>
+    <string name="session_history_select_all">Tout sélectionner</string>
+    <string name="session_history_deselect_all">Tout désélectionner</string>
+    <string name="session_history_clear_all">Tout effacer</string>
+    <string name="session_history_selected_count">%1$d sélectionnée(s)</string>
+    <string name="session_history_delete_selected">Supprimer (%1$d)</string>
+    <string name="session_history_delete_selected_confirm">Supprimer %1$d sessions de cet appareil ? Cette action est irréversible.</string>
+    <string name="session_history_clear_all_confirm">Supprimer les %1$d sessions enregistrées de cet appareil ? Cette action est irréversible.</string>
+    <string name="session_history_deleted_many">%1$d sessions supprimées</string>
+    <string name="session_history_delete_partial_error">%1$d session(s) supprimée(s) ; impossible d’en supprimer %2$d. Réessayez.</string>
     <string name="session_history_export_error">Export impossible. Vérifiez la destination puis réessayez.</string>
     <string name="capture_both_no_sound_hint">Une source ne fournit aucun son. Vérifiez la lecture système et le microphone.</string>
 </resources>

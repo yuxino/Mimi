@@ -19,6 +19,8 @@ import app.yuxino.mimi.android.ui.HelpUi
 import app.yuxino.mimi.android.ui.layout.ControlScrollView
 import app.yuxino.mimi.android.ui.layout.applySystemBarInsets
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.checkbox.MaterialCheckBox
+import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.text.DateFormat
 import java.util.Date
@@ -71,15 +73,34 @@ class SavedSessionsActivity : AppCompatActivity() {
         super.onSaveInstanceState(state)
     }
     private fun goBack() {
-        if (model.selected != null && !model.busy) model.list() else finish()
+        when {
+            model.selecting && !model.busy -> model.stopSelecting()
+            model.selected != null && !model.busy -> model.list()
+            else -> finish()
+        }
     }
     private fun label(text: String, muted: Boolean = false, selectable: Boolean = false) = ServiceSettingsUi.label(this, text, 16f, muted).apply {
         setTextIsSelectable(selectable)
     }
-    private fun button(title: Int, tag: String, action: () -> Unit) = MaterialButton(this, null,
+    private fun button(title: String, tag: String, destructive: Boolean = false, action: () -> Unit) = MaterialButton(this, null,
         com.google.android.material.R.attr.borderlessButtonStyle).apply {
-        setText(title); this.tag = tag; isAllCaps = false; isEnabled = !model.busy
+        text = title; this.tag = tag; isAllCaps = false; isEnabled = !model.busy; minHeight = dp(48)
+        if (destructive) setTextColor(MaterialColors.getColor(this, com.google.android.material.R.attr.colorError))
         setOnClickListener { action() }
+    }
+    private fun button(title: Int, tag: String, destructive: Boolean = false, action: () -> Unit) =
+        button(getString(title), tag, destructive, action)
+    private fun actionRow(vararg buttons: View): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.END or Gravity.CENTER_VERTICAL
+        buttons.forEach { addView(it) }
+        doOnNextLayout {
+            val total = buttons.sumOf { it.measuredWidth }
+            if (total > width && orientation != LinearLayout.VERTICAL) {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.END
+            }
+        }
     }
     private fun actions(item: SavedSessionItem, showOpen: Boolean): LinearLayout = LinearLayout(this).apply {
         gravity = Gravity.END
@@ -100,7 +121,13 @@ class SavedSessionsActivity : AppCompatActivity() {
         val openingPage = nextPage != null && displayedPage != nextPage
         displayedPage = nextPage
         body.removeAllViews()
-        model.notice?.let { Toast.makeText(this, it, Toast.LENGTH_LONG).show(); model.notice = null }
+        model.notice?.let { resource ->
+            val args = model.noticeArgs
+            model.notice = null
+            model.noticeArgs = emptyList()
+            val message = if (args.isEmpty()) getString(resource) else getString(resource, *args.toTypedArray())
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        }
         if (model.busy) body.addView(label(getString(R.string.session_history_working)).apply { accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE })
         if (model.failed) {
             body.addView(label(getString(R.string.session_history_unavailable)))
@@ -109,11 +136,68 @@ class SavedSessionsActivity : AppCompatActivity() {
         val selected = model.selected
         if (selected == null) {
             if (model.initialized && model.items.isEmpty() && !model.failed && !model.busy) body.addView(label(getString(R.string.session_history_empty)))
+            if (model.items.isNotEmpty()) {
+                if (model.selecting) {
+                    val allSelected = model.items.all { it.id in model.selectedIds }
+                    body.addView(actionRow(
+                        button(if (allSelected) R.string.session_history_deselect_all else R.string.session_history_select_all, "sessions-select-all") { model.toggleSelectAll() },
+                        button(R.string.session_history_done, "sessions-select-done") { model.stopSelecting() },
+                    ))
+                    val count = model.selectedIds.size
+                    body.addView(label(getString(R.string.session_history_selected_count, count), true))
+                    val deleteLabel = if (count > 0) getString(R.string.session_history_delete_selected, count) else getString(R.string.session_history_delete)
+                    body.addView(actionRow(
+                        button(deleteLabel, "sessions-delete-selected", destructive = true) {
+                            confirmBatchDelete(model.items.map { it.id }.filter { it in model.selectedIds }, clearAll = false)
+                        }.apply { isEnabled = !model.busy && count > 0 },
+                    ))
+                    divider()
+                } else {
+                    body.addView(actionRow(
+                        button(R.string.session_history_select, "sessions-select") { model.startSelecting() },
+                        button(R.string.session_history_clear_all, "sessions-clear-all", destructive = true) {
+                            confirmBatchDelete(model.items.map { it.id }, clearAll = true)
+                        },
+                    ))
+                    divider()
+                }
+            }
             model.items.forEach { item ->
-                body.addView(label(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(item.startedAtMs))))
-                body.addView(label(getString(R.string.session_history_count, item.count), true))
-                if (item.limited) body.addView(label(getString(R.string.session_history_limit)))
-                body.addView(actions(item, true)); divider()
+                val dateText = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(item.startedAtMs))
+                if (model.selecting) {
+                    val checked = item.id in model.selectedIds
+                    val row = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        minimumHeight = dp(48)
+                        isClickable = !model.busy
+                        tag = "session-select-row-${item.id}"
+                        setOnClickListener { model.toggleSelection(item.id) }
+                    }
+                    val checkBox = MaterialCheckBox(this).apply {
+                        tag = "session-check-${item.id}"
+                        isChecked = checked
+                        isEnabled = !model.busy
+                        contentDescription = dateText
+                        minimumWidth = dp(48)
+                        minimumHeight = dp(48)
+                        setOnClickListener { model.toggleSelection(item.id) }
+                    }
+                    val details = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        addView(label(dateText))
+                        addView(label(getString(R.string.session_history_count, item.count), true))
+                        if (item.limited) addView(label(getString(R.string.session_history_limit)))
+                    }
+                    row.addView(checkBox)
+                    row.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
+                    body.addView(row); divider()
+                } else {
+                    body.addView(label(dateText))
+                    body.addView(label(getString(R.string.session_history_count, item.count), true))
+                    if (item.limited) body.addView(label(getString(R.string.session_history_limit)))
+                    body.addView(actions(item, true)); divider()
+                }
             }
             body.addView(button(R.string.session_history_refresh, "sessions-refresh") { model.refresh() },
                 LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.END })
@@ -146,7 +230,19 @@ class SavedSessionsActivity : AppCompatActivity() {
     private fun confirmDelete(item: SavedSessionItem) {
         MaterialAlertDialogBuilder(this).setTitle(R.string.session_history_delete).setMessage(R.string.session_history_delete_confirm)
             .setNegativeButton(android.R.string.cancel, null).setPositiveButton(R.string.session_history_delete) { _, _ -> model.delete(item) }
-            .create().apply { setOnShowListener { getButton(android.app.AlertDialog.BUTTON_POSITIVE).setTextColor(com.google.android.material.color.MaterialColors.getColor(body, com.google.android.material.R.attr.colorError)) }; show() }
+            .create().apply { setOnShowListener { getButton(android.app.AlertDialog.BUTTON_POSITIVE).setTextColor(MaterialColors.getColor(body, com.google.android.material.R.attr.colorError)) }; show() }
+    }
+    private fun confirmBatchDelete(ids: List<String>, clearAll: Boolean) {
+        if (ids.isEmpty() || model.busy) return
+        val title = if (clearAll) getString(R.string.session_history_clear_all) else getString(R.string.session_history_delete_selected, ids.size)
+        val message = getString(
+            if (clearAll) R.string.session_history_clear_all_confirm else R.string.session_history_delete_selected_confirm,
+            ids.size,
+        )
+        MaterialAlertDialogBuilder(this).setTitle(title).setMessage(message)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(if (clearAll) R.string.session_history_clear_all else R.string.session_history_delete) { _, _ -> model.deleteMany(ids) }
+            .create().apply { setOnShowListener { getButton(android.app.AlertDialog.BUTTON_POSITIVE).setTextColor(MaterialColors.getColor(body, com.google.android.material.R.attr.colorError)) }; show() }
     }
     private fun export(item: SavedSessionItem) {
         MaterialAlertDialogBuilder(this).setTitle(R.string.session_history_export).setItems(arrayOf(getString(R.string.session_history_txt), getString(R.string.session_history_markdown))) { _, format ->

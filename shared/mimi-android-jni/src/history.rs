@@ -197,7 +197,11 @@ pub fn exchange(value: &Value) -> Result<Value, &'static str> {
             }
             entry.status()
         }
-        "history_list" | "history_page" | "history_export" | "history_delete" => {
+        "history_list"
+        | "history_page"
+        | "history_export"
+        | "history_delete"
+        | "history_delete_many" => {
             let directory = directory(value, "directory")?;
             let history = SessionHistory::new(directory.clone(), false);
             if value["operation"] == "history_list" {
@@ -205,6 +209,15 @@ pub fn exchange(value: &Value) -> Result<Value, &'static str> {
                 return Ok(json!({"items":items}));
             }
             let active = active_ids(&directory)?;
+            if value["operation"] == "history_delete_many" {
+                let raw_ids = value["ids"].as_array().ok_or(ERROR)?;
+                let mut ids = Vec::with_capacity(raw_ids.len());
+                for item in raw_ids {
+                    ids.push(item.as_str().ok_or(ERROR)?.to_owned());
+                }
+                let report = history.delete_many(&ids, &active).map_err(|_| ERROR)?;
+                return serde_json::to_value(report).map_err(|_| ERROR);
+            }
             let id = value["id"].as_str().ok_or(ERROR)?;
             if active.iter().any(|active| active == id) {
                 return Err("session_history_active");
@@ -453,6 +466,81 @@ mod tests {
         let items = exchange(&json!({"operation":"history_list","directory":directory})).unwrap();
         assert_eq!(items["items"][0]["count"], 2);
         assert!(attach(handle).is_err());
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn jni_batch_delete_removes_saved_sessions_and_protects_active_journals() {
+        let directory = std::env::temp_dir().join(format!(
+            "mimi-journal-batch-delete-jni-{}-{}",
+            std::process::id(),
+            now_epoch_ms()
+        ));
+        let make_saved = |text: &str| {
+            let begin =
+                exchange(&json!({"operation":"history_begin","directory":directory})).unwrap();
+            let handle = begin["historyHandle"].as_u64().unwrap();
+            let lease = attach(handle).unwrap();
+            lease.append(&SubtitlePair::new(
+                text.into(),
+                "synthetic target".into(),
+                now_epoch_ms(),
+            ));
+            let finish = json!({"operation":"history_finish","historyHandle":handle});
+            exchange(&finish).unwrap();
+            lease.release();
+        };
+        make_saved("synthetic first");
+        make_saved("synthetic second");
+        make_saved("synthetic keep");
+
+        let listed = exchange(&json!({"operation":"history_list","directory":directory})).unwrap();
+        let saved_ids: Vec<String> = listed["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["id"].as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(saved_ids.len(), 3);
+
+        let active_begin =
+            exchange(&json!({"operation":"history_begin","directory":directory})).unwrap();
+        let active_handle = active_begin["historyHandle"].as_u64().unwrap();
+        let active_lease = attach(active_handle).unwrap();
+        active_lease.append(&SubtitlePair::new(
+            "synthetic active".into(),
+            "synthetic target".into(),
+            now_epoch_ms(),
+        ));
+        let active_id = journals().lock().unwrap()[&active_handle]
+            .journal
+            .lock()
+            .unwrap()
+            .id()
+            .unwrap()
+            .to_owned();
+
+        let report = exchange(&json!({
+            "operation": "history_delete_many",
+            "directory": directory,
+            "ids": [saved_ids[0], saved_ids[1], active_id, "00000000-0000-0000-0000-000000000000"],
+        }))
+        .unwrap();
+        assert_eq!(report["deleted"], json!([saved_ids[0], saved_ids[1]]));
+        assert_eq!(
+            report["failed"],
+            json!([active_id, "00000000-0000-0000-0000-000000000000"])
+        );
+
+        let after = exchange(&json!({"operation":"history_list","directory":directory})).unwrap();
+        assert_eq!(after["items"].as_array().unwrap().len(), 1);
+        assert_eq!(after["items"][0]["id"], json!(saved_ids[2]));
+
+        exchange(&json!({"operation":"history_finish","historyHandle":active_handle})).unwrap();
+        active_lease.release();
+        let finalized =
+            exchange(&json!({"operation":"history_list","directory":directory})).unwrap();
+        assert_eq!(finalized["items"].as_array().unwrap().len(), 2);
         std::fs::remove_dir_all(&directory).unwrap();
     }
 }

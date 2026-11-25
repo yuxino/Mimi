@@ -747,6 +747,11 @@ export interface SessionHistoryItem {
   hasAudio: boolean;
 }
 
+export interface SessionHistoryDeleteResult {
+  deleted: string[];
+  failed: string[];
+}
+
 export type SessionExportKind = "transcript" | "audio";
 
 export interface TranscriptExportOptions {

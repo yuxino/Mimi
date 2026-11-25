@@ -1365,6 +1365,58 @@ class NativeRuntimeJniTest {
         }
     }
 
+    @Test fun batchDeleteSavedHistoryRemovesSelectedAndProtectsActiveAcrossActualJni() {
+        val root = Files.createTempDirectory("mimi-history-batch-delete-jni-").toFile()
+        val historyDirectory = java.io.File(root, "history")
+        fun request(operation: String) = JSONObject().put("operation", operation).put("directory", historyDirectory.absolutePath)
+        val handles = mutableListOf<Long>()
+        val journals = mutableListOf<Long>()
+        val seenIds = mutableSetOf<String>()
+        try {
+            fun recordSavedSession(): String {
+                val journal = NativeRuntimeConfiguration.exchange(request("history_begin")).getLong("historyHandle")
+                journals += journal
+                RealtimeLoopback(ServiceProvider.DASHSCOPE, liveTranslate = true, finishTail = true).use { fixture ->
+                    val handle = NativeRuntimeConfiguration.exchange(JSONObject().put("operation", "create")
+                        .put("configuration", configuration().put("alibabaRealtimeMode", "liveTranslate")
+                            .put("alibabaWorkspaceId", "synthetic-workspace").put("sourceLanguage", "auto"))
+                        .put("network", fixture.network).put("audioSource", "system").put("historyHandle", journal)).getLong("handle")
+                    handles += handle
+                    NativeRuntimeConfiguration.command("start", handle)
+                    awaitRuntimeState(handle, fixture) { it.getString("connectionStatus") == "listening" }
+                    NativeRuntimeConfiguration.exchange(request("history_finish").put("historyHandle", journal))
+                    NativeRuntimeConfiguration.command("finish", handle)
+                    awaitRuntimeState(handle, fixture) { it.getBoolean("finished") }
+                    NativeRuntimeConfiguration.command("stop", handle)
+                }
+                val items = NativeRuntimeConfiguration.exchange(request("history_list")).getJSONArray("items")
+                val id = (0 until items.length()).map { items.getJSONObject(it).getString("id") }.first { it !in seenIds }
+                seenIds += id
+                return id
+            }
+            val first = recordSavedSession()
+            val second = recordSavedSession()
+            val keep = recordSavedSession()
+            val missing = java.util.UUID.randomUUID().toString()
+
+            val report = NativeRuntimeConfiguration.exchange(
+                request("history_delete_many").put("ids", org.json.JSONArray(listOf(first, second, first, missing)))
+            )
+            val deleted = report.getJSONArray("deleted")
+            val failed = report.getJSONArray("failed")
+            assertEquals(listOf(first, second), List(deleted.length()) { deleted.getString(it) })
+            assertEquals(listOf(missing), List(failed.length()) { failed.getString(it) })
+
+            val remaining = NativeRuntimeConfiguration.exchange(request("history_list")).getJSONArray("items")
+            assertEquals(1, remaining.length())
+            assertEquals(keep, remaining.getJSONObject(0).getString("id"))
+        } finally {
+            handles.forEach { NativeRuntimeConfiguration.command("stop", it) }
+            journals.forEach { NativeRuntimeConfiguration.exchange(request("history_finish").put("historyHandle", it)) }
+            root.deleteRecursively()
+        }
+    }
+
     private fun createLiveTranslate(fixture: RealtimeLoopback): Long = NativeRuntimeConfiguration.exchange(
         JSONObject().put("operation", "create").put("configuration", configuration()
             .put("alibabaRealtimeMode", "liveTranslate").put("alibabaWorkspaceId", "synthetic-workspace")

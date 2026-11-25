@@ -44,6 +44,17 @@
     <string name="session_history_deleted">세션을 삭제했습니다</string>
     <string name="session_history_exported">자막을 내보냈습니다</string>
     <string name="session_history_delete_error">세션을 삭제하지 못했습니다. 다시 시도하세요.</string>
+    <string name="session_history_select">선택</string>
+    <string name="session_history_done">완료</string>
+    <string name="session_history_select_all">전체 선택</string>
+    <string name="session_history_deselect_all">선택 해제</string>
+    <string name="session_history_clear_all">모두 삭제</string>
+    <string name="session_history_selected_count">%1$d개 선택됨</string>
+    <string name="session_history_delete_selected">삭제 (%1$d)</string>
+    <string name="session_history_delete_selected_confirm">선택한 %1$d개의 세션을 이 기기에서 삭제할까요? 되돌릴 수 없습니다.</string>
+    <string name="session_history_clear_all_confirm">저장된 %1$d개의 세션을 이 기기에서 모두 삭제할까요? 되돌릴 수 없습니다.</string>
+    <string name="session_history_deleted_many">%1$d개의 세션을 삭제했습니다</string>
+    <string name="session_history_delete_partial_error">%1$d개 삭제됨, %2$d개는 삭제하지 못했습니다. 다시 시도하세요.</string>
     <string name="session_history_export_error">자막을 내보내지 못했습니다. 저장 위치를 확인하고 다시 시도하세요.</string>
     <string name="capture_both_no_sound_hint">한 입력에서 오디오가 감지되지 않습니다. 시스템 재생과 마이크를 확인하세요.</string>
 </resources>

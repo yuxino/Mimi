@@ -11,6 +11,7 @@ import {
   sessionHistoryList,
   sessionHistoryPage,
   sessionHistoryDelete,
+  sessionHistoryDeleteMany,
   sessionHistoryRename,
 } from "../../../lib/ipc";
 import { useStore } from "../../../lib/store";
@@ -72,6 +73,9 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
   const catalogScroll = useRef({ page: 0, list: 0 });
   const previousReaderOpen = useRef(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedHistoryIds, setSelectedHistoryIds] = useState<string[]>([]);
+  const [pendingBatchDelete, setPendingBatchDelete] = useState<{ mode: "selected" | "all"; ids: string[] } | null>(null);
   const [recordingSource, setRecordingSource] = useState<AudioSource>("system");
   const [readError, setReadError] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -374,6 +378,53 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
     }
   }
 
+  async function deleteHistoryMany(mode: "selected" | "all", ids: string[]) {
+    if (!isTauri || operation.current || ids.length === 0) return;
+    const currentLifetime = lifetime.current;
+    const currentInteraction = interaction.current;
+    operation.current = true;
+    setBusy(true);
+    const notify = beginToast();
+    try {
+      const result = await sessionHistoryDeleteMany(ids);
+      if (lifetime.current !== currentLifetime) return;
+      const deletedSet = new Set(result.deleted);
+      if (deletedSet.size > 0) {
+        historyRequest.current += 1;
+        setHistory((items) => items.filter((item) => !deletedSet.has(item.id)));
+        setHistoryRefresh(value => value + 1);
+        setSelectedHistoryIds((items) => items.filter((id) => !deletedSet.has(id)));
+        if (selectedHistoryId.current && deletedSet.has(selectedHistoryId.current)) {
+          selectHistory(null);
+          setReaderOpen(false);
+        }
+      }
+      if (result.failed.length === 0) {
+        setPendingBatchDelete(null);
+        setSelectMode(false);
+        setSelectedHistoryIds([]);
+        if (interaction.current === currentInteraction && result.deleted.length > 0) {
+          notify(sessionWorkspaceCopy[effectiveUiLanguage()].deletedSessions(result.deleted.length));
+        }
+      } else if (result.deleted.length > 0) {
+        setPendingBatchDelete({ mode, ids: result.failed });
+        if (selectMode) setSelectedHistoryIds(result.failed);
+        if (interaction.current === currentInteraction) {
+          notify(sessionWorkspaceCopy[effectiveUiLanguage()].deletePartialFailed(result.deleted.length, result.failed.length), true);
+        }
+      } else if (interaction.current === currentInteraction) {
+        notify(I18N.settings.historyDeleteFailed, true);
+      }
+    } catch {
+      if (lifetime.current === currentLifetime && interaction.current === currentInteraction) {
+        notify(I18N.settings.historyDeleteFailed, true);
+      }
+    } finally {
+      operation.current = false;
+      if (lifetime.current === currentLifetime) setBusy(false);
+    }
+  }
+
   function changeSetting(draft: SettingsDraft) {
     void perform(async () => {
       await saveSettings(draft);
@@ -401,6 +452,52 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
   const filteredHistory = history.filter(item =>
     (!historyQuery.trim() || (item.title ?? "").toLocaleLowerCase(language).includes(historyQuery.trim().toLocaleLowerCase(language)))
     && (historyFilter === "all" || (historyFilter === "text" ? item.count > 0 : item.hasAudio)));
+  const existingHistoryIds = useMemo(() => new Set(history.map((item) => item.id)), [history]);
+  const effectiveSelectedIds = useMemo(
+    () => selectedHistoryIds.filter((id) => existingHistoryIds.has(id)),
+    [selectedHistoryIds, existingHistoryIds],
+  );
+  const selectedIdSet = useMemo(() => new Set(effectiveSelectedIds), [effectiveSelectedIds]);
+  const activeSelectMode = selectMode && history.length > 0;
+  const allFilteredSelected = filteredHistory.length > 0 && filteredHistory.every((item) => selectedIdSet.has(item.id));
+  function toggleSelectMode() {
+    if (busy) return;
+    if (activeSelectMode) {
+      setSelectMode(false);
+      setSelectedHistoryIds([]);
+      setPendingBatchDelete(null);
+    } else if (history.length > 0) {
+      setSelectMode(true);
+      setSelectedHistoryIds([]);
+    }
+  }
+  function toggleSelectedHistory(id: string) {
+    if (busy) return;
+    setSelectedHistoryIds((items) => {
+      const valid = items.filter((entry) => existingHistoryIds.has(entry));
+      return valid.includes(id) ? valid.filter((entry) => entry !== id) : [...valid, id];
+    });
+  }
+  function toggleSelectAllFiltered() {
+    if (busy || filteredHistory.length === 0) return;
+    const filteredIds = filteredHistory.map((item) => item.id);
+    const filteredSet = new Set(filteredIds);
+    setSelectedHistoryIds((items) => {
+      const valid = items.filter((entry) => existingHistoryIds.has(entry));
+      if (allFilteredSelected) {
+        return valid.filter((entry) => !filteredSet.has(entry));
+      }
+      const next = new Set(valid);
+      for (const id of filteredIds) next.add(id);
+      return [...next];
+    });
+  }
+  function openBatchDelete(mode: "selected" | "all") {
+    if (busy) return;
+    const ids = mode === "all" ? history.map((item) => item.id) : effectiveSelectedIds;
+    if (ids.length === 0) return;
+    setPendingBatchDelete({ mode, ids });
+  }
   const sessionName = selected ? selected.title || I18N.settings.historySelectedTitle : I18N.settings.historyCurrent;
   const sourceOptions = audioSources.map(source => ({ value: source, label: source === "system" ? I18N.settings.audioInputSystem : I18N.settings.audioInputMicrophone }));
   function changeAudioSource(value: string) {
@@ -479,22 +576,61 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
         )}
         {!readerOpen && <div className="session-history">
           <div className="session-history__heading">
-            <h3>{I18N.settings.historyTitle}<SettingsHelp label={I18N.settings.helpLabel} text={I18N.settings.sessionExportEphemeral} /></h3>
-            {history.length > 0 && <span>{I18N.settings.historySessionCount(history.length)}</span>}
+            <div className="session-history__heading-meta">
+              <h3>{I18N.settings.historyTitle}<SettingsHelp label={I18N.settings.helpLabel} text={I18N.settings.sessionExportEphemeral} /></h3>
+              {history.length > 0 && <span>{I18N.settings.historySessionCount(history.length)}</span>}
+            </div>
+            {history.length > 0 && (
+              <div className="session-history__heading-actions">
+                {activeSelectMode ? (
+                  <button type="button" className="settings-button settings-button--quiet" disabled={busy || !pageVisible} onClick={toggleSelectMode}>{copy.done}</button>
+                ) : (
+                  <>
+                    <button type="button" className="settings-button settings-button--quiet" disabled={busy || !pageVisible} onClick={toggleSelectMode}>{copy.select}</button>
+                    <button type="button" className="settings-button settings-button--danger" disabled={busy || !pageVisible} onClick={() => openBatchDelete("all")}><Icon name="trash" />{copy.clearAll}</button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
           {history.length > 0 && <div className="session-workspace__library-tools">
             <input type="search" value={historyQuery} aria-label={copy.search} placeholder={copy.search} maxLength={120} onChange={event => setHistoryQuery(event.target.value)} />
             <SettingsSelect label={copy.filter} value={historyFilter} onChange={setHistoryFilter} options={[{ value: "all", label: copy.all }, { value: "text", label: copy.text }, { value: "audio", label: copy.audio }]} />
           </div>}
+          {activeSelectMode && <div className="session-workspace__selection-bar">
+            <div className="session-workspace__selection-bar-group">
+              <button type="button" className="settings-button settings-button--quiet" disabled={busy || !pageVisible || filteredHistory.length === 0} onClick={toggleSelectAllFiltered}>
+                {allFilteredSelected ? copy.deselectAll : copy.selectAll}
+              </button>
+              <span className="session-workspace__selected-count">{copy.selectedCount(effectiveSelectedIds.length)}</span>
+            </div>
+            <div className="session-workspace__selection-bar-actions">
+              <button type="button" className="settings-button settings-button--danger" disabled={busy || !pageVisible || effectiveSelectedIds.length === 0} onClick={() => openBatchDelete("selected")}>
+                <Icon name="trash" />{copy.deleteSelected(effectiveSelectedIds.length)}
+              </button>
+            </div>
+          </div>}
           <div className="session-workspace__catalog">
-          {showCurrent && <button type="button" data-history-id="current" aria-pressed={selectedId === null} className={`session-history__item${selectedId === null ? " is-selected" : ""}`} onClick={() => selectHistory(null)}>
+          {!activeSelectMode && showCurrent && <button type="button" data-history-id="current" aria-pressed={selectedId === null} className={`session-history__item${selectedId === null ? " is-selected" : ""}`} onClick={() => selectHistory(null)}>
             <span>{I18N.settings.historyCurrent}</span>
             {(hasTranscript || hasAudio) && <small>{hasTranscript ? I18N.settings.transcriptCount(archive?.transcriptCount ?? 0) : ""}{hasTranscript && hasAudio ? " · " : ""}{hasAudio ? I18N.settings.historyAudio : ""}</small>}
           </button>}
           {groupHistory(filteredHistory, language).map((group) => (
             <div className="session-history__group" key={group.day}>
               <h4>{group.label}</h4>
-              {group.items.map((item) => (
+              {group.items.map((item) => activeSelectMode ? (
+                <button type="button" key={item.id} role="checkbox" aria-checked={selectedIdSet.has(item.id)} data-history-id={item.id} disabled={busy}
+                  className={`session-history__item session-history__item--selectable${selectedIdSet.has(item.id) ? " is-checked" : ""}`}
+                  onClick={() => toggleSelectedHistory(item.id)}>
+                  <span className="session-workspace__item-lead">
+                    <span className="session-workspace__checkbox" aria-hidden="true">
+                      {selectedIdSet.has(item.id) && <Icon name="checkmark" />}
+                    </span>
+                    <span className="session-workspace__session-name">{item.title || formatSessionTime(item.startedAtMs)}{item.title && <time>{formatSessionTime(item.startedAtMs)}</time>}</span>
+                  </span>
+                  <small>{item.count > 0 ? I18N.settings.transcriptCount(item.count) : ""}{item.count > 0 && item.hasAudio ? " · " : ""}{item.hasAudio ? I18N.settings.historyAudio : ""}</small>
+                </button>
+              ) : (
                 <button type="button" key={item.id} data-history-id={item.id} aria-pressed={selectedId === item.id} className={`session-history__item${selectedId === item.id ? " is-selected" : ""}`} onClick={() => selectHistory(item.id)}>
                   <span className="session-workspace__session-name">{item.title || formatSessionTime(item.startedAtMs)}{item.title && <time>{formatSessionTime(item.startedAtMs)}</time>}</span>
                   <small>{item.count > 0 ? I18N.settings.transcriptCount(item.count) : ""}{item.count > 0 && item.hasAudio ? " · " : ""}{item.hasAudio ? I18N.settings.historyAudio : ""}</small>
@@ -580,6 +716,19 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
             </nav>
           )}
         </div> : null}
+        {pendingBatchDelete && pendingBatchDelete.ids.length > 0 && visible && (
+          <SettingsConfirmation
+            message={pendingBatchDelete.mode === "all"
+              ? copy.clearAllConfirm(pendingBatchDelete.ids.length)
+              : copy.deleteSelectedConfirm(pendingBatchDelete.ids.length)}
+            confirmLabel={pendingBatchDelete.mode === "all"
+              ? copy.clearAll
+              : copy.deleteSelected(pendingBatchDelete.ids.length)}
+            disabled={busy}
+            onCancel={() => setPendingBatchDelete(null)}
+            onConfirm={() => { void deleteHistoryMany(pendingBatchDelete.mode, pendingBatchDelete.ids); }}
+          />
+        )}
         {renameOpen && selected && visible && <SettingsConfirmation message={copy.rename} variant="default" confirmIcon="checkmark" confirmLabel={copy.save} disabled={busy || [...nameDraft.trim()].length > 120}
           onCancel={() => setRenameOpen(false)} onConfirm={() => { void renameHistory(selected.id); }}>
           <label className="session-workspace__name-field">{copy.name}<SettingsHelp label={I18N.settings.helpLabel} text={copy.nameHelp} />

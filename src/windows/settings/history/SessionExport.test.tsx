@@ -10,7 +10,7 @@ import { sessionWorkspaceCopy } from "./sessionWorkspaceCopy";
 const ipc = vi.hoisted(() => ({
   sessionArchiveState: vi.fn(), sessionArchiveClear: vi.fn(), sessionExport: vi.fn(),
   sessionTranscriptPage: vi.fn(), sessionHistoryList: vi.fn(), sessionHistoryPage: vi.fn(),
-  sessionHistoryAudio: vi.fn(), sessionArchiveAudio: vi.fn(), sessionHistoryDelete: vi.fn(), sessionHistoryRename: vi.fn(),
+  sessionHistoryAudio: vi.fn(), sessionArchiveAudio: vi.fn(), sessionHistoryDelete: vi.fn(), sessionHistoryDeleteMany: vi.fn(), sessionHistoryRename: vi.fn(),
 }));
 const clipboard = vi.hoisted(() => ({ write: vi.fn() }));
 const store = vi.hoisted(() => ({ session: { isActive: false }, settings: { retainSessionHistory: true, recordSessionAudio: false }, saveSettings: vi.fn() }));
@@ -110,6 +110,7 @@ beforeEach(async () => {
   ipc.sessionHistoryPage.mockImplementation((id, _query, index) => Promise.resolve(page(id, index)));
   ipc.sessionExport.mockResolvedValue(false);
   ipc.sessionHistoryDelete.mockReset().mockImplementation(async () => deletedCatalog());
+  ipc.sessionHistoryDeleteMany.mockReset().mockImplementation(async (ids: string[]) => ({ deleted: ids, failed: [] }));
   ipc.sessionHistoryRename.mockReset().mockImplementation(async (_id: string, title: string) => renamedCatalog(title));
   ipc.sessionArchiveAudio.mockReset().mockResolvedValue(new ArrayBuffer(4));
   clipboard.write.mockReset().mockResolvedValue(undefined);
@@ -1205,5 +1206,121 @@ describe("session workspace actions", () => {
     await select(1);
     await exportTranscript();
     expect(ipc.sessionExport).toHaveBeenCalledExactlyOnceWith("transcript", "A", undefined, defaultExportOptions);
+  });
+});
+
+describe("batch delete saved sessions", () => {
+  it("supports multi-select toggle, cancellation, and confirmed deletion without exposing the current session", async () => {
+    await library();
+    await click(button(copy().select));
+    expect(host.querySelector('[data-history-id="current"]')).toBeNull();
+    expect(button(copy().deleteSelected(0)).disabled).toBe(true);
+    const rowA = host.querySelector<HTMLButtonElement>('[data-history-id="A"]')!;
+    expect(rowA.getAttribute("role")).toBe("checkbox");
+    expect(rowA.getAttribute("aria-checked")).toBe("false");
+    await click(rowA);
+    expect(host.querySelector('[data-history-id="A"]')?.getAttribute("aria-checked")).toBe("true");
+    expect(host.textContent).toContain(copy().selectedCount(1));
+    expect(button(copy().deleteSelected(1)).disabled).toBe(false);
+
+    await click(button(copy().deleteSelected(1)));
+    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain(copy().deleteSelectedConfirm(1));
+    await click(button(I18N.settings.cancel));
+    expect(ipc.sessionHistoryDeleteMany).not.toHaveBeenCalled();
+
+    ipc.sessionHistoryList.mockResolvedValue(catalog().filter(item => item.id !== "A"));
+    await click(button(copy().deleteSelected(1)));
+    await click(button(copy().deleteSelected(1)));
+    expect(ipc.sessionHistoryDeleteMany).toHaveBeenCalledExactlyOnceWith(["A"]);
+    expect(host.querySelector('[data-history-id="A"]')).toBeNull();
+    expect(host.querySelector('[data-history-id="B"]')).not.toBeNull();
+    expect(host.querySelector('[data-history-id="current"]')).not.toBeNull();
+    expect(host.querySelector(".settings-toast")?.textContent).toContain(copy().deletedSessions(1));
+  });
+
+  it("scopes select all and deselect all to currently filtered saved sessions", async () => {
+    ipc.sessionHistoryList.mockResolvedValue([
+      { id: "A", title: "Alpha recording", count: 0, hasAudio: true, startedAtMs: 1_700_000_000_000 },
+      { id: "B", title: "Beta notes", count: 61, hasAudio: false, startedAtMs: 1_700_003_600_000 },
+      { id: "C", title: "Alpha notes", count: 12, hasAudio: false, startedAtMs: 1_700_007_200_000 },
+    ]);
+    await render(false); await render(); await library();
+    await click(button(copy().select));
+    await type(input(copy().search), "Alpha");
+    expect(host.querySelectorAll('[role="checkbox"]')).toHaveLength(2);
+    await click(button(copy().selectAll));
+    expect(host.textContent).toContain(copy().selectedCount(2));
+    expect(button(copy().deselectAll)).toBeDefined();
+    await click(button(copy().deselectAll));
+    expect(host.textContent).toContain(copy().selectedCount(0));
+    await click(button(copy().selectAll));
+
+    ipc.sessionHistoryList.mockResolvedValue([
+      { id: "B", title: "Beta notes", count: 61, hasAudio: false, startedAtMs: 1_700_003_600_000 },
+    ]);
+    await click(button(copy().deleteSelected(2)));
+    await click(button(copy().deleteSelected(2)));
+    expect(ipc.sessionHistoryDeleteMany).toHaveBeenCalledExactlyOnceWith(["A", "C"]);
+    await type(input(copy().search), "");
+    expect(host.querySelectorAll(".session-history__group .session-history__item")).toHaveLength(1);
+    expect(host.querySelector('[data-history-id="B"]')).not.toBeNull();
+  });
+
+  it("clears only the snapshotted saved sessions and keeps newly arrived records untouched", async () => {
+    await library();
+    await click(button(copy().clearAll));
+    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain(copy().clearAllConfirm(2));
+    // Simulate a new session appearing before confirmation completes.
+    ipc.sessionHistoryList.mockResolvedValue([
+      { id: "C", count: 10, hasAudio: false, startedAtMs: 1_700_007_200_000 },
+    ]);
+    await click(button(copy().clearAll));
+    expect(ipc.sessionHistoryDeleteMany).toHaveBeenCalledExactlyOnceWith(["A", "B"]);
+    expect(host.querySelector('[data-history-id="A"]')).toBeNull();
+    expect(host.querySelector('[data-history-id="B"]')).toBeNull();
+    expect(host.querySelector('[data-history-id="C"]')).not.toBeNull();
+    expect(host.querySelector(".settings-toast")?.textContent).toContain(copy().deletedSessions(2));
+  });
+
+  it("handles partial failure by removing deleted records and narrowing retry to failed ids", async () => {
+    await library();
+    await click(button(copy().clearAll));
+    ipc.sessionHistoryDeleteMany.mockResolvedValueOnce({ deleted: ["A"], failed: ["B"] });
+    ipc.sessionHistoryList.mockResolvedValue(catalog().filter(item => item.id !== "A"));
+    await click(button(copy().clearAll));
+    expect(host.querySelector('[data-history-id="A"]')).toBeNull();
+    expect(host.querySelector('[data-history-id="B"]')).not.toBeNull();
+    expect(document.querySelector(".settings-confirmation .settings-toast")?.textContent).toBe(copy().deletePartialFailed(1, 1));
+    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain(copy().clearAllConfirm(1));
+
+    ipc.sessionHistoryDeleteMany.mockResolvedValueOnce({ deleted: ["B"], failed: [] });
+    ipc.sessionHistoryList.mockResolvedValue([]);
+    await click(button(copy().clearAll));
+    expect(ipc.sessionHistoryDeleteMany).toHaveBeenLastCalledWith(["B"]);
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(host.querySelectorAll(".session-history__group .session-history__item")).toHaveLength(0);
+    expect(host.querySelector(".settings-toast")?.textContent).toContain(copy().deletedSessions(1));
+  });
+
+  it("dispatches batch deletion once per event turn and rejects stale listings after completion", async () => {
+    const deletion = deferred();
+    const listing = deferred();
+    await library();
+    await click(button(copy().clearAll));
+    ipc.sessionHistoryDeleteMany.mockReturnValueOnce(deletion.promise);
+    const confirmButton = button(copy().clearAll);
+    await act(async () => { confirmButton.click(); confirmButton.click(); });
+    expect(ipc.sessionHistoryDeleteMany).toHaveBeenCalledTimes(1);
+    expect(confirmButton.disabled).toBe(true);
+
+    await render(false);
+    ipc.sessionHistoryList.mockReturnValueOnce(listing.promise);
+    await render();
+    ipc.sessionHistoryList.mockResolvedValue([]);
+    await act(async () => deletion.resolve({ deleted: ["A", "B"], failed: [] }));
+    await act(async () => listing.resolve(catalog()));
+    await flush();
+    expect(host.querySelectorAll(".session-history__group .session-history__item")).toHaveLength(0);
+    expect(host.querySelector(".settings-toast")).toBeNull();
   });
 });

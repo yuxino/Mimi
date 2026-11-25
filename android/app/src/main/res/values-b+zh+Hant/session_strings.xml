@@ -44,6 +44,17 @@
     <string name="session_history_deleted">已刪除工作階段</string>
     <string name="session_history_exported">已匯出字幕</string>
     <string name="session_history_delete_error">無法刪除工作階段，請重試。</string>
+    <string name="session_history_select">選取</string>
+    <string name="session_history_done">完成</string>
+    <string name="session_history_select_all">全選</string>
+    <string name="session_history_deselect_all">取消全選</string>
+    <string name="session_history_clear_all">全部清除</string>
+    <string name="session_history_selected_count">已選 %1$d 項</string>
+    <string name="session_history_delete_selected">刪除 (%1$d)</string>
+    <string name="session_history_delete_selected_confirm">從本機刪除已選的 %1$d 個工作階段？此操作無法復原。</string>
+    <string name="session_history_clear_all_confirm">從本機清除全部 %1$d 個已儲存的工作階段？此操作無法復原。</string>
+    <string name="session_history_deleted_many">已刪除 %1$d 個工作階段</string>
+    <string name="session_history_delete_partial_error">已刪除 %1$d 個工作階段，另有 %2$d 個無法刪除，請重試。</string>
     <string name="session_history_export_error">無法匯出字幕，請檢查儲存位置後重試。</string>
     <string name="capture_both_no_sound_hint">有一路音源未偵測到聲音，請檢查系統播放和麥克風。</string>
 </resources>

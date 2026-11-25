@@ -44,6 +44,17 @@
     <string name="session_history_deleted">已删除会话</string>
     <string name="session_history_exported">已导出字幕</string>
     <string name="session_history_delete_error">无法删除会话，请重试。</string>
+    <string name="session_history_select">选择</string>
+    <string name="session_history_done">完成</string>
+    <string name="session_history_select_all">全选</string>
+    <string name="session_history_deselect_all">取消全选</string>
+    <string name="session_history_clear_all">全部清空</string>
+    <string name="session_history_selected_count">已选 %1$d 项</string>
+    <string name="session_history_delete_selected">删除 (%1$d)</string>
+    <string name="session_history_delete_selected_confirm">从本机删除已选的 %1$d 个会话？此操作无法撤销。</string>
+    <string name="session_history_clear_all_confirm">从本机清空全部 %1$d 个已保存的会话？此操作无法撤销。</string>
+    <string name="session_history_deleted_many">已删除 %1$d 个会话</string>
+    <string name="session_history_delete_partial_error">已删除 %1$d 个会话，另有 %2$d 个未能删除，请重试。</string>
     <string name="session_history_export_error">无法导出字幕，请检查保存位置后重试。</string>
     <string name="capture_both_no_sound_hint">有一路音源未检测到声音，请检查系统播放和麦克风。</string>
 </resources>

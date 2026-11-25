@@ -44,6 +44,17 @@
     <string name="session_history_deleted">Sitzung gelöscht</string>
     <string name="session_history_exported">Untertitel exportiert</string>
     <string name="session_history_delete_error">Sitzung konnte nicht gelöscht werden. Bitte erneut versuchen.</string>
+    <string name="session_history_select">Auswählen</string>
+    <string name="session_history_done">Fertig</string>
+    <string name="session_history_select_all">Alle auswählen</string>
+    <string name="session_history_deselect_all">Auswahl aufheben</string>
+    <string name="session_history_clear_all">Alle löschen</string>
+    <string name="session_history_selected_count">%1$d ausgewählt</string>
+    <string name="session_history_delete_selected">Löschen (%1$d)</string>
+    <string name="session_history_delete_selected_confirm">%1$d gespeicherte Sitzungen vom Gerät löschen? Dies kann nicht rückgängig gemacht werden.</string>
+    <string name="session_history_clear_all_confirm">Alle %1$d gespeicherten Sitzungen vom Gerät löschen? Dies kann nicht rückgängig gemacht werden.</string>
+    <string name="session_history_deleted_many">%1$d Sitzungen gelöscht</string>
+    <string name="session_history_delete_partial_error">%1$d Sitzungen gelöscht; %2$d konnten nicht gelöscht werden. Bitte erneut versuchen.</string>
     <string name="session_history_export_error">Untertitel konnten nicht exportiert werden. Ziel prüfen und erneut versuchen.</string>
     <string name="capture_both_no_sound_hint">Eine Quelle liefert kein Audio. Systemwiedergabe und Mikrofon prüfen.</string>
 </resources>

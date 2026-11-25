@@ -9,7 +9,7 @@ import { SessionExport } from "./SessionExport";
 const ipc = vi.hoisted(() => ({
   sessionArchiveState: vi.fn(), sessionArchiveClear: vi.fn(), sessionExport: vi.fn(),
   sessionTranscriptPage: vi.fn(), sessionHistoryList: vi.fn(), sessionHistoryPage: vi.fn(),
-  sessionHistoryAudio: vi.fn(), sessionArchiveAudio: vi.fn(), sessionHistoryDelete: vi.fn(), sessionHistoryRename: vi.fn(),
+  sessionHistoryAudio: vi.fn(), sessionArchiveAudio: vi.fn(), sessionHistoryDelete: vi.fn(), sessionHistoryDeleteMany: vi.fn(), sessionHistoryRename: vi.fn(),
 }));
 const store = vi.hoisted(() => ({
   session: { isActive: false },

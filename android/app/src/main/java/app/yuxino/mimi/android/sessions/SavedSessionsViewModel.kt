@@ -20,10 +20,21 @@ internal class SavedSessionsViewModel(application: Application) : AndroidViewMod
     var items: List<SavedSessionItem> = emptyList(); private set
     var selected: SavedSessionItem? = null; private set
     var page: SavedSessionPage? = null; private set
+    var selection: SavedSessionSelection = SavedSessionSelection(); private set
+    val selecting get() = selection.active
+    val selectedIds get() = selection.ids
     var busy = false; private set
     var failed = false; private set
     var notice: Int? = null
+    var noticeArgs: List<Any> = emptyList()
     var initialized = false; private set
+
+    private fun setNotice(resource: Int, vararg args: Any) {
+        notice = resource
+        noticeArgs = args.toList()
+    }
+
+    private fun availableIds(list: List<SavedSessionItem> = items): Set<String> = list.mapTo(mutableSetOf()) { it.id }
 
     private fun <T> run(work: () -> T, complete: (T) -> Unit, failure: (() -> Unit)? = null) {
         if (busy || cleared) return
@@ -44,32 +55,85 @@ internal class SavedSessionsViewModel(application: Application) : AndroidViewMod
     }
     fun refresh() {
         val item = selected
-        if (item == null) run({ sessions.list() }, { items = it; initialized = true })
+        if (item == null) run({ sessions.list() }, {
+            items = it
+            selection = selection.prune(availableIds(it))
+            initialized = true
+        })
         else loadPage(page?.page ?: 0)
     }
     fun open(item: SavedSessionItem) {
         if (busy) return
+        selection = SavedSessionSelection()
         selected = item; page = null; loadPage(0)
     }
     fun list() {
         if (busy) return
         selected = null; page = null; refresh()
     }
+    fun startSelecting() {
+        if (busy || selected != null || items.isEmpty()) return
+        selection = SavedSessionSelection(active = true)
+        observer?.invoke()
+    }
+    fun stopSelecting() {
+        if (busy || !selection.active) return
+        selection = SavedSessionSelection()
+        observer?.invoke()
+    }
+    fun toggleSelection(id: String) {
+        if (busy || !selection.active) return
+        selection = selection.toggle(id, availableIds())
+        observer?.invoke()
+    }
+    fun toggleSelectAll() {
+        if (busy || !selection.active) return
+        selection = selection.toggleAll(availableIds())
+        observer?.invoke()
+    }
     fun loadPage(number: Int) {
         val id = selected?.id ?: return
         run({ sessions.page(id, number.coerceAtLeast(0)) }, { page = it })
     }
     fun delete(item: SavedSessionItem) = run({ sessions.delete(item.id); sessions.list() }, {
-        items = it; if (selected?.id == item.id) { selected = null; page = null }
-        notice = R.string.session_history_deleted
-    }, { notice = R.string.session_history_delete_error })
+        items = it; selection = selection.prune(availableIds(it))
+        if (selected?.id == item.id) { selected = null; page = null }
+        setNotice(R.string.session_history_deleted)
+    }, { setNotice(R.string.session_history_delete_error) })
+
+    fun deleteMany(ids: List<String>) {
+        if (ids.isEmpty()) return
+        run({
+            val report = sessions.deleteMany(ids)
+            report to sessions.list()
+        }, { (report, latest) ->
+            items = latest
+            val remaining = availableIds(latest)
+            if (selected?.id in report.deleted) { selected = null; page = null }
+            when {
+                report.failed.isEmpty() -> {
+                    selection = SavedSessionSelection()
+                    if (report.deleted.isNotEmpty()) setNotice(R.string.session_history_deleted_many, report.deleted.size)
+                }
+                report.deleted.isNotEmpty() -> {
+                    selection = if (remaining.isEmpty()) SavedSessionSelection()
+                    else selection.copy(ids = report.failed.filterTo(mutableSetOf()) { it in remaining })
+                    setNotice(R.string.session_history_delete_partial_error, report.deleted.size, report.failed.size)
+                }
+                else -> {
+                    selection = selection.prune(remaining)
+                    setNotice(R.string.session_history_delete_error)
+                }
+            }
+        }, { setNotice(R.string.session_history_delete_error) })
+    }
 
     fun export(id: String, markdown: Boolean, destination: Uri) {
         if (cleared) return
         // A document result can arrive while onStart's archive refresh is active.
         // Retain only one accepted destination; never replace it silently.
         if (pendingExport != null) {
-            notice = R.string.session_history_export_error
+            setNotice(R.string.session_history_export_error)
             observer?.invoke()
             return
         }
@@ -85,7 +149,7 @@ internal class SavedSessionsViewModel(application: Application) : AndroidViewMod
     }
 
     private fun startExport(request: ExportRequest) = run({ copyExport(request) },
-        { notice = R.string.session_history_exported }, { notice = R.string.session_history_export_error })
+        { setNotice(R.string.session_history_exported) }, { setNotice(R.string.session_history_export_error) })
 
     private fun copyExport(request: ExportRequest) {
         val resolver = getApplication<Application>().contentResolver

@@ -465,6 +465,7 @@ pub fn run() {
             crate::session_export::session_history_audio,
             crate::session_export::session_archive_audio,
             crate::session_export::session_history_delete,
+            crate::session_export::session_history_delete_many,
             crate::session_export::session_history_rename,
             crate::session_export::session_archive_clear,
             crate::session_export::session_export,
