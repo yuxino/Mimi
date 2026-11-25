@@ -4,6 +4,14 @@
 每轮记录核对日期、源码、官方来源、范围、结论及下一步；实际模型对比结果
 另入[集成实测记录](integration-runs.md)。本页不保存媒体、译文或账户信息。
 
+## 2026-11-26 · Gemini 12 月 1 日重定向实测与参数兼容修复
+
+基于 `f7f300d1` 按用户授权只读使用开发版已保存 Gemini 凭据核对官方目录与线上接口，不保存译文或凭据：
+
+- `/v1beta/models` 仍提供内置 `models/gemini-3.5-live-translate-preview` 与 `models/gemini-3.5-transcribe-live`（`bidiGenerateContent`）。公开样本 `en-tail-16000` 的 `manual_provider_public_audio_probe` 全程通过（连接 995 ms，首段与恢复语音各确认 1 组字幕，`session_finished: 1`）。本机正式版与开发版已保存配置均未使用 `gemini-2.5-flash` 或 `gemini-2.5-pro`。
+- 在 `generativelanguage.googleapis.com/v1beta/openai/chat/completions` 上，无历史调用记录的账户请求 `gemini-2.5-flash`、`gemini-2.5-flash-lite`、`gemini-2.5-pro` 已返回 `HTTP 404`。Google 将于 12 月 1 日把存量 `gemini-2.5-flash` 请求转到 `gemini-3.5-flash-lite`：实测 `gemini-3.5-flash-lite` 在非流式与 SSE 流式下均以 `HTTP 400 INVALID_ARGUMENT` 拒绝 `reasoning_effort: "none"`，省略该参数时返回 `HTTP 200`（`prompt_tokens: 24, completion_tokens: 9, total_tokens: 33`，短句翻译默认无额外思考开销）。
+- 从 `translation_thinking.rs` 移除 `gemini-2.5-flash` 及其已退役 2025 预览快照，避免 12 月 1 日自动路由后触发 `HTTP 400`；保留未参与重定向的 `gemini-2.5-flash-lite`。`gemini-2.5-pro` 本就不附加思考参数；其重定向目标 `gemini-3.8-flash` 实测以 `HTTP 400` 拒绝 `reasoning_effort: "minimal"`，无参请求在当次窗口返回临时 `HTTP 503 UNAVAILABLE`，质量与费用对照留待负载恢复后与既有候选一并评测。[Google 模型生命周期及迁移说明](https://aistudio.google.com/docs/deprecations) · [OpenAI 兼容层参数](https://ai.google.dev/gemini-api/docs/openai)
+
 ## 2026-11-25 · v1.7.8 已保存会话批量删除发布前复核
 
 从 `v1.7.7` 到 `68efe8bca`，共享运行时仅在 `session_history` 新增批量删除能力；语音识别与文字翻译路由、默认模型、服务文案及语言目录均无变动。本轮沿用 2026-11-23 的官方生命周期与候选模型核对结论，未新增供应商调用或质量实测。

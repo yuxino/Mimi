@@ -140,14 +140,12 @@ fn openai_optional_thinking(model: &str) -> bool {
     )
 }
 
+// Google routes gemini-2.5-flash to gemini-3.5-flash-lite starting 2026-12-01,
+// and gemini-3.5-flash-lite rejects reasoning_effort="none" with HTTP 400.
 fn gemini_optional_thinking(model: &str) -> bool {
     matches!(
         model,
-        "gemini-2.5-flash"
-            | "gemini-2.5-flash-lite"
-            | "gemini-2.5-flash-preview-04-17"
-            | "gemini-2.5-flash-preview-05-20"
-            | "gemini-2.5-flash-lite-preview-06-17"
+        "gemini-2.5-flash-lite" | "gemini-2.5-flash-lite-preview-06-17"
     )
 }
 

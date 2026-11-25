@@ -1,5 +1,10 @@
 # 集成实测记录
 
+## 2026-11-26 Gemini Live 公开样本与 12 月 1 日文字重定向实测
+
+- 在 `f7f300d1` 上按当次授权只读开发版已保存的 Google Gemini 配置运行 `manual_provider_public_audio_probe`（公开样本 `en-tail-16000`，`play_once: true`，`silence_seconds: 0`）。`models/gemini-3.5-live-translate-preview` 握手耗时 995 毫秒；首段语音 `first_content_ms: 4127`、确认 1 组字幕，恢复语音段确认 1 组字幕，健康检查最大 186 毫秒，收尾 2,039 毫秒，`session_finished: 1`，无失败事件。
+- 同一凭据核对 `generativelanguage.googleapis.com/v1beta/openai/chat/completions`：`gemini-3.5-flash-lite` 携带 `reasoning_effort: "none"` 时在非流式（910 毫秒）与 SSE 流式（883 毫秒）均返回 `HTTP 400 INVALID_ARGUMENT`；省略该参数时非流式与流式（3 个 SSE 块）均返回 `HTTP 200`，`prompt_tokens: 24`、`completion_tokens: 9`、`total_tokens: 33`。据此移除 `gemini-2.5-flash` 的 `reasoning_effort: "none"` 注入，避免 12 月 1 日服务端转到 `gemini-3.5-flash-lite` 后请求失败。`gemini-3.8-flash` 以 `HTTP 400` 拒绝 `minimal`，无参请求当次返回 `HTTP 503 UNAVAILABLE`，未形成翻译质量与延迟对照。
+
 ## 2026-11-22 应用列表刷新时用键盘选择采音目标
 
 在 280 × 403 的英文字幕面板中搜索 Player，用方向键移到 C，再让待返回的应用列表在 C 前插入 B。按 Enter 时，`cbcf238b` 请求切换到 B，`df861d04` 请求切换到 C。九种界面语言另用长应用名复测：280 像素宽时插入应用后仍能选中 C；240 像素宽时 C 退出，第一次 Enter 保持菜单展开，再用方向键可以改选 B；设置页按 Esc 保留原目标，焦点回到选择框。覆盖隔离浏览器中的实际组件和模拟枚举，未采音或调用系统应用发现。[同尺寸截图和验证范围](https://github.com/yuxino/Mimi/pull/415#issuecomment-7077856589)

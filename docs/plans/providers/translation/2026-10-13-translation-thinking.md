@@ -17,7 +17,7 @@ Never retry a rejected request with thinking enabled.
 | SiliconFlow | `enable_thinking = false` | Reviewed hybrid Qwen3 and DeepSeek V3.1/V3.2 IDs |
 | Kimi | `thinking.type = disabled` | Kimi K2.5 |
 | OpenAI | `reasoning_effort = none` | Reviewed GPT families supporting `none`; exclude Pro and mandatory-thinking models |
-| Google Chat Completions | `reasoning_effort = none` | Gemini 2.5 Flash/Flash-Lite; exclude Pro and Gemini 3 |
+| Google Chat Completions | `reasoning_effort = none` | Gemini 2.5 Flash-Lite; exclude redirected Gemini 2.5 Flash, Pro, and Gemini 3 |
 | OpenRouter | `reasoning.enabled = false` | Reviewed optional-thinking model IDs |
 
 Unknown hosts/models and mandatory-thinking variants preserve their existing
@@ -52,6 +52,24 @@ gateway. Direct Rust and actual JNI request tests consume those same fixtures.
 This applies the existing non-thinking policy to a user-selected Terra model; it does not
 change the saved model, the default preset, or establish a translation-quality
 improvement over Luna.
+
+## 2026-11-26 Gemini 2.5 Flash redirect
+
+Google's [deprecation schedule](https://aistudio.google.com/docs/deprecations)
+routes `gemini-2.5-flash` requests to `gemini-3.5-flash-lite` starting
+2026-12-01 (`gemini-2.5-pro` already sends no thinking parameter and routes to
+`gemini-3.8-flash`). Authorized live checks against
+`https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`
+confirmed that `gemini-3.5-flash-lite` rejects `reasoning_effort: "none"` with
+`HTTP 400 INVALID_ARGUMENT` on both non-streaming and SSE streaming requests,
+while omitting `reasoning_effort` succeeds (`HTTP 200`) with zero extra
+reasoning tokens on short subtitle prompts.
+
+Remove `gemini-2.5-flash` and its retired 2025 preview IDs from
+`gemini_optional_thinking` so redirected configurations do not fail with
+`HTTP 400` on 2026-12-01. Keep `gemini-2.5-flash-lite`, which Google retains
+without redirect for existing projects. Do not rewrite saved user profiles or
+silently substitute models.
 
 Protocol references (reviewed 2026-10-13):
 
