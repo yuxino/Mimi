@@ -4,7 +4,7 @@ use crate::core::audio::audio_input::AudioSource;
 use crate::core::lifecycle::session_archive::{
     ArchiveState, TranscriptExportFormat, TranscriptExportOptions, TranscriptPage,
 };
-use crate::session_history::HistoryItem;
+use crate::session_history::{HistoryDeleteReport, HistoryItem};
 use serde::Deserialize;
 use std::io::Write;
 use std::path::Path;
@@ -178,11 +178,38 @@ async fn read_stopped_audio(
 
 #[tauri::command]
 pub async fn session_history_delete(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    if state.session.current_history_id().as_deref() == Some(id.as_str()) {
+        return Err("Could not delete session history.".into());
+    }
     let history = state.session.history();
     tauri::async_runtime::spawn_blocking(move || history.delete(&id))
         .await
         .map_err(|_| "Could not delete session history.")?
         .map_err(|_| "Could not delete session history.".into())
+}
+
+#[tauri::command]
+pub async fn session_history_delete_many(
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+) -> Result<HistoryDeleteReport, String> {
+    let history = state.session.history();
+    let session = std::sync::Arc::clone(&state.session);
+    delete_saved_history_many(history, ids, move || session.current_history_id()).await
+}
+
+async fn delete_saved_history_many(
+    history: std::sync::Arc<crate::session_history::SessionHistory>,
+    ids: Vec<String>,
+    current_history_id: impl FnOnce() -> Option<String> + Send + 'static,
+) -> Result<HistoryDeleteReport, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let protected: Vec<String> = current_history_id().into_iter().collect();
+        history.delete_many(&ids, &protected)
+    })
+    .await
+    .map_err(|_| "Could not delete session history.")?
+    .map_err(|_| "Could not delete session history.".into())
 }
 
 #[tauri::command]
@@ -641,5 +668,48 @@ mod tests {
         assert!(write_export(&destination, b"synthetic test content").is_err());
         assert!(destination.is_dir());
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[tokio::test]
+    async fn batch_delete_command_helper_protects_current_history_id() {
+        let directory = tempfile::tempdir().unwrap();
+        let history = Arc::new(SessionHistory::new(directory.path().join("history"), false));
+        let saved_id = uuid::Uuid::new_v4().to_string();
+        history.begin(&saved_id, 100).unwrap();
+        history
+            .append_pair(
+                &saved_id,
+                &SubtitlePair::new("Synthetic saved".into(), "Synthetic result".into(), 150),
+            )
+            .unwrap();
+        history.finalize(&saved_id, 200, false).unwrap();
+
+        let current_id = uuid::Uuid::new_v4().to_string();
+        history.begin(&current_id, 300).unwrap();
+        history
+            .append_pair(
+                &current_id,
+                &SubtitlePair::new("Synthetic active".into(), "Synthetic result".into(), 350),
+            )
+            .unwrap();
+
+        let protected = current_id.clone();
+        let report = delete_saved_history_many(
+            Arc::clone(&history),
+            vec![saved_id.clone(), current_id.clone()],
+            move || Some(protected),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(report.deleted, vec![saved_id]);
+        assert_eq!(report.failed, vec![current_id.clone()]);
+        let remaining: Vec<String> = history
+            .list()
+            .unwrap()
+            .into_iter()
+            .map(|item| item.id)
+            .collect();
+        assert_eq!(remaining, vec![current_id]);
     }
 }

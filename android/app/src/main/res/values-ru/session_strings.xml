@@ -44,6 +44,17 @@
     <string name="session_history_deleted">Сеанс удалён</string>
     <string name="session_history_exported">Субтитры экспортированы</string>
     <string name="session_history_delete_error">Не удалось удалить сеанс. Повторите попытку.</string>
+    <string name="session_history_select">Выбрать</string>
+    <string name="session_history_done">Готово</string>
+    <string name="session_history_select_all">Выбрать все</string>
+    <string name="session_history_deselect_all">Снять выделение</string>
+    <string name="session_history_clear_all">Очистить всё</string>
+    <string name="session_history_selected_count">Выбрано: %1$d</string>
+    <string name="session_history_delete_selected">Удалить (%1$d)</string>
+    <string name="session_history_delete_selected_confirm">Удалить выбранные сеансы (%1$d) с устройства? Это действие нельзя отменить.</string>
+    <string name="session_history_clear_all_confirm">Удалить все сохранённые сеансы (%1$d) с устройства? Это действие нельзя отменить.</string>
+    <string name="session_history_deleted_many">Удалено сеансов: %1$d</string>
+    <string name="session_history_delete_partial_error">Удалено: %1$d; не удалось удалить: %2$d. Повторите попытку.</string>
     <string name="session_history_export_error">Не удалось экспортировать субтитры. Проверьте место назначения и повторите попытку.</string>
     <string name="capture_both_no_sound_hint">В одном из источников нет звука. Проверьте системное воспроизведение и микрофон.</string>
 </resources>

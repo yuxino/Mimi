@@ -19,6 +19,7 @@ import type {
   SessionStateEvent,
   SessionArchiveState,
   SessionExportKind,
+  SessionHistoryDeleteResult,
   TranscriptExportOptions,
   TranscriptPage,
   SessionHistoryItem,
@@ -398,6 +399,10 @@ export function sessionHistoryAudio(id: string, audioSource?: AudioSource): Prom
 
 export function sessionHistoryDelete(id: string): Promise<void> {
   return invoke("session_history_delete", { id });
+}
+
+export function sessionHistoryDeleteMany(ids: string[]): Promise<SessionHistoryDeleteResult> {
+  return invoke("session_history_delete_many", { ids });
 }
 
 export function sessionHistoryRename(id: string, title: string): Promise<void> {

@@ -1,7 +1,72 @@
+#session-export .session-history__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+}
+.session-history__heading-meta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.session-history__heading-meta > span {
+  color: var(--settings-text-faint);
+  font-size: 11px;
+}
+.session-history__heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.session-history__heading-actions .settings-button,
+.session-workspace__selection-bar .settings-button {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.session-history__heading-actions .settings-button:disabled,
+.session-workspace__selection-bar .settings-button:disabled {
+  cursor: default;
+}
 #session-export .session-history__heading h3 {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+.session-workspace__selection-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--settings-border);
+  border-radius: 7px;
+  background: var(--settings-control);
+}
+.session-workspace__selection-bar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.session-workspace__selection-bar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.session-workspace__selected-count {
+  color: var(--settings-text-muted);
+  font-size: 12px;
 }
 #session-export .session-export__details { margin-top: 20px; padding-top: 20px; }
 .session-workspace__library-tools {
@@ -31,6 +96,34 @@
 .session-workspace__catalog { max-height: 240px; overflow-y: auto; scrollbar-gutter: stable; }
 #session-export .session-history__item { gap: 12px; min-height: 42px; padding: 8px 10px; }
 #session-export .session-history__item.is-selected { box-shadow: inset 2px 0 var(--settings-text-muted); }
+#session-export .session-history__item--selectable:disabled { opacity: 0.6; cursor: default; }
+#session-export .session-history__item--selectable.is-checked {
+  color: var(--settings-text);
+  background: var(--settings-selection-soft);
+}
+.session-workspace__item-lead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+.session-workspace__checkbox {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border: 1.5px solid var(--settings-border-strong);
+  border-radius: 4px;
+  background: var(--settings-control);
+  color: var(--settings-canvas);
+}
+.session-history__item--selectable.is-checked .session-workspace__checkbox {
+  border-color: var(--settings-text);
+  background: var(--settings-text);
+}
+.session-workspace__checkbox svg { width: 11px; height: 11px; stroke-width: 2.8; }
 .session-workspace__session-name { min-width: 0; overflow-wrap: anywhere; }
 .session-workspace__session-name time { display: block; margin-top: 3px; color: var(--settings-text-faint); font-size: 11px; }
 #session-export .session-history__item small { flex-shrink: 0; max-width: 45%; text-align: right; font-size: 11px; }

@@ -1,6 +1,7 @@
 package app.yuxino.mimi.android.sessions
 
 import app.yuxino.mimi.android.provider.NativeRuntimeConfiguration
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
@@ -26,6 +27,16 @@ internal class SavedSessions(private val filesDirectory: File) {
         })
     }
     fun delete(id: String) { NativeRuntimeConfiguration.exchange(request("history_delete", id)) }
+    fun deleteMany(ids: List<String>): SavedSessionDeleteResult {
+        val response = NativeRuntimeConfiguration.exchange(
+            request("history_delete_many").put("ids", JSONArray(ids))
+        )
+        fun strings(field: String): List<String> {
+            val array = response.getJSONArray(field)
+            return List(array.length()) { array.getString(it) }
+        }
+        return SavedSessionDeleteResult(strings("deleted"), strings("failed"))
+    }
     fun export(id: String, markdown: Boolean): File {
         val response = NativeRuntimeConfiguration.exchange(request("history_export", id)
             .put("exportDirectory", exports.absolutePath)
@@ -37,6 +48,18 @@ internal class SavedSessions(private val filesDirectory: File) {
     }
 }
 internal data class SavedSessionItem(val id: String, val startedAtMs: Long, val count: Int, val limited: Boolean)
+internal data class SavedSessionDeleteResult(val deleted: List<String>, val failed: List<String>)
+internal data class SavedSessionSelection(val active: Boolean = false, val ids: Set<String> = emptySet()) {
+    fun toggle(id: String, availableIds: Set<String>): SavedSessionSelection =
+        if (!active || id !in availableIds) this
+        else copy(ids = if (id in ids) ids - id else ids + id)
+    fun toggleAll(availableIds: Set<String>): SavedSessionSelection =
+        if (!active || availableIds.isEmpty()) this
+        else copy(ids = if (availableIds.all { it in ids }) emptySet() else availableIds)
+    fun prune(availableIds: Set<String>): SavedSessionSelection =
+        if (availableIds.isEmpty()) SavedSessionSelection()
+        else copy(ids = ids.intersect(availableIds))
+}
 internal data class SavedSessionPage(val total: Int, val page: Int, val entries: List<SavedSessionCaption>) {
     val hasNext get() = entries.lastOrNull()?.index?.let { it > 1 } ?: false
 }

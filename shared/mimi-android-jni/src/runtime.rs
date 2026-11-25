@@ -720,10 +720,15 @@ pub fn exchange(request: &str) -> Result<String, &'static str> {
         "text_probe_cancel" | "speech_probe_cancel" => probes::cancel(&value)?,
         "capabilities" | "normalize" => configuration::capabilities_or_normalize(&value)?,
         "endpoints" => configuration::endpoints(&value)?,
-        "history_begin" | "history_finish" | "history_disable" | "history_state"
-        | "history_list" | "history_page" | "history_export" | "history_delete" => {
-            crate::history::exchange(&value)?
-        }
+        "history_begin"
+        | "history_finish"
+        | "history_disable"
+        | "history_state"
+        | "history_list"
+        | "history_page"
+        | "history_export"
+        | "history_delete"
+        | "history_delete_many" => crate::history::exchange(&value)?,
         "create" => {
             let audio_source: AudioSource = value
                 .get("audioSource")

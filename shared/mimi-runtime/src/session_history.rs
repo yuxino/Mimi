@@ -38,6 +38,13 @@ pub struct HistoryItem {
     pub has_audio: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryDeleteReport {
+    pub deleted: Vec<String>,
+    pub failed: Vec<String>,
+}
+
 #[derive(Deserialize, Serialize)]
 struct HistoryTitle {
     version: u32,
@@ -635,6 +642,38 @@ impl SessionHistory {
             fs::remove_file(journal_path)?;
         }
         fs::remove_file(path)
+    }
+
+    pub fn delete_many<S: AsRef<str>, P: AsRef<str>>(
+        &self,
+        ids: &[S],
+        protected_ids: &[P],
+    ) -> io::Result<HistoryDeleteReport> {
+        if self.disabled {
+            return Err(io::Error::new(io::ErrorKind::NotFound, "history disabled"));
+        }
+        let protected: std::collections::HashSet<&str> =
+            protected_ids.iter().map(AsRef::as_ref).collect();
+        let mut seen = std::collections::HashSet::new();
+        let mut report = HistoryDeleteReport {
+            deleted: Vec::new(),
+            failed: Vec::new(),
+        };
+        for id in ids {
+            let id = id.as_ref();
+            if !seen.insert(id) {
+                continue;
+            }
+            if protected.contains(id) {
+                report.failed.push(id.to_owned());
+                continue;
+            }
+            match self.delete(id) {
+                Ok(()) => report.deleted.push(id.to_owned()),
+                Err(_) => report.failed.push(id.to_owned()),
+            }
+        }
+        Ok(report)
     }
 
     pub fn discard(&self, id: &str) -> io::Result<()> {
@@ -2168,5 +2207,90 @@ mod tests {
             .audio_path(&id, AudioSource::System, "pcm")
             .unwrap()
             .is_file());
+    }
+
+    #[test]
+    fn batch_delete_removes_requested_sessions_and_preserves_unselected_and_protected_records() {
+        let directory = tempfile::tempdir().unwrap();
+        let history = SessionHistory::new(directory.path().join("history"), false);
+        let save = |started: u64, title: Option<&str>| {
+            let id = uuid::Uuid::new_v4().to_string();
+            history.begin(&id, started).unwrap();
+            history
+                .append_pair(
+                    &id,
+                    &SubtitlePair::new(
+                        "Synthetic source".into(),
+                        "Synthetic result".into(),
+                        started + 50,
+                    ),
+                )
+                .unwrap();
+            history
+                .append_pcm_from(&id, AudioSource::System, 16_000, &[1, 0, 2, 0])
+                .unwrap();
+            history.finalize(&id, started + 100, false).unwrap();
+            if let Some(title) = title {
+                history.rename(&id, title).unwrap();
+            }
+            id
+        };
+        let first = save(100, Some("First"));
+        let second = save(200, Some("Second"));
+        let keep = save(300, Some("Keep"));
+        let active = uuid::Uuid::new_v4().to_string();
+        history.begin(&active, 400).unwrap();
+        history
+            .append_pair(
+                &active,
+                &SubtitlePair::new("Synthetic active".into(), "Synthetic active".into(), 450),
+            )
+            .unwrap();
+        let missing = uuid::Uuid::new_v4().to_string();
+
+        let report = history
+            .delete_many(
+                &[
+                    first.as_str(),
+                    second.as_str(),
+                    first.as_str(),
+                    active.as_str(),
+                    missing.as_str(),
+                    "not-a-uuid",
+                ],
+                &[active.as_str()],
+            )
+            .unwrap();
+
+        assert_eq!(report.deleted, vec![first.clone(), second.clone()]);
+        assert_eq!(
+            report.failed,
+            vec![active.clone(), missing, "not-a-uuid".to_owned()]
+        );
+        for removed in [&first, &second] {
+            assert!(!history.path(removed, "json").unwrap().exists());
+            assert!(!history.path(removed, "meta.json").unwrap().exists());
+            assert!(history.audio_sources(removed).unwrap().is_empty());
+        }
+        assert!(history.path(&keep, "json").unwrap().is_file());
+        assert!(history.path(&active, "jsonl").unwrap().is_file());
+        let listed_ids: Vec<String> = history
+            .list()
+            .unwrap()
+            .into_iter()
+            .map(|item| item.id)
+            .collect();
+        assert_eq!(listed_ids, vec![active, keep]);
+    }
+
+    #[test]
+    fn batch_delete_fails_when_history_is_disabled() {
+        let directory = tempfile::tempdir().unwrap();
+        let history = SessionHistory::new(directory.path().join("history"), true);
+        let id = uuid::Uuid::new_v4().to_string();
+        let error = history
+            .delete_many(&[id.as_str()], &[] as &[&str])
+            .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::NotFound);
     }
 }

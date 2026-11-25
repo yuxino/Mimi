@@ -44,6 +44,17 @@
     <string name="session_history_deleted">ลบเซสชันแล้ว</string>
     <string name="session_history_exported">ส่งออกคำบรรยายแล้ว</string>
     <string name="session_history_delete_error">ลบเซสชันไม่ได้ โปรดลองอีกครั้ง</string>
+    <string name="session_history_select">เลือก</string>
+    <string name="session_history_done">เสร็จสิ้น</string>
+    <string name="session_history_select_all">เลือกทั้งหมด</string>
+    <string name="session_history_deselect_all">ยกเลิกทั้งหมด</string>
+    <string name="session_history_clear_all">ล้างทั้งหมด</string>
+    <string name="session_history_selected_count">เลือกแล้ว %1$d รายการ</string>
+    <string name="session_history_delete_selected">ลบ (%1$d)</string>
+    <string name="session_history_delete_selected_confirm">ลบเซสชันที่เลือก %1$d รายการจากอุปกรณ์หรือไม่? การดำเนินการนี้ย้อนกลับไม่ได้</string>
+    <string name="session_history_clear_all_confirm">ลบเซสชันที่บันทึกไว้ทั้งหมด %1$d รายการจากอุปกรณ์หรือไม่? การดำเนินการนี้ย้อนกลับไม่ได้</string>
+    <string name="session_history_deleted_many">ลบแล้ว %1$d เซสชัน</string>
+    <string name="session_history_delete_partial_error">ลบแล้ว %1$d รายการ ลบไม่สำเร็จ %2$d รายการ โปรดลองอีกครั้ง</string>
     <string name="session_history_export_error">ส่งออกคำบรรยายไม่ได้ ตรวจสอบปลายทางแล้วลองอีกครั้ง</string>
     <string name="capture_both_no_sound_hint">แหล่งเสียงหนึ่งไม่มีเสียง โปรดตรวจสอบเสียงที่ระบบเล่นและไมโครโฟน</string>
 </resources>

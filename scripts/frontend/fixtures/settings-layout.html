@@ -10,7 +10,7 @@ const diagnosticCases = ["idle", "listening", "silent", "permission", "translati
 const sessionCases = ["empty", "current", "library", "mixed", "read-error", "export-cancel", "delete-fail"];
 const workspaceCommands = new Set(["support_diagnostics", "app_open_support_issue", "session_archive_state",
   "session_transcript_page", "session_history_list", "session_history_page", "session_history_audio", "session_archive_audio",
-  "session_history_delete", "session_history_rename", "session_export", "session_archive_clear",
+  "session_history_delete", "session_history_delete_many", "session_history_rename", "session_export", "session_archive_clear",
   "session_start", "session_stop", "session_pause", "session_resume"]);
 const workspaceEpoch = Date.UTC(2026, 9, 20, 4);
 let workspace;
@@ -173,6 +173,22 @@ async function invokeWorkspace(command, args = {}) {
     owner.history = owner.history.filter(item => item.id !== args.id);
     delete owner.transcripts[args.id];
     return;
+  }
+  if (command === "session_history_delete_many") {
+    if (owner.scenario === "delete-fail" || fixture.failDelete) throw new Error("fixture_delete_failed");
+    const ids = Array.isArray(args.ids) ? args.ids : [];
+    const deleted = [];
+    const failed = [];
+    for (const id of new Set(ids)) {
+      if (owner.history.some(item => item.id === id)) {
+        owner.history = owner.history.filter(item => item.id !== id);
+        delete owner.transcripts[id];
+        deleted.push(id);
+      } else {
+        failed.push(id);
+      }
+    }
+    return { deleted, failed };
   }
   if (command === "session_history_rename") {
     if (fixture.failRename) throw new Error("fixture_rename_failed");

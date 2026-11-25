@@ -44,6 +44,17 @@
     <string name="session_history_deleted">セッションを削除しました</string>
     <string name="session_history_exported">字幕を書き出しました</string>
     <string name="session_history_delete_error">セッションを削除できません。再試行してください。</string>
+    <string name="session_history_select">選択</string>
+    <string name="session_history_done">完了</string>
+    <string name="session_history_select_all">すべて選択</string>
+    <string name="session_history_deselect_all">選択解除</string>
+    <string name="session_history_clear_all">すべて削除</string>
+    <string name="session_history_selected_count">%1$d 件選択中</string>
+    <string name="session_history_delete_selected">削除 (%1$d)</string>
+    <string name="session_history_delete_selected_confirm">選択した %1$d 件のセッションを端末から削除しますか？元に戻せません。</string>
+    <string name="session_history_clear_all_confirm">保存済みの %1$d 件のセッションをすべて端末から削除しますか？元に戻せません。</string>
+    <string name="session_history_deleted_many">%1$d 件のセッションを削除しました</string>
+    <string name="session_history_delete_partial_error">%1$d 件を削除しましたが、%2$d 件は削除できませんでした。再試行してください。</string>
     <string name="session_history_export_error">字幕を書き出せません。保存先を確認して再試行してください。</string>
     <string name="capture_both_no_sound_hint">音声が検出されない入力があります。システムの再生音声とマイクを確認してください。</string>
 </resources>

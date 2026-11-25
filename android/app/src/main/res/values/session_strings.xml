@@ -44,6 +44,17 @@
     <string name="session_history_deleted">Session deleted</string>
     <string name="session_history_exported">Captions exported</string>
     <string name="session_history_delete_error">Could not delete the session. Please retry.</string>
+    <string name="session_history_select">Select</string>
+    <string name="session_history_done">Done</string>
+    <string name="session_history_select_all">Select all</string>
+    <string name="session_history_deselect_all">Deselect all</string>
+    <string name="session_history_clear_all">Clear all</string>
+    <string name="session_history_selected_count">%1$d selected</string>
+    <string name="session_history_delete_selected">Delete (%1$d)</string>
+    <string name="session_history_delete_selected_confirm">Delete %1$d saved sessions from this device? This cannot be undone.</string>
+    <string name="session_history_clear_all_confirm">Delete all %1$d saved sessions from this device? This cannot be undone.</string>
+    <string name="session_history_deleted_many">%1$d sessions deleted</string>
+    <string name="session_history_delete_partial_error">Deleted %1$d sessions; %2$d could not be deleted. Please retry.</string>
     <string name="session_history_export_error">Could not export captions. Check the destination and retry.</string>
     <string name="capture_both_no_sound_hint">One input has no audio. Check system playback and the microphone.</string>
 </resources>
