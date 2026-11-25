@@ -114,7 +114,10 @@ it("embeds island/panel in one surface and keeps portaled picker selections insi
   });
   expect(native.choose).toHaveBeenCalledWith("zh");
   expect(native.hide).not.toHaveBeenCalled();
-  await act(async () => document.body.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+  await act(async () => {
+    document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
+    document.body.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+  });
   expect(native.hide).toHaveBeenCalledOnce();
   expect(surface.getAttribute("data-mode")).toBe("island");
   expect(document.querySelector(".mimi-select__menu")).toBeNull();
@@ -122,6 +125,64 @@ it("embeds island/panel in one surface and keeps portaled picker selections insi
   expect(surface.getAttribute("data-mode")).toBe("hidden");
   expect(host.querySelector(".overlay-control-panel")).toBeNull();
   expect(native.bounds).toHaveBeenLastCalledWith(null);
+});
+
+it("consumes the complete outside gesture before allowing a separate underlying action", async () => {
+  const outside = document.createElement("button");
+  const pointerDown = vi.fn(), action = vi.fn();
+  outside.addEventListener("pointerdown", pointerDown);
+  outside.addEventListener("click", action);
+  document.body.append(outside);
+  try {
+    await act(async () => root.render(<OverlayControlWindow embedded />));
+    await act(async () => mode("panel"));
+    const firstPress = new PointerEvent("pointerdown", { bubbles: true, cancelable: true });
+    await act(async () => {
+      outside.dispatchEvent(firstPress);
+      outside.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+    });
+    expect(firstPress.defaultPrevented).toBe(true);
+    expect(pointerDown).not.toHaveBeenCalled();
+    expect(action).not.toHaveBeenCalled();
+    expect(native.hide).toHaveBeenCalledOnce();
+    expect(host.querySelector(".overlay-control-embedded")?.getAttribute("data-mode")).toBe("island");
+
+    await act(async () => {
+      outside.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
+      outside.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+    });
+    expect(action).toHaveBeenCalledOnce();
+    expect(native.hide).toHaveBeenCalledOnce();
+  } finally {
+    outside.remove();
+  }
+});
+
+it("leaves keyboard actions alone and retires an outside press that produced no click", async () => {
+  const outside = document.createElement("button");
+  const action = vi.fn();
+  outside.addEventListener("click", action);
+  document.body.append(outside);
+  try {
+    await act(async () => root.render(<OverlayControlWindow embedded />));
+    await act(async () => mode("panel"));
+    await act(async () => outside.click());
+    expect(action).toHaveBeenCalledOnce();
+    expect(native.hide).not.toHaveBeenCalled();
+
+    action.mockClear();
+    await act(async () => outside.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true })));
+    expect(native.hide).toHaveBeenCalledOnce();
+    expect(action).not.toHaveBeenCalled();
+    await act(async () => {
+      outside.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
+      outside.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+    });
+    expect(action).toHaveBeenCalledOnce();
+    expect(native.hide).toHaveBeenCalledOnce();
+  } finally {
+    outside.remove();
+  }
 });
 
 it("does not install embedded dismissal or input-region reporting for a separate control window", async () => {

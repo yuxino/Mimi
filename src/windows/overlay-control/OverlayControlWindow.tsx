@@ -42,6 +42,7 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
 }) {
   useSyncExternalStore(subscribeUiLanguage, effectiveUiLanguage, effectiveUiLanguage);
   const surfaceRef = useRef<HTMLDivElement>(null);
+  const outsidePointerPressPending = useRef(false);
   const sessionStatusKind = useStore(selectSessionStatusKind);
   const sessionErrorMessage = useStore(selectSessionErrorMessage);
   const permissionRequired = useStore(state => state.session.status.kind === "error" && isSystemAudioPermissionDenied(state.session.status.message));
@@ -132,10 +133,40 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
   }, [dismiss, lockedPresentation, mode]);
 
   useEffect(() => {
+    if (!embedded) return;
+    const clearOutsidePress = () => { outsidePointerPressPending.current = false; };
+    const consumeOutsideClick = (event: MouseEvent) => {
+      // Keyboard and programmatic actions have no preceding pointer press.
+      if (!outsidePointerPressPending.current || event.detail === 0) return;
+      clearOutsidePress();
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    // This listener outlives Panel → Island so dismissal cannot remove the
+    // shield between pointerdown and its re-hit click. A press without a click
+    // is retired by the next press, cancellation, blur or unmount.
+    window.addEventListener("pointerdown", clearOutsidePress, true);
+    window.addEventListener("pointercancel", clearOutsidePress, true);
+    window.addEventListener("blur", clearOutsidePress);
+    window.addEventListener("click", consumeOutsideClick, true);
+    return () => {
+      clearOutsidePress();
+      window.removeEventListener("pointerdown", clearOutsidePress, true);
+      window.removeEventListener("pointercancel", clearOutsidePress, true);
+      window.removeEventListener("blur", clearOutsidePress);
+      window.removeEventListener("click", consumeOutsideClick, true);
+    };
+  }, [embedded]);
+
+  useEffect(() => {
     if (!embedded || mode !== "panel" || lockedPresentation) return;
     const dismissOutside = (event: PointerEvent) => {
       if (event.target instanceof Element && event.target.closest(".mimi-select__menu, .settings-toast")) return;
-      if (event.target instanceof Node && !surfaceRef.current?.contains(event.target)) dismiss();
+      if (!(event.target instanceof Node) || surfaceRef.current?.contains(event.target)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      outsidePointerPressPending.current = true;
+      dismiss();
     };
     window.addEventListener("pointerdown", dismissOutside, true);
     return () => window.removeEventListener("pointerdown", dismissOutside, true);
