@@ -165,6 +165,24 @@ it.each([false, true])("returns searchable popup Tab navigation to the dialog's 
   expect(actions.onCancel).not.toHaveBeenCalled();
 });
 
+it.each([
+  { label: "active composition", init: { isComposing: true } },
+  { label: "WebKit's composition key code", init: { keyCode: 229 } },
+])("leaves the dialog and draft open when Escape belongs to $label", async ({ init }) => {
+  await render({ variant: "default", children: <input aria-label="Session name" defaultValue="Unsaved draft" /> });
+  const input = modal().querySelector<HTMLInputElement>('input[aria-label="Session name"]')!;
+  input.focus();
+  const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true, ...init });
+  await act(() => { input.dispatchEvent(event); });
+  expect(event.defaultPrevented).toBe(false);
+  expect(actions.onCancel).not.toHaveBeenCalled();
+  expect(input.isConnected).toBe(true);
+  expect(input.value).toBe("Unsaved draft");
+  expect(document.activeElement).toBe(input);
+  await key("Escape");
+  expect(actions.onCancel).toHaveBeenCalledOnce();
+});
+
 it("keeps confirmation disabled while Cancel and Escape remain available", async () => {
   await render({ disabled: true });
   expect(confirm().disabled).toBe(true);

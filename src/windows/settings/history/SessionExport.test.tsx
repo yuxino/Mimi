@@ -987,6 +987,25 @@ describe("session workspace actions", () => {
     } finally { await act(() => root.render(null)); vi.unstubAllGlobals(); }
   });
 
+  it.each([
+    { label: "active composition", init: { isComposing: true } },
+    { label: "WebKit's composition key code", init: { keyCode: 229 } },
+  ])("preserves a rename draft when Escape belongs to $label", async ({ init }) => {
+    await select(1); await more(copy().rename);
+    const name = document.querySelector<HTMLInputElement>(".session-workspace__name-field input")!;
+    await type(name, "Draft with unfinished composition");
+    name.focus();
+    const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true, ...init });
+    await act(() => { name.dispatchEvent(event); });
+    expect(event.defaultPrevented).toBe(false);
+    expect(document.querySelector(".settings-confirmation")).not.toBeNull();
+    expect(name.value).toBe("Draft with unfinished composition");
+    expect(ipc.sessionHistoryRename).not.toHaveBeenCalled();
+    await click(button(copy().save));
+    expect(ipc.sessionHistoryRename).toHaveBeenCalledExactlyOnceWith("A", "Draft with unfinished composition");
+    expect(document.querySelector(".settings-confirmation")).toBeNull();
+  });
+
   it("retains a failed rename draft and retries without changing the transcript query or page", async () => {
     await select(1); await search("Synthetic"); await click(button(I18N.settings.transcriptNext)); await flush(180);
     await more(copy().rename);
