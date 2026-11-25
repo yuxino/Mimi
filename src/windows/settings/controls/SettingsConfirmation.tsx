@@ -120,6 +120,7 @@ export function SettingsConfirmation({
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (event.isComposing || event.keyCode === 229) return;
         event.preventDefault();
         event.stopImmediatePropagation();
         cancelAction.current();
