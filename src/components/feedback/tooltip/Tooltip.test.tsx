@@ -118,6 +118,11 @@ it("dismisses hover help before its containing panel without moving unrelated fo
 it("keeps keyboard-open help available after the pointer moves away", async () => {
   const popup = await show();
   const trigger = host.querySelector("button")!;
+  // jsdom 29 no longer reports script-driven focus as :focus-visible; browsers do for keyboard use.
+  const matches = Element.prototype.matches;
+  vi.spyOn(Element.prototype, "matches").mockImplementation(function (this: Element, selector: string) {
+    return selector === ":focus-visible" ? this === document.activeElement : matches.call(this, selector);
+  });
   await act(() => trigger.focus());
   await act(() => trigger.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body })));
   expect(document.activeElement).toBe(trigger);
