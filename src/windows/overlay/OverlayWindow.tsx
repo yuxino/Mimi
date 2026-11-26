@@ -37,7 +37,6 @@ import {
   buildMultiSourceSubtitleBlocks,
   computeActivityPhase,
   emptyStateDensity,
-  emptyStateIsError,
   emptyStateText,
   hasSubtitleContent,
   usesAtomicSubtitlePreview,
@@ -482,9 +481,7 @@ export function OverlayWindow() {
                   fontSize: emptyFontSize,
                   lineHeight: 1.25,
                   fontWeight: 500,
-                  color: emptyStateIsError(session)
-                    ? "rgba(255,69,58,0.9)"
-                    : "var(--overlay-empty-text, rgba(255,255,255,0.5))",
+                  color: "var(--overlay-empty-text, rgba(255,255,255,0.5))",
                   textAlign: settings.subtitleAlignment,
                   padding: "0 24px",
                   whiteSpace: emptyDensity === "minimal" ? "nowrap" : undefined,
@@ -559,7 +556,7 @@ export function OverlayWindow() {
             <div className="overlay-compact-drag-layer"><OverlayDragArea disabled={presentationLocked || controlAction.pending} /></div>
           </div>
           <ControlButton
-            icon={session.status.kind === "error" || session.isPaused ? "play" : "pause"}
+            icon={session.isPaused ? "play" : "pause"}
             label={sessionActionLabel}
             tooltipArea={compactReadingRef}
             onClick={runSessionAction}

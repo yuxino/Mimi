@@ -25,7 +25,7 @@ let activeSession;
 
 // Test-only delegation avoids adding a fixture API to the product SettingsView.
 // Each keyed mount subscribes to one real session factory instance.
-for (const method of ["getSnapshot", "subscribe", "enter", "performAction", "setRecoveryStatus"]) {
+for (const method of ["getSnapshot", "subscribe", "enter", "performAction"]) {
   softwareUpdateSession[method] = (...args) => activeSession[method](...args);
 }
 

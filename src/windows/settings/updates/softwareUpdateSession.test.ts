@@ -98,7 +98,7 @@ describe("software update session", () => {
     updater.check.mockRejectedValueOnce(new Error("private response details"));
     const session = createSoftwareUpdateSession({ createEnvironment, now: () => 0 });
     expect(await session.enter()).toBeUndefined();
-    expect(session.getSnapshot().state).toEqual({ kind: "checkError", recovery: "idle" });
+    expect(session.getSnapshot().state).toEqual({ kind: "checkError" });
     await session.enter();
     expect(updater.check).toHaveBeenCalledOnce();
     await session.performAction();
@@ -113,7 +113,7 @@ describe("software update session", () => {
     await session.enter();
     expect(session.getSnapshot()).toEqual({
       environment: "uninitialized",
-      state: { kind: "checkError", recovery: "idle" },
+      state: { kind: "checkError" },
     });
     await session.enter();
     expect(createEnvironment).toHaveBeenCalledOnce();
@@ -224,9 +224,6 @@ describe("software update session", () => {
     await session.performAction();
     await session.performAction();
     expect(session.getSnapshot().state.kind).toBe("installError");
-    session.setRecoveryStatus("opening");
-    expect(session.getSnapshot().state).toMatchObject({ kind: "installError", recovery: "opening" });
-    session.setRecoveryStatus("idle");
     await session.enter();
     await session.performAction();
     expect(session.getSnapshot().state.kind).toBe("restartReady");

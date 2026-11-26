@@ -1,12 +1,13 @@
-use super::{
+use super::geometry::{
     active_space_follow_allowed, adopt_observed_frame, apply_snapshot_is_current,
-    finish_resize_drag, fit_promoted_user_frame, frame_layout_is_current, geometry_for,
-    geometry_snapshot_is_current, minimum_height_for_preferences, native_drag_changed_position,
+    fit_promoted_user_frame, frame_layout_is_current, geometry_for, geometry_snapshot_is_current,
+    minimum_height_for_preferences, native_drag_changed_position,
     presentation_frame_matches_observed, promote_observed_user_frame, reconcile_native_drag,
-    resized_frame_for_pointer, transition_overlay_mode, update_presentation_frame,
-    OverlayApplySnapshot, OverlayGeometrySnapshot, OverlayMode, OverlayState, ResizeGesture,
-    SubtitleOverlayMetrics, OVERLAY_FRAME_LAYOUT_VERSION,
+    transition_overlay_mode, update_presentation_frame, OverlayApplySnapshot,
+    OverlayGeometrySnapshot,
 };
+use super::resize_gesture::{finish_resize_drag, resized_frame_for_pointer, ResizeGesture};
+use super::{OverlayMode, OverlayState, SubtitleOverlayMetrics, OVERLAY_FRAME_LAYOUT_VERSION};
 use crate::settings_store::OverlayFrame;
 use crate::settings_store::Preferences;
 use crate::windows::resize::ResizeRegion;

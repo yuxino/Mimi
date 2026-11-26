@@ -201,10 +201,6 @@ export function emptyStateText(
   }
 }
 
-export function emptyStateIsError(session: SessionStateEvent): boolean {
-  return session.status.kind === "error";
-}
-
 type EmptyStateDensity = "minimal" | "compact" | "comfortable";
 
 /**
@@ -416,16 +412,11 @@ export function visibleLiveSubtitle(
   if (source.text === "") return null;
 
   const latestPair = subtitles.history[subtitles.history.length - 1];
-  const currentTranslationMatchesLatestPair =
-    subtitles.translation.isFinal &&
-    subtitles.translation.text !== "" &&
-    latestPair?.translation === subtitles.translation.text;
   const sourceIsAlreadyCommitted =
     source.isFinal &&
     !isTranslationPending &&
     !isTranslationTimedOut &&
-    latestPair?.source === source.text &&
-    (showSource || sameLanguage || currentTranslationMatchesLatestPair);
+    latestPair?.source === source.text;
   if (sourceIsAlreadyCommitted) return null;
 
   return {
@@ -585,7 +576,7 @@ export interface LanguageStatus {
 export function languageStatus(
   settings: SettingsSnapshot,
   detectedLanguage: string | null,
-): LanguageStatus | null {
+): LanguageStatus {
   const sourceName = settings.sourceLanguage === "zh_en" ? speechLanguageGuidance(settings).optionLabel(settings.sourceLanguage) : settings.audioInput === "both" && settings.sourceLanguage === "auto"
     ? SOURCE_LANGUAGE_DISPLAY_NAMES.auto : sourceLanguageStatusDisplayName(
     settings.sourceLanguage,

@@ -7,8 +7,6 @@ import { isIndependentAsrProfile, supportsSpeechTranslationMode } from "../../..
 import {
   buildProviderCredentials,
   buildProviderProbeCredentials,
-  deepLXEndpointIsValid,
-  credentialEditorStateAfterDeleteRequest,
   credentialFieldsForProvider,
   emptyCredentialDraft,
   type CredentialDraft,
@@ -18,12 +16,11 @@ import type { StoredCredentialField } from "../../../../lib/ipc";
 import type {
   ProviderCredentialsInput,
   ServiceProfile,
-  ServiceProvider,
   SourceLanguage,
   TargetLanguage,
   TextTranslationNameDraft
 } from "../../../../lib/types";
-import { ConfigInput, type ConfigInputElement } from "../../controls/ConfigInput";
+import { ConfigInput } from "../../controls/ConfigInput";
 import { SettingsHelp } from "../../feedback/SettingsHelp";
 import { InlineFeedback } from "../../controls/SettingsPrimitives";
 import { CredentialStorageHelp } from "./CredentialStorageHelp";
@@ -77,7 +74,6 @@ export function ProviderCredentialEditor(
   }
 ) {
   const [draft, setDraft] = useState<CredentialDraft>(emptyCredentialDraft);
-  const [editingSavedCredential, setEditingSavedCredential] = useState(false);
   const [changedFields, setChangedFields] = useState<Partial<Record<CredentialFieldName, true>>>({});
   const [editorEpoch, setEditorEpoch] = useState(0);
   const editorState = useCredentialEditorState(profile.id, undefined, visible, editorEpoch);
@@ -86,18 +82,7 @@ export function ProviderCredentialEditor(
   for(const field of ["endpoint", "model", "deployment", "transcriptionDeployment", "appId"] as const) {
     if(!changedFields[field]) displayedDraft[field] = savedValues?.[field] ?? "";
   }
-  const [endpointInvalid, setEndpointInvalid] = useState(false);
-  const endpointRef = useRef<ConfigInputElement>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
-  useEffect(
-    () => {
-      if(endpointInvalid) {
-        endpointRef.current?.focus({ preventScroll: true });
-        endpointRef.current?.closest("label")?.scrollIntoView({ block: "center" });
-      }
-    },
-    [endpointInvalid]
-  );
   useEffect(
     () => {
       if(feedback?.tone === "error") {
@@ -130,7 +115,7 @@ export function ProviderCredentialEditor(
   const hasCredentialChanges = credentialFieldsForProvider(profile.provider, profile.speechTranslationMode).some(
     field => {
       if(!changedFields[field]) return false;
-      if(credentialFieldCopy(field, profile.provider).secret) return !!draft[field].trim();
+      if(credentialFieldCopy(field).secret) return !!draft[field].trim();
       return draft[field].trim() !== (savedValues?.[field as keyof typeof savedValues] ?? "");
     }
   );
@@ -152,13 +137,6 @@ export function ProviderCredentialEditor(
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if(!credentials || disabled) return;
-    if(profile.provider === "deepLX" && !deepLXEndpointIsValid(displayedDraft.endpoint)) {
-      setEndpointInvalid(true);
-      endpointRef.current?.focus();
-      return;
-    }
-    setEndpointInvalid(false);
-    setEditingSavedCredential(true);
     // Reading a saved value does not create a replacement draft. Keep only
     // the user's edits on failure; discard after a successful save/use.
     void onSave(credentials).then(
@@ -167,20 +145,17 @@ export function ProviderCredentialEditor(
           setDraft(emptyCredentialDraft());
           setChangedFields({});
           setEditorEpoch(current => current + 1);
-          setEditingSavedCredential(false);
         }
       }
     );
   };
 
   const handleConfirmDelete = () => {
-    const next = credentialEditorStateAfterDeleteRequest({ draft, editingSavedCredential }, true);
     // Clear plaintext before the async credential deletion starts. A failure
     // must never restore a replacement secret to WebView state or the DOM.
-    setDraft(next.draft);
+    setDraft(emptyCredentialDraft());
     setChangedFields({});
     setEditorEpoch(current => current + 1);
-    setEditingSavedCredential(next.editingSavedCredential);
     void onConfirmDelete();
   };
 
@@ -249,7 +224,7 @@ export function ProviderCredentialEditor(
           <div className="credential-form__fields">
             {credentialFieldsForProvider(profile.provider, profile.speechTranslationMode).map(
               (field) => {
-                const copy = credentialFieldCopy(field, profile.provider);
+                const copy = credentialFieldCopy(field);
                 const fieldId = `${inputId}-${field}`;
                 return (
                   <div className="settings-field" key={field}>
@@ -271,7 +246,6 @@ export function ProviderCredentialEditor(
                           disabled={disabled}
                           placeholder={copy.placeholder}
                           onValueChange={(value) => {
-                            setEditingSavedCredential(true);
                             setChangedFields((current) => ({ ...current, [field]: true }));
                             setDraft((current) => ({ ...current, [field]: value }));
                           }}
@@ -280,34 +254,22 @@ export function ProviderCredentialEditor(
                           copyable
                           expandable
                           id={fieldId}
-                          ref={profile.provider === "deepLX" && field === "endpoint" ? endpointRef : undefined}
-                          aria-invalid={field === "endpoint" && endpointInvalid ? true : undefined}
                           type="text"
                           inputMode={field === "appId" ? "numeric" : undefined}
                           value={displayedDraft[field]}
                           autoComplete="off"
                           spellCheck={false}
-                          aria-describedby={field === "endpoint" && endpointInvalid
-                            ? `${fieldId}-error ${noteId}` : noteId}
+                          aria-describedby={noteId}
                           disabled={disabled}
                           placeholder={copy.placeholder}
                           onValueChange={(value) => {
-                            setEditingSavedCredential(true);
                             setChangedFields((current) => ({ ...current, [field]: true }));
                             setDraft((current) => ({ ...current, [field]: value }));
-                            if(field === "endpoint" && endpointInvalid) {
-                              setEndpointInvalid(!deepLXEndpointIsValid(value));
-                            }
                           }}
                         />}
                       {(field === "apiKey" || field === "appKey")
                         && <ServiceSetupLink serviceId={profile.provider} disabled={disabled || busy} />}
                     </div>
-                    {field === "endpoint" && endpointInvalid && (
-                      <span id={`${fieldId}-error`} role="alert" className="credential-unavailable">
-                        {I18N.settings.deepLXEndpointInvalid}
-                      </span>
-                    )}
                   </div>
                 );
               }
@@ -325,7 +287,6 @@ export function ProviderCredentialEditor(
                     onClick={() => {
                       setDraft(emptyCredentialDraft());
                       setChangedFields({});
-                      setEditingSavedCredential(false);
                       setEditorEpoch(current => current + 1);
                     }}
                   >
@@ -368,7 +329,7 @@ export function ProviderCredentialEditor(
   );
 }
 
-function credentialFieldCopy(field: CredentialFieldName, provider: ServiceProvider): {
+function credentialFieldCopy(field: CredentialFieldName): {
   label: string;
   placeholder: string;
   secret: boolean;
@@ -396,10 +357,8 @@ function credentialFieldCopy(field: CredentialFieldName, provider: ServiceProvid
       };
     case "endpoint":
       return {
-        label: provider === "deepLX" ? I18N.settings.deepLXEndpoint : I18N.settings.azureEndpoint,
-        placeholder: provider === "deepLX"
-          ? I18N.settings.serviceAddressPlaceholder
-          : I18N.settings.azureEndpointPlaceholder,
+        label: I18N.settings.azureEndpoint,
+        placeholder: I18N.settings.azureEndpointPlaceholder,
         secret: false,
       };
     case "deployment":

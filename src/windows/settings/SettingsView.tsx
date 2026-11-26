@@ -462,7 +462,7 @@ export function SettingsView() {
             )}
 
             {activeCategory === "voice" && <div id="voice-settings-panel" className="settings-category-panel">
-              {!initializationReady ? <SettingsInitializationStatus status={initializationStatus} error={initializationError} onRetry={() => { void initialize(); }} /> : <VoiceSettings onOpenModels={() => selectCategory("service")} onOpenAppleResources={() => navigateToSettings("appleSpeechResources")} />}
+              <VoiceSettings onOpenModels={() => selectCategory("service")} onOpenAppleResources={() => navigateToSettings("appleSpeechResources")} />
             </div>}
             <div id="service-profiles-panel" className={`settings-category-panel${activeCategory !== "service" ? " is-inactive" : ""}`}>
                 <ServiceProfiles settings={settings} appleResourcesRequest={appleResourcesRequest} profileEditorRequest={profileEditorRequest} sessionIsActive={sessionIsActive} sessionIsPaused={sessionIsPaused} sessionStatusKind={sessionStatusKind} visible={activeCategory === "service"} />

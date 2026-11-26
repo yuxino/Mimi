@@ -438,8 +438,6 @@ export function sessionErrorSettingsTarget(error: unknown): SettingsNavigationTa
     builtinServiceErrors.unsupportedLanguage.has(label)) return "voice";
   if ([
     "apple_translation_assets_missing",
-    "apple_translation_source_required",
-    "apple_translation_language_unsupported",
     "apple_translation_unavailable",
     "apple_translation_prepare_failed",
     "apple_translation_status_failed",
@@ -462,7 +460,7 @@ export function sessionErrorSettingsTarget(error: unknown): SettingsNavigationTa
     "openai_realtime_invalid_request",
     "tencent_quota_exhausted",
   ].includes(label) || builtinServiceErrors.missing.has(label) ||
-    builtinServiceErrors.invalidConfiguration.has(label) || builtinServiceErrors.unsupportedLanguage.has(label)) return "service";
+    builtinServiceErrors.invalidConfiguration.has(label)) return "service";
   return audio3ErrorRequiresConfiguration(label) ? "service" : null;
 }
 

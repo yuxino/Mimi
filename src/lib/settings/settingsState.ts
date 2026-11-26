@@ -1,6 +1,6 @@
 import type { SettingsDraft, SettingsSnapshot } from "../types";
 import { DEFAULT_NETWORK_PROXY, validateNetworkProxy } from "../providers/networkProxy";
-import { clampVisibleSubtitleCount, DEFAULT_VISIBLE_SUBTITLE_COUNT } from "../subtitles/subtitleDisplay";
+import { clampVisibleSubtitleCount } from "../subtitles/subtitleDisplay";
 
 type Unlisten = () => void;
 
@@ -207,7 +207,7 @@ export function mergeSettingsSnapshot(
     customSubtitleCountEnabled:
       draft.customSubtitleCountEnabled ?? current.customSubtitleCountEnabled ?? false,
     visibleSubtitleCount: clampVisibleSubtitleCount(
-      draft.visibleSubtitleCount ?? current.visibleSubtitleCount ?? DEFAULT_VISIBLE_SUBTITLE_COUNT,
+      draft.visibleSubtitleCount ?? current.visibleSubtitleCount,
     ),
     pulseAnimation: draft.pulseAnimation ?? current.pulseAnimation,
     pulseStyle: draft.pulseStyle ?? current.pulseStyle,

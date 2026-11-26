@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { AUDIO3_RECOGNITION_LANGUAGE_CODES, type SettingsSnapshot, type SourceLanguage } from "../../../lib/types";
-import { sourceLanguagesForSettings } from "../../../lib/providers/providerCapabilities";
+import type { SettingsSnapshot, SourceLanguage } from "../../../lib/types";
+import {
+  sourceLanguagesForSettings,
+  targetLanguagesForSettings,
+} from "../../../lib/providers/providerCapabilities";
 import { overlayControlPanelModel } from "./overlayControlModel";
 
 const BASE_SETTINGS: SettingsSnapshot = {
@@ -57,119 +60,32 @@ describe("overlay control panel model", () => {
     expect(settings.sourceLanguage).toBe(current);
   });
 
-  it("shows Alibaba recognition choices without a redundant mode picker", () => {
-    const model = overlayControlPanelModel(BASE_SETTINGS);
-    expect(model.sourceOptions).toHaveLength(25);
-    expect(model.sourceOptions).toEqual(sourceLanguagesForSettings(BASE_SETTINGS));
-    expect(model.sourceOptions).toContain("fr");
-    expect(model.sourceOptions).not.toContain("no");
-    expect(model.translationModeOptions).toEqual([]);
-    expect(model.effectiveTranslationMode).toBe("turbo");
+  it("derives source and target pickers from the active profile catalog", () => {
+    const alibaba = overlayControlPanelModel(BASE_SETTINGS);
+    expect(alibaba.sourceOptions).toEqual(sourceLanguagesForSettings(BASE_SETTINGS));
+    expect(alibaba.targetOptions).toEqual(targetLanguagesForSettings(BASE_SETTINGS));
+
+    const openaiSettings = { ...BASE_SETTINGS, activeProfileId: "openai" };
+    const openai = overlayControlPanelModel(openaiSettings);
+    expect(openai.sourceOptions).toEqual(["auto"]);
+    expect(openai.targetOptions).toEqual(targetLanguagesForSettings(openaiSettings));
   });
 
-  it("keeps Turbo for a manually selected source without a mode picker", () => {
-    const model = overlayControlPanelModel({
+  it("applies stamped native language capabilities and falls back when expired", () => {
+    const native = {
+      profileId: "ali", provider: "alibabaCloud", textTranslation: "followService", targetLanguage: "zh",
+      sourceLanguages: ["auto", "fr"], targetLanguages: ["original", "zh", "fr"],
+    } as const;
+    const stamped = overlayControlPanelModel({ ...BASE_SETTINGS, languageCapabilities: native });
+    expect(stamped.sourceOptions).toEqual(["auto", "fr"]);
+    expect(stamped.targetOptions).toEqual(["original", "zh", "fr"]);
+
+    const expired = overlayControlPanelModel({
       ...BASE_SETTINGS,
-      sourceLanguage: "ja",
+      languageCapabilities: { ...native, profileId: "old-profile" },
     });
-    expect(model.translationModeOptions).toEqual([]);
-  });
-
-  it("offers the complete translated list without depending on the selected extended source", () => {
-    const settings = { ...BASE_SETTINGS, sourceLanguage: "fr" as const };
-    expect(overlayControlPanelModel(settings).sourceOptions)
-      .toEqual(sourceLanguagesForSettings(BASE_SETTINGS));
-    expect(overlayControlPanelModel(settings).sourceOptions).toHaveLength(25);
-  });
-
-  it("offers all 30 Audio3 languages plus automatic only in Original mode", () => {
-    const settings = { ...BASE_SETTINGS, sourceLanguage: "no" as const, targetLanguage: "original" as const };
-    expect(overlayControlPanelModel(settings).sourceOptions)
-      .toEqual(["auto", ...AUDIO3_RECOGNITION_LANGUAGE_CODES]);
-    expect(overlayControlPanelModel(settings).sourceOptions).toHaveLength(31);
-    expect(overlayControlPanelModel(settings).sourceOptions).toContain("no");
-  });
-
-  it.each(["deepL", "deepLX"] as const)("keeps %s route limits separate from Lite's expanded languages", route => {
-    const settings = { ...BASE_SETTINGS,
-      profiles: [{ ...BASE_SETTINGS.profiles[0], textTranslation: route }],
-    };
-    expect(overlayControlPanelModel(settings).sourceOptions).toEqual(sourceLanguagesForSettings(settings));
-    expect(overlayControlPanelModel(settings).sourceOptions).toContain("fr");
-    expect(overlayControlPanelModel({ ...settings, targetLanguage: "original" }).sourceOptions)
-      .toEqual(sourceLanguagesForSettings({ ...settings, targetLanguage: "original" }));
-  });
-
-  it.each(["openAICompatible", "chatMock"] as const)("keeps all 31 recognition choices with the %s text route", route => {
-    const settings = { ...BASE_SETTINGS,
-      profiles: [{ ...BASE_SETTINGS.profiles[0], textTranslation: route }],
-    };
-    for (const targetLanguage of ["zh", "original"] as const) {
-      const model = overlayControlPanelModel({ ...settings, targetLanguage });
-      expect(model.sourceOptions).toEqual(["auto", ...AUDIO3_RECOGNITION_LANGUAGE_CODES]);
-      expect(model.sourceOptions).toHaveLength(31);
-      expect(model.sourceOptions).toContain("no");
-    }
-  });
-
-  const native = {
-    profileId: "ali", provider: "alibabaCloud", textTranslation: "followService", targetLanguage: "zh",
-    sourceLanguages: ["auto", "fr"], targetLanguages: ["original", "zh", "fr"],
-  } as const;
-
-  it("uses valid native language options instead of the older local range", () => {
-    const settings = { ...BASE_SETTINGS, languageCapabilities: native };
-    expect(overlayControlPanelModel(settings).sourceOptions).toEqual(["auto", "fr"]);
-  });
-
-  it.each([
-    { profileId: "old-profile" },
-    { provider: "deepLX" as const },
-    { textTranslation: "deepL" as const },
-    { targetLanguage: "original" as const },
-  ])("falls back to the full current route for an expired native stamp %j", changed => {
-    const settings = { ...BASE_SETTINGS, languageCapabilities: { ...native, ...changed } };
-    expect(overlayControlPanelModel(settings).sourceOptions).toEqual(sourceLanguagesForSettings(BASE_SETTINGS));
-    expect(overlayControlPanelModel(settings).sourceOptions).toHaveLength(25);
-  });
-
-  it("uses the appropriate full fallback for missing capabilities, missing profiles and changed targets", () => {
-    for (const settings of [
-      { ...BASE_SETTINGS, languageCapabilities: undefined },
-      { ...BASE_SETTINGS, activeProfileId: "removed", languageCapabilities: native },
-    ]) {
-      expect(overlayControlPanelModel(settings).sourceOptions).toHaveLength(25);
-    }
-    const original = { ...BASE_SETTINGS, targetLanguage: "original" as const, languageCapabilities: native };
-    expect(overlayControlPanelModel(original).sourceOptions).toHaveLength(31);
-    expect(overlayControlPanelModel(original).sourceOptions).toContain("no");
-  });
-
-  it("rejects empty native lists atomically and does not reuse a stamp after a route edit", () => {
-    const empty = { ...BASE_SETTINGS, languageCapabilities: { ...native, sourceLanguages: [] } };
-    expect(overlayControlPanelModel(empty).sourceOptions).toHaveLength(25);
-    const changedRoute = { ...BASE_SETTINGS, languageCapabilities: native,
-      profiles: [{ ...BASE_SETTINGS.profiles[0], textTranslation: "deepLX" as const }],
-    };
-    expect(overlayControlPanelModel(changedRoute).sourceOptions).toEqual(sourceLanguagesForSettings(changedRoute));
-  });
-
-  it("omits translation modes when only original subtitles are requested", () => {
-    const model = overlayControlPanelModel({
-      ...BASE_SETTINGS,
-      targetLanguage: "original",
-    });
-    expect(model.translationModeOptions).toEqual([]);
-  });
-
-  it("retains the automatic source alongside OpenAI target choices", () => {
-    const model = overlayControlPanelModel({
-      ...BASE_SETTINGS,
-      activeProfileId: "openai",
-    });
-    expect(model.sourceOptions).toEqual(["auto"]);
-    expect(model.translationModeOptions).toEqual([]);
-    expect(model.effectiveTranslationMode).toBe("turbo");
+    expect(expired.sourceOptions).toEqual(sourceLanguagesForSettings(BASE_SETTINGS));
+    expect(expired.targetOptions).toEqual(targetLanguagesForSettings(BASE_SETTINGS));
   });
 
   it("derives immersive and position-lock switch state", () => {

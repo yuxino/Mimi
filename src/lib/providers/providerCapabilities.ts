@@ -210,10 +210,22 @@ export function capabilitiesForProfile(
   if (isIndependentAsrProfile(profile)) {
     const capabilities = independentRecognitionCapabilities(profile);
     const route = textTranslationForProfile(profile);
-    const generic = isLanguageModelTranslation(route);
-    return { ...capabilities,
-      sourceLanguages: declaredCustomSources(profile, targetLanguage === "original" || route === "followService" || generic || route === "apple" ? capabilities.sourceLanguages : intersectTranslationSources(capabilities.sourceLanguages, route)),
-      targetLanguages: route === "followService" ? capabilities.targetLanguages : generic ? CUSTOM_CONFIGURABLE_TARGETS : route === "apple" ? ["original"] : textTranslationTargetLanguages(route, true),
+    if (route === "deepL" || route === "deepLX") {
+      return {
+        ...capabilities,
+        sourceLanguages: declaredCustomSources(
+          profile,
+          targetLanguage === "original"
+            ? capabilities.sourceLanguages
+            : intersectTranslationSources(capabilities.sourceLanguages, route),
+        ),
+        targetLanguages: textTranslationTargetLanguages(route, true),
+      };
+    }
+    return {
+      ...capabilities,
+      sourceLanguages: declaredCustomSources(profile, capabilities.sourceLanguages),
+      targetLanguages: isLanguageModelTranslation(route) ? CUSTOM_CONFIGURABLE_TARGETS : capabilities.targetLanguages,
     };
   }
   if (profile.provider !== "alibabaCloud" && profile.provider !== "deepLX") {
@@ -330,19 +342,6 @@ export function translationModesForSettings(
   >,
 ): readonly TranslationMode[] {
   return capabilitiesForSettings(settings).translationModes;
-}
-
-/** Legacy preferences remain readable; the active pipeline always uses Turbo. */
-export function effectiveTranslationModeForSettings(
-  settings: Pick<
-    SettingsSnapshot,
-    | "profiles"
-    | "activeProfileId"
-    | "sourceLanguage"
-    | "translationMode"
-  >,
-): TranslationMode {
-  return translationModesForSettings(settings)[0] ?? "turbo";
 }
 
 export function subtitlePreferencesChanged(

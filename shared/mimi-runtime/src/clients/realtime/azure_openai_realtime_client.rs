@@ -203,7 +203,8 @@ impl AzureOpenAIRealtimeClient {
         if deployment.trim().is_empty() {
             return Err(AzureOpenAIRealtimeClientError::MissingDeployment);
         }
-        if transcription_deployment.trim().is_empty() {
+        let transcription_deployment = transcription_deployment.trim();
+        if transcription_deployment.is_empty() {
             return Err(AzureOpenAIRealtimeClientError::MissingDeployment);
         }
         let endpoint = AzureOpenAIRealtimeEndpoint::new(resource_endpoint, deployment)
@@ -224,14 +225,6 @@ impl AzureOpenAIRealtimeClient {
         events: ProviderEventSender,
         endpoint: url::Url,
     ) -> Result<Self, AzureOpenAIRealtimeClientError> {
-        let api_key = api_key.trim();
-        if api_key.is_empty() {
-            return Err(AzureOpenAIRealtimeClientError::MissingAPIKey);
-        }
-        let transcription_deployment = transcription_deployment.trim();
-        if transcription_deployment.is_empty() {
-            return Err(AzureOpenAIRealtimeClientError::MissingDeployment);
-        }
         if !target_language.translates_audio() {
             return Err(AzureOpenAIRealtimeClientError::InvalidTargetLanguage);
         }

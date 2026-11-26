@@ -3,7 +3,6 @@ import {
   applyDownloadEvent,
   normalizeReleaseNotes,
   updateInteraction,
-  withRecoveryStatus,
   type UpdateCheckState,
 } from "./softwareUpdateModel";
 import type {
@@ -29,7 +28,6 @@ export interface SoftwareUpdateSession {
   subscribe(listener: () => void): () => void;
   enter(): Promise<void>;
   performAction(): Promise<ActionResult>;
-  setRecoveryStatus(status: "idle" | "opening" | "error"): void;
 }
 
 interface SessionOptions {
@@ -120,7 +118,7 @@ export function createSoftwareUpdateSession({
       } catch {
         // Keep details out of presentation: native errors may contain paths or
         // remote response data. Both initialization and check failures can retry.
-        setState({ kind: "checkError", recovery: "idle" });
+        setState({ kind: "checkError" });
       }
     });
   }
@@ -179,7 +177,7 @@ export function createSoftwareUpdateSession({
               // promise confirms the native updater's signature verification.
               setState({ kind: "downloaded", update });
             } catch {
-              setState({ kind: "downloadError", update, recovery: "idle" });
+              setState({ kind: "downloadError", update });
             }
             return undefined;
           },
@@ -198,7 +196,7 @@ export function createSoftwareUpdateSession({
                   : { kind: "restartReady", update },
               );
             } catch {
-              setState({ kind: "installError", update, recovery: "idle" });
+              setState({ kind: "installError", update });
             }
             return undefined;
           },
@@ -211,12 +209,9 @@ export function createSoftwareUpdateSession({
           setState({ kind: "restartRequested", update });
           return "restartRequested";
         } catch {
-          setState({ kind: "restartError", update, recovery: "idle" });
+          setState({ kind: "restartError", update });
         }
       });
-    },
-    setRecoveryStatus(status) {
-      setState(withRecoveryStatus(snapshot.state, status));
     },
   };
 }

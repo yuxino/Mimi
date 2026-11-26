@@ -55,10 +55,11 @@ describe("portable update distribution", () => {
     expect(mocks.createTauriSoftwareUpdater).not.toHaveBeenCalled();
   });
 
-  it("leaves macOS on its updater path", async () => {
+  it("keeps the signed updater for non-Windows macOS and AppImage builds", async () => {
     mocks.isWindowsUserAgent.mockReturnValue(false);
     expect((await createUpdaterForEnvironment()).kind).toBe("installed");
     expect(mocks.appIsPortable).not.toHaveBeenCalled();
+    expect(mocks.createTauriSoftwareUpdater).toHaveBeenCalledOnce();
   });
 
   it("routes Linux packages to Releases without constructing an AppImage updater", async () => {
@@ -69,12 +70,6 @@ describe("portable update distribution", () => {
       currentVersion: "1.4.2",
     });
     expect(mocks.createTauriSoftwareUpdater).not.toHaveBeenCalled();
-  });
-
-  it("keeps the signed updater for AppImage", async () => {
-    mocks.isWindowsUserAgent.mockReturnValue(false);
-    expect((await createUpdaterForEnvironment()).kind).toBe("installed");
-    expect(mocks.createTauriSoftwareUpdater).toHaveBeenCalledOnce();
   });
 
   it("does not create an updater when native Linux package detection fails", async () => {

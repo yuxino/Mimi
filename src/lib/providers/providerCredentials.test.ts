@@ -6,7 +6,6 @@ import {
   customSpeechEndpointIsValid,
   buildTextTranslationCredentials,
   deepLXEndpointIsValid,
-  credentialEditorStateAfterDeleteRequest,
   credentialFieldsForProvider,
   emptyCredentialDraft,
   openAICompatibleModelIsValid,
@@ -88,23 +87,6 @@ describe("provider credential payloads", () => {
       "appId",
       "appKey",
     ]);
-  });
-
-  it("clears every write-only field before a confirmed deletion", () => {
-    const draft = emptyCredentialDraft();
-    draft.apiKey = "new-api-secret";
-    draft.appId = "123456";
-    draft.secretId = "new-secret-id";
-    draft.secretKey = "new-secret-key";
-
-    const editing = { draft, editingSavedCredential: true };
-    expect(credentialEditorStateAfterDeleteRequest(editing, false)).toBe(
-      editing,
-    );
-    expect(credentialEditorStateAfterDeleteRequest(editing, true)).toEqual({
-      draft: emptyCredentialDraft(),
-      editingSavedCredential: false,
-    });
   });
 });
 

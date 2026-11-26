@@ -9,8 +9,6 @@ export interface AvailableUpdate {
   notes: string;
 }
 
-type RecoveryStatus = "idle" | "opening" | "error";
-
 export type UpdateCheckState =
   | { kind: "idle" }
   | { kind: "checking" }
@@ -29,10 +27,10 @@ export type UpdateCheckState =
   | { kind: "restarting"; update: AvailableUpdate }
   | { kind: "restartRequested"; update: AvailableUpdate }
   | { kind: "windowsInstallerStarted"; update: AvailableUpdate }
-  | { kind: "checkError"; recovery: RecoveryStatus }
-  | { kind: "downloadError"; update: AvailableUpdate; recovery: RecoveryStatus }
-  | { kind: "installError"; update: AvailableUpdate; recovery: RecoveryStatus }
-  | { kind: "restartError"; update: AvailableUpdate; recovery: RecoveryStatus };
+  | { kind: "checkError" }
+  | { kind: "downloadError"; update: AvailableUpdate }
+  | { kind: "installError"; update: AvailableUpdate }
+  | { kind: "restartError"; update: AvailableUpdate };
 
 export type UpdateAction = "check" | "download" | "install" | "restart";
 
@@ -108,15 +106,16 @@ export function normalizeReleaseNotes(notes?: string): string {
 
 export function isErrorState(
   state: UpdateCheckState,
-): state is Extract<UpdateCheckState, { recovery: RecoveryStatus }> {
-  return "recovery" in state;
-}
-
-export function withRecoveryStatus(
-  state: UpdateCheckState,
-  recovery: RecoveryStatus,
-): UpdateCheckState {
-  return isErrorState(state) ? { ...state, recovery } : state;
+): state is Extract<
+  UpdateCheckState,
+  { kind: "checkError" | "downloadError" | "installError" | "restartError" }
+> {
+  return (
+    state.kind === "checkError" ||
+    state.kind === "downloadError" ||
+    state.kind === "installError" ||
+    state.kind === "restartError"
+  );
 }
 
 function validTotalBytes(value?: number): number | undefined {
