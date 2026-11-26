@@ -1,6 +1,6 @@
 import { isSystemAudioPermissionDenied } from "../../lib/audio/systemAudioPermissions";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { subtitleBackgroundColor } from "../../lib/subtitles/subtitleColor";
+import { isLightSubtitleBackground, subtitleBackgroundColor } from "../../lib/subtitles/subtitleColor";
 import { effectiveUiLanguage, I18N } from "../../lib/i18n";
 import { isIndependentAsrProfile } from "../../lib/providers/providerCapabilities";
 import { limitRecentSubtitles } from "../../lib/subtitles/subtitleDisplay";
@@ -18,6 +18,7 @@ import { selectSessionErrorMessage, selectSessionErrorSummary, useStore } from "
 import { DevelopmentOverlayTrace } from "./development/DevelopmentOverlayTrace";
 import { OVERLAY_ACTIVITY_PHASES } from "../../lib/types";
 import { ControlButton } from "./controls/ControlButton";
+import { OverlayOpacitySlider } from "./controls/OverlayOpacitySlider";
 import { OverlayDragArea } from "./interaction/OverlayDragArea";
 import { startOverlayContentDrag } from "./interaction/overlayContentDrag";
 import { PulseRing } from "./status/PulseRing";
@@ -79,7 +80,13 @@ export function OverlayWindow() {
   const sessionAction = useSessionAction();
   const [pauseRequested, setPauseRequested] = useState(false);
   const controlAction = useSessionAction();
-  const actionFailureMessage = sessionAction.failureMessage ?? controlAction.failureMessage ?? I18N.overlay.controlActionFailed;
+  const sessionFailureKey = `${session.status.kind}:${session.isActive}:${session.isPaused}`;
+  const [opacityFailureKey, setOpacityFailureKey] = useState<string | null>(null);
+  const opacitySaveFailed = opacityFailureKey === sessionFailureKey;
+  const opacityRequestRef = useRef(0);
+  const actionFailureMessage = sessionAction.failureMessage
+    ?? controlAction.failureMessage
+    ?? (opacitySaveFailed ? I18N.settings.settingSaveFailed(I18N.overlay.backgroundOpacity) : I18N.overlay.controlActionFailed);
   const { run: runGuardedControl, clearFailure: clearControlFailure } = controlAction;
   const [pendingControl, setPendingControl] = useState<ControlAction | null>(null);
   const { clearFailure } = sessionAction;
@@ -87,6 +94,15 @@ export function OverlayWindow() {
     clearFailure();
     clearControlFailure();
   }, [session.status.kind, session.isActive, session.isPaused, clearFailure, clearControlFailure]);
+
+  const handleOverlayOpacityChange = (nextOpacity: number) => {
+    const requestId = ++opacityRequestRef.current;
+    const failureKey = sessionFailureKey;
+    setOpacityFailureKey(null);
+    void saveSettings({ subtitleBackgroundOpacity: nextOpacity }).catch(() => {
+      if (opacityRequestRef.current === requestId) setOpacityFailureKey(failureKey);
+    });
+  };
 
   const runControlAction = (action: ControlAction, operation: () => Promise<void>) => {
     void runGuardedControl(async () => {
@@ -283,7 +299,7 @@ export function OverlayWindow() {
 
   function renderStatusLine() {
     const showTiming = session.isActive && !blendsWithBackground;
-    const actionFailed = sessionAction.failed || controlAction.failed;
+    const actionFailed = sessionAction.failed || controlAction.failed || opacitySaveFailed;
     if (!showTiming && !pendingSessionLabel && !actionFailed) return null;
     const translationRequired = settings.targetLanguage !== "original";
     const feedback = Boolean(pendingSessionLabel || actionFailed || (translationRequired && session.translationRecovery));
@@ -359,6 +375,9 @@ export function OverlayWindow() {
       );
     }
 
+    const lightSurface = !(hasSessionError && settings.subtitleBlendsWithBackground)
+      && isLightSubtitleBackground(settings.subtitleBackgroundColor, settings.subtitleBackgroundOpacity);
+
     return (
       <div
         className="overlay-expanded-canvas relative h-full w-full overflow-hidden"
@@ -366,6 +385,7 @@ export function OverlayWindow() {
         data-overlay-draggable={!presentationLocked && !controlAction.pending ? "" : undefined}
         data-overlay-has-captions={blocks.length > 0 ? "" : undefined}
         data-low-opacity={settings.subtitleBackgroundOpacity < 70 ? "" : undefined}
+        data-light-surface={lightSurface ? "" : undefined}
         onPointerDownCapture={event => startOverlayContentDrag(event, presentationLocked || controlAction.pending)}
         style={{
           borderRadius: 16,
@@ -375,7 +395,7 @@ export function OverlayWindow() {
           // needs a temporary opaque canvas while recovery is interactive.
           background: hasSessionError && settings.subtitleBlendsWithBackground
             ? "rgba(16,16,16,0.96)"
-            : subtitleBackgroundColor(settings.subtitleBackgroundOpacity),
+            : subtitleBackgroundColor(settings.subtitleBackgroundOpacity, settings.subtitleBackgroundColor),
         }}
       >
         <div className="relative flex h-full flex-col" style={{ padding: 5 }}>
@@ -383,6 +403,13 @@ export function OverlayWindow() {
           <div className="overlay-hover-control overlay-drag-layer">
             <OverlayDragArea disabled={presentationLocked || controlAction.pending} />
           </div>
+          {!presentationLocked && !hasSessionError && (
+            <OverlayOpacitySlider
+              opacity={settings.subtitleBackgroundOpacity ?? 80}
+              disabled={controlAction.pending}
+              onChange={handleOverlayOpacityChange}
+            />
+          )}
 
           {showSessionControls &&
             !presentationLocked &&
@@ -506,6 +533,7 @@ export function OverlayWindow() {
               showTimestamps={settings.showSubtitleTimestamps}
               audioInput={settings.audioInput}
               microphoneColor={settings.microphoneSubtitleColor}
+              lightBackground={lightSurface}
               motionEnabled={motionOn}
               followTailRequest={followTailRequest}
               onReadingHistoryChange={setReadingHistory}
@@ -520,15 +548,17 @@ export function OverlayWindow() {
 
   function renderCompact() {
     const recordingLabel = recordingStatusLabel(session.audioRecording, effectiveUiLanguage());
+    const lightSurface = isLightSubtitleBackground(settings.subtitleBackgroundColor, settings.subtitleBackgroundOpacity);
     return (
       <div
         className="overlay-compact-canvas relative h-full w-full"
+        data-light-surface={lightSurface ? "" : undefined}
         role="group"
         aria-label={`${I18N.overlay.collapsedAccessibilityPrefix}${phaseLabel} · ${audioInputLabel(settings.audioInput, settings.systemAudioTarget)}${recordingLabel ? ` · ${recordingLabel}` : ""}`}
         style={{
           borderRadius: 14,
           border: "0.75px solid var(--overlay-canvas-outline, rgba(122, 168, 255, 0.16))",
-          background: subtitleBackgroundColor(settings.subtitleBackgroundOpacity),
+          background: subtitleBackgroundColor(settings.subtitleBackgroundOpacity, settings.subtitleBackgroundColor),
         }}
         onWheel={(event) => {
           if (event.deltaY !== 0) {
@@ -549,7 +579,7 @@ export function OverlayWindow() {
               className="truncate"
               role={sessionAction.failed || controlAction.failed ? "alert" : undefined}
               title={sessionAction.failed || controlAction.failed ? actionFailureMessage : phaseLabel}
-              style={{ minWidth: 0, fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.76)" }}
+              style={{ minWidth: 0, fontSize: 12, fontWeight: 500, color: lightSurface ? "rgba(0,0,0,0.78)" : "rgba(255,255,255,0.76)" }}
             >
               {sessionAction.failed || controlAction.failed ? actionFailureMessage : phaseLabel}
             </span>

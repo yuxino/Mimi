@@ -46,6 +46,8 @@ interface TimelineProps {
   /** Display-only sentence breaks belong to the Gemini live tail. */
   preserveLiveLineBreaks?: boolean;
   blendsWithBackground?: boolean;
+  /** Light opaque background switches neutral reference text and timestamps to dark ink. */
+  lightBackground?: boolean;
   /** Resolved motion setting: gates the roll-up glide. */
   motionEnabled?: boolean;
   /** A new request explicitly returns a history reader to the live tail. */
@@ -65,6 +67,7 @@ export const Timeline = memo(function Timeline({
   color,
   displayMode,
   blendsWithBackground = false,
+  lightBackground = false,
   motionEnabled = true,
   showTimestamps = false,
   audioInput = "both",
@@ -296,7 +299,9 @@ export const Timeline = memo(function Timeline({
           && (!microphoneEnabled || blockViewportHeight !== null && blockViewportHeight < 80);
         const tintReference = mixedSources && (microphoneEnabled || block.audioSource === "microphone");
         const hasMetadata = (showSource && !inlineSource) || timestamp !== null;
-        const metadataColor = blendsWithBackground ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.6)";
+        const metadataColor = blendsWithBackground
+          ? "rgba(255,255,255,0.95)"
+          : lightBackground ? "rgba(0,0,0,0.6)" : "rgba(255,255,255,0.6)";
         const sourceIndicator = showSource && <span className="subtitle-audio-source" role="img"
           aria-label={block.audioSource === "system" ? I18N.settings.audioInputSystem : I18N.settings.audioInputMicrophone}
           title={block.audioSource === "system" ? I18N.settings.audioInputSystem : I18N.settings.audioInputMicrophone}
@@ -365,6 +370,7 @@ export const Timeline = memo(function Timeline({
                   color={sourceColor}
                   tintReference={tintReference}
                   blendsWithBackground={blendsWithBackground}
+                  lightBackground={lightBackground}
                   motionEnabled={motionEnabled}
                   entering={entering}
                   keepTextOpaque={keepTextOpaque}
@@ -384,6 +390,7 @@ export const Timeline = memo(function Timeline({
                   color={sourceColor}
                   tintReference={tintReference}
                   blendsWithBackground={blendsWithBackground}
+                  lightBackground={lightBackground}
                   motionEnabled={motionEnabled}
                   entering={entering}
                   keepTextOpaque={keepTextOpaque}
@@ -425,6 +432,7 @@ interface LaneProps {
   displayMode: SettingsSnapshot["subtitleDisplayMode"];
   color: SubtitleColor;
   blendsWithBackground: boolean;
+  lightBackground: boolean;
   motionEnabled: boolean;
   /** Runs the lane fade only for text that was not on screen before. */
   entering: boolean;
@@ -445,6 +453,7 @@ const Lane = memo(function Lane({
   displayMode,
   color,
   blendsWithBackground,
+  lightBackground,
   motionEnabled,
   entering,
   hidden = false,
@@ -454,7 +463,7 @@ const Lane = memo(function Lane({
   preserveLineBreaks = false,
 }: LaneProps) {
   const textStyle = subtitleTextStyle({ fontSize, fontFamily, displayMode, kind, color,
-    blendsWithBackground, tintReference, keepTextOpaque, preserveLineBreaks });
+    blendsWithBackground, lightBackground, tintReference, keepTextOpaque, preserveLineBreaks });
   const lineHeightPx = subtitleLineHeight(textStyle.fontSize);
 
   if (lines === null) {

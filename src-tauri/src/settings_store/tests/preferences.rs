@@ -625,6 +625,22 @@ fn subtitle_background_opacity_persists_and_is_bounded_on_save_and_load() {
     .unwrap();
     let reloaded = SettingsStore::at_path(directory.clone(), Box::new(fake));
     assert_eq!(reloaded.preferences().subtitle_background_opacity, 100);
+    assert_eq!(
+        reloaded.preferences().subtitle_background_color,
+        crate::core::models::SubtitleBackgroundColor::default()
+    );
+    reloaded
+        .save_preferences(|prefs| {
+            prefs.subtitle_background_color =
+                crate::core::models::SubtitleBackgroundColor([0x1e, 0x29, 0x3b]);
+        })
+        .unwrap();
+    let reloaded_color =
+        SettingsStore::at_path(directory.clone(), Box::new(FakeSecretStore::default()));
+    assert_eq!(
+        reloaded_color.preferences().subtitle_background_color,
+        crate::core::models::SubtitleBackgroundColor([0x1e, 0x29, 0x3b])
+    );
     std::fs::remove_dir_all(directory).unwrap();
 }
 

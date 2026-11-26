@@ -36,20 +36,22 @@ interface SubtitleTextStyleOptions {
   tintReference?: boolean;
   keepTextOpaque?: boolean;
   preserveLineBreaks?: boolean;
+  lightBackground?: boolean;
 }
 
 /** The live lanes and settings sample share the same reading typography. */
 export function subtitleTextStyle({
   fontSize, fontFamily, displayMode, kind, color, blendsWithBackground = false,
-  tintReference = false, keepTextOpaque = false, preserveLineBreaks = false,
+  tintReference = false, keepTextOpaque = false, preserveLineBreaks = false, lightBackground = false,
 }: SubtitleTextStyleOptions) {
   const isReference = kind === "source" && displayMode === "bilingual";
   const laneFontSize = subtitleLaneFontSize(fontSize, displayMode, kind);
+  const referenceNeutral = lightBackground ? "#141414" : "#FFFFFF";
   return {
     fontSize: laneFontSize,
     fontFamily,
     fontWeight: isReference ? 400 : 500,
-    color: hexToRgba(isReference && !tintReference ? "#FFFFFF" : subtitleColorHex(color), isReference && !keepTextOpaque ? 0.86 : 1),
+    color: hexToRgba(isReference && !tintReference ? referenceNeutral : subtitleColorHex(color), isReference && !keepTextOpaque ? 0.86 : 1),
     lineHeight: `${subtitleLineHeight(laneFontSize)}px`,
     overflowWrap: "break-word" as const,
     whiteSpace: preserveLineBreaks ? "pre-line" as const : undefined,

@@ -6,7 +6,8 @@ use super::session::ensure_audio_input_available;
 use super::{sync_overlay_minimum, AppState};
 use crate::core::audio::audio_input::AudioInput;
 use crate::core::models::{
-    SourceLanguage, SubtitleColor, SubtitleDisplayMode, TargetLanguage, TranslationMode,
+    SourceLanguage, SubtitleBackgroundColor, SubtitleColor, SubtitleDisplayMode, TargetLanguage,
+    TranslationMode,
 };
 use crate::core::services::network_proxy::ProxyConfig;
 use crate::core::services::provider::{ProviderKind, ServiceProfile, TextTranslation};
@@ -126,6 +127,7 @@ pub struct SettingsSnapshotPayload {
     pub font_size: f64,
     pub subtitle_font_family: String,
     pub subtitle_background_opacity: u8,
+    pub subtitle_background_color: SubtitleBackgroundColor,
     pub subtitle_color: SubtitleColor,
     pub microphone_subtitle_color: SubtitleColor,
     pub subtitle_alignment: SubtitleAlignment,
@@ -177,6 +179,7 @@ impl SettingsSnapshotPayload {
             font_size: prefs.font_size,
             subtitle_font_family: prefs.subtitle_font_family,
             subtitle_background_opacity: prefs.subtitle_background_opacity,
+            subtitle_background_color: prefs.subtitle_background_color,
             subtitle_color: prefs.subtitle_color,
             microphone_subtitle_color: prefs.microphone_subtitle_color,
             subtitle_alignment: prefs.subtitle_alignment,
@@ -215,6 +218,7 @@ pub struct SettingsDraft {
     pub font_size: Option<f64>,
     pub subtitle_font_family: Option<String>,
     pub subtitle_background_opacity: Option<u8>,
+    pub subtitle_background_color: Option<SubtitleBackgroundColor>,
     pub subtitle_color: Option<SubtitleColor>,
     pub microphone_subtitle_color: Option<SubtitleColor>,
     pub subtitle_alignment: Option<SubtitleAlignment>,
@@ -442,6 +446,7 @@ fn apply_settings_draft_guarded(
         || draft.font_size.is_some()
         || draft.subtitle_font_family.is_some()
         || draft.subtitle_background_opacity.is_some()
+        || draft.subtitle_background_color.is_some()
         || draft.subtitle_color.is_some()
         || draft.microphone_subtitle_color.is_some()
         || draft.subtitle_alignment.is_some()
@@ -514,6 +519,9 @@ fn apply_settings_draft_guarded(
             }
             if let Some(opacity) = draft.subtitle_background_opacity {
                 prefs.subtitle_background_opacity = opacity;
+            }
+            if let Some(color) = draft.subtitle_background_color {
+                prefs.subtitle_background_color = color;
             }
             if let Some(target) = draft.system_audio_target {
                 prefs.apply_system_audio_target(target);

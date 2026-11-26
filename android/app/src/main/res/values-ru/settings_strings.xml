@@ -25,6 +25,15 @@
     <string name="settings_color_yellow">Жёлтый</string>
     <string name="settings_color_green">Зелёный</string>
     <string name="settings_color_pink">Розовый</string>
+    <string name="settings_color_custom">Пользовательский цвет</string>
+    <string name="settings_bg_color">Цвет фона</string>
+    <string name="settings_bg_color_black">Чёрный (по умолчанию)</string>
+    <string name="settings_bg_color_charcoal">Угольный</string>
+    <string name="settings_bg_color_slate">Сланцевый</string>
+    <string name="settings_bg_color_warm">Тёплый тёмный</string>
+    <string name="settings_bg_color_white">Белый</string>
+    <string name="settings_hex_color">Цвет HEX</string>
+    <string name="settings_hex_invalid">Введите 6-значный HEX-код, напр. #1E293B.</string>
     <string name="settings_display_mode">Отображение</string>
     <string name="display_translation">Только перевод</string>
     <string name="display_original">Только оригинал</string>

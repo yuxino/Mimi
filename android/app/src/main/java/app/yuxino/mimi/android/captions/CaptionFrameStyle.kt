@@ -14,6 +14,7 @@ internal data class CaptionFrameStyle(
     val mode: CaptionDisplayMode,
     val alignment: CaptionAlignment,
     val dividers: Boolean = false,
+    val backgroundColor: Int = CaptionColorMath.DEFAULT_BG_COLOR,
 ) {
     companion object {
         fun saved(context: Context, originalOnly: Boolean = false) = CaptionFrameStyle(
@@ -22,16 +23,20 @@ internal data class CaptionFrameStyle(
             if (originalOnly || SettingsStore.originalTextOnly(context)) CaptionDisplayMode.ORIGINAL else SettingsStore.displayMode(context),
             SettingsStore.captionAlignment(context),
             SettingsStore.subtitleDividers(context),
+            SettingsStore.overlayBgColor(context),
         )
     }
 }
 
-/** Matches desktop subtitleBackgroundColor: pure black, independent background alpha. */
+/** Matches desktop subtitleBackgroundColor: user-selected RGB color with independent background alpha. */
 internal object CaptionSurface {
     fun apply(view: View, style: CaptionFrameStyle, immersive: Boolean) {
         view.alpha = if (immersive) 1f else style.opacity / 100f
         (view.background as GradientDrawable).setColor(Color.argb(
-            if (immersive) 0 else style.backgroundAlpha.coerceIn(0, 100) * 255 / 100, 0, 0, 0,
+            if (immersive) 0 else style.backgroundAlpha.coerceIn(0, 100) * 255 / 100,
+            CaptionColorMath.red(style.backgroundColor),
+            CaptionColorMath.green(style.backgroundColor),
+            CaptionColorMath.blue(style.backgroundColor),
         ))
     }
 }

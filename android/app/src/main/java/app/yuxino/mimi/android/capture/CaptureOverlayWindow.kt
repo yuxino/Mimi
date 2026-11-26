@@ -20,9 +20,11 @@ import android.widget.Toast
 import app.yuxino.mimi.android.MainActivity
 import app.yuxino.mimi.android.R
 import app.yuxino.mimi.android.captions.CaptionAdjustmentSwitch
+import app.yuxino.mimi.android.captions.CaptionColorMath
 import app.yuxino.mimi.android.captions.CaptionDisplayMode
 import app.yuxino.mimi.android.captions.CaptionFrameContent
 import app.yuxino.mimi.android.captions.CaptionFrameStyle
+import app.yuxino.mimi.android.captions.CaptionOpacitySlider
 import app.yuxino.mimi.android.captions.CaptionOverlayHost
 import app.yuxino.mimi.android.captions.CaptionPanelActions
 import app.yuxino.mimi.android.captions.CaptionPanelView
@@ -116,6 +118,7 @@ internal class CaptureOverlayWindow(
         label("exit-immersive", R.string.overlay_exit_immersive)
         label("overlay-drag", R.string.overlay_drag)
         label("overlay-resize", R.string.overlay_resize)
+        label("overlay-opacity-slider", R.string.settings_background)
         adjustmentSwitch?.contentDescription = interfaceString(R.string.overlay_adjust)
         expandedView?.requestLayout()
         render()
@@ -186,6 +189,7 @@ internal class CaptureOverlayWindow(
 
         attachDragGesture(panel.findViewWithTag("overlay-drag"), root, params, wm)
         attachResizeGesture(panel.findViewWithTag("overlay-resize"), root, params)
+        attachOpacityGesture(panel.opacitySlider, panel)
 
         root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             if (overlayView === root) updateOverlayGeometry()
@@ -383,6 +387,78 @@ internal class CaptureOverlayWindow(
         }
     }
 
+    private fun attachOpacityGesture(slider: CaptionOpacitySlider, panel: CaptionPanelView) {
+        var gestureGeneration = -1
+        var previewAlpha: Int? = null
+        var baseStyle: CaptionFrameStyle? = null
+
+        fun restoreSaved() {
+            previewAlpha = null
+            baseStyle = null
+            panel.applySurfaceChrome(CaptionFrameStyle.saved(service, sessionOriginalOnly))
+        }
+
+        slider.onAccessibilityStep = { next ->
+            if (!immersiveSession && adjustable) {
+                try {
+                    SettingsStore.setOverlayBgAlpha(service, next)
+                    panel.applySurfaceChrome(CaptionFrameStyle.saved(service, sessionOriginalOnly))
+                } catch (_: RuntimeException) {
+                    restoreSaved()
+                    Toast.makeText(InterfaceLanguage.context(service), R.string.service_save_failed, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+
+        slider.setOnTouchListener { _, event ->
+            if (immersiveSession || !adjustable) return@setOnTouchListener false
+            if (event.actionMasked != MotionEvent.ACTION_DOWN && gestureGeneration != overlayGeometryGeneration) {
+                if (previewAlpha != null) restoreSaved()
+                return@setOnTouchListener true
+            }
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    gestureGeneration = overlayGeometryGeneration
+                    val style = CaptionFrameStyle.saved(service, sessionOriginalOnly)
+                    baseStyle = style
+                    val next = slider.valueFromY(event.y)
+                    previewAlpha = next
+                    panel.applySurfaceChrome(style.copy(backgroundAlpha = next))
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val style = baseStyle ?: CaptionFrameStyle.saved(service, sessionOriginalOnly)
+                    val next = slider.valueFromY(event.y)
+                    if (previewAlpha != next) {
+                        previewAlpha = next
+                        panel.applySurfaceChrome(style.copy(backgroundAlpha = next))
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    val committed = previewAlpha
+                    previewAlpha = null
+                    baseStyle = null
+                    if (committed != null) {
+                        try {
+                            SettingsStore.setOverlayBgAlpha(service, committed)
+                            panel.applySurfaceChrome(CaptionFrameStyle.saved(service, sessionOriginalOnly))
+                        } catch (_: RuntimeException) {
+                            restoreSaved()
+                            Toast.makeText(InterfaceLanguage.context(service), R.string.service_save_failed, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    restoreSaved()
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
     private fun showImmersiveExitControl(wm: WindowManager) {
         if (immersiveExitView != null) return
         val exit = FrameLayout(service).apply {
@@ -535,6 +611,7 @@ internal class CaptureOverlayWindow(
             resizeWidthPercent = null
             resizeHeightPercent = null
             adjustable = enabled
+            expandedView?.applySurfaceChrome(CaptionFrameStyle.saved(service, sessionOriginalOnly))
         }
         syncingAdjustment = true
         adjustmentSwitch?.isChecked = enabled
@@ -774,7 +851,15 @@ internal class CaptureOverlayWindow(
         }
         expandedView?.let {
             it.showContent(content, mode, expanded)
-            it.source.setTextColor(if (mode == CaptionDisplayMode.ORIGINAL) SettingsStore.translationColor(service) else 0xFFD5D5D5.toInt())
+            val lightSurface = CaptionColorMath.isLightSurface(
+                SettingsStore.overlayBgColor(service),
+                SettingsStore.overlayBgAlpha(service),
+            )
+            it.source.setTextColor(when {
+                mode == CaptionDisplayMode.ORIGINAL -> SettingsStore.translationColor(service)
+                lightSurface -> 0xFF3A3A3C.toInt()
+                else -> 0xFFD5D5D5.toInt()
+            })
         }
         updateOverlayGeometry()
         val hasCaption = listOf(sourceView, translationView).any {

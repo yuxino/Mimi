@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import app.yuxino.mimi.android.captions.CaptionAlignment
+import app.yuxino.mimi.android.captions.CaptionColorMath
 import app.yuxino.mimi.android.captions.CaptionDisplayMode
 import app.yuxino.mimi.android.capture.CaptureInput
 import app.yuxino.mimi.android.capture.MimiService
@@ -30,6 +31,7 @@ object SettingsStore {
     private const val KEY_FONT_SIZE = "font_size"
     private const val KEY_OVERLAY_OPACITY = "overlay_opacity"
     private const val KEY_OVERLAY_BG_ALPHA = "overlay_bg_alpha"
+    private const val KEY_OVERLAY_BG_COLOR_HEX = "overlay_bg_color_hex"
     private const val KEY_IMMERSIVE_SUBTITLES = "immersive_subtitles"
     private const val KEY_OVERLAY_ADJUSTABLE = "overlay_adjustable"
     private const val KEY_HISTORY_LINES = "history_lines"
@@ -38,6 +40,7 @@ object SettingsStore {
     private const val KEY_SUBTITLE_DIVIDERS = "subtitle_dividers"
     private const val KEY_SUBTITLE_TIMESTAMPS = "subtitle_timestamps"
     private const val KEY_TRANSLATION_COLOR = "translation_color"
+    private const val KEY_TRANSLATION_COLOR_HEX = "translation_color_hex"
     private const val KEY_OVERLAY_X = "overlay_x"
     private const val KEY_OVERLAY_Y = "overlay_y"
     private const val KEY_DISPLAY_MODE = "caption_display_mode"
@@ -82,10 +85,10 @@ object SettingsStore {
     /** Observe only appearance; never read credential values in UI refresh callbacks. */
     internal fun observeAppearance(context: Context, onChange: () -> Unit): () -> Unit {
         val preferences = get(context)
-        val keys = setOf(KEY_FONT_SIZE, KEY_OVERLAY_OPACITY, KEY_OVERLAY_BG_ALPHA,
-            KEY_IMMERSIVE_SUBTITLES, KEY_HISTORY_LINES, KEY_TRANSLATION_COLOR, KEY_OVERLAY_Y,
-            KEY_OVERLAY_X, KEY_EXPANDED_Y, KEY_EXPANDED_X, KEY_DISPLAY_MODE, KEY_OVERLAY_WIDTH,
-            KEY_OVERLAY_HEIGHT, KEY_CAPTION_ALIGNMENT, KEY_SUBTITLE_DIVIDERS, KEY_SUBTITLE_TIMESTAMPS)
+        val keys = setOf(KEY_FONT_SIZE, KEY_OVERLAY_OPACITY, KEY_OVERLAY_BG_ALPHA, KEY_OVERLAY_BG_COLOR_HEX,
+            KEY_IMMERSIVE_SUBTITLES, KEY_HISTORY_LINES, KEY_TRANSLATION_COLOR, KEY_TRANSLATION_COLOR_HEX,
+            KEY_OVERLAY_Y, KEY_OVERLAY_X, KEY_EXPANDED_Y, KEY_EXPANDED_X, KEY_DISPLAY_MODE,
+            KEY_OVERLAY_WIDTH, KEY_OVERLAY_HEIGHT, KEY_CAPTION_ALIGNMENT, KEY_SUBTITLE_DIVIDERS, KEY_SUBTITLE_TIMESTAMPS)
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (key in keys) onChange()
         }
@@ -297,12 +300,20 @@ object SettingsStore {
     fun subtitleTimestamps(context: Context): Boolean = get(context).getBoolean(KEY_SUBTITLE_TIMESTAMPS, false)
     fun setSubtitleTimestamps(context: Context, value: Boolean) = writeAppearance(get(context).edit().putBoolean(KEY_SUBTITLE_TIMESTAMPS, value))
 
-    /** Pure black subtitle background, matching desktop: 0 (clear) .. 100 (solid). */
+    /** Subtitle background opacity, matching desktop: 0 (clear) .. 100 (solid). */
     fun overlayBgAlpha(context: Context): Int =
         get(context).getInt(KEY_OVERLAY_BG_ALPHA, 80).coerceIn(0, 100)
 
     fun setOverlayBgAlpha(context: Context, value: Int) =
         writeAppearance(get(context).edit().putInt(KEY_OVERLAY_BG_ALPHA, value.coerceIn(0, 100)))
+
+    /** Subtitle background RGB color, defaulting to pure black (#000000). */
+    fun overlayBgColor(context: Context): Int =
+        CaptionColorMath.parseHexColor(get(context).getString(KEY_OVERLAY_BG_COLOR_HEX, null))
+            ?: CaptionColorMath.DEFAULT_BG_COLOR
+
+    fun setOverlayBgColor(context: Context, argb: Int) =
+        writeAppearance(get(context).edit().putString(KEY_OVERLAY_BG_COLOR_HEX, CaptionColorMath.formatHexColor(argb)))
 
     /** Separate from immersive presentation: locking never changes caption geometry or style. */
     fun overlayAdjustable(context: Context): Boolean = get(context).getBoolean(KEY_OVERLAY_ADJUSTABLE, true)
@@ -367,9 +378,15 @@ object SettingsStore {
     val COLOR_PRESETS = listOf(0xFF4FD1C5, 0xFFFFFFFF, 0xFFFFD54F, 0xFF9AE66E, 0xFFF49AB5)
 
     fun translationColor(context: Context): Int {
+        CaptionColorMath.parseHexColor(get(context).getString(KEY_TRANSLATION_COLOR_HEX, null))?.let { return it }
         val index = get(context).getInt(KEY_TRANSLATION_COLOR, 1)
             .coerceIn(0, COLOR_PRESETS.size - 1)
         return COLOR_PRESETS[index].toInt()
+    }
+
+    fun hasCustomTranslationColor(context: Context): Boolean {
+        val custom = CaptionColorMath.parseHexColor(get(context).getString(KEY_TRANSLATION_COLOR_HEX, null)) ?: return false
+        return COLOR_PRESETS.none { it.toInt() == custom }
     }
 
     fun translationColorIndex(context: Context): Int =
@@ -378,7 +395,19 @@ object SettingsStore {
 
     fun setTranslationColorIndex(context: Context, index: Int) =
         writeAppearance(get(context).edit()
+            .remove(KEY_TRANSLATION_COLOR_HEX)
             .putInt(KEY_TRANSLATION_COLOR, index.coerceIn(0, COLOR_PRESETS.size - 1)))
+
+    fun setTranslationColorCustom(context: Context, argb: Int) {
+        val opaque = argb or (0xFF shl 24)
+        val presetIndex = COLOR_PRESETS.indexOfFirst { it.toInt() == opaque }
+        if (presetIndex >= 0) {
+            setTranslationColorIndex(context, presetIndex)
+        } else {
+            writeAppearance(get(context).edit()
+                .putString(KEY_TRANSLATION_COLOR_HEX, CaptionColorMath.formatHexColor(opaque)))
+        }
+    }
 
     fun sourceLang(context: Context): String =
         get(context).getString(KEY_SOURCE_LANG, "auto") ?: "auto"

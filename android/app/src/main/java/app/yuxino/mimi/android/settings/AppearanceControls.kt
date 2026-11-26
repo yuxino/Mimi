@@ -17,7 +17,9 @@ import android.widget.Toast
 import androidx.core.content.ContextCompat
 import app.yuxino.mimi.android.R
 import app.yuxino.mimi.android.captions.CaptionAlignment
+import app.yuxino.mimi.android.captions.CaptionColorMath
 import app.yuxino.mimi.android.captions.CaptionColorPalette
+import app.yuxino.mimi.android.captions.CaptionColorPickerDialog
 import app.yuxino.mimi.android.captions.CaptionDisplayMode
 import app.yuxino.mimi.android.ui.HelpUi
 import com.google.android.material.button.MaterialButton
@@ -53,6 +55,7 @@ internal class AppearanceControls(
         picker(R.id.caption_alignment, R.string.settings_alignment, CaptionAlignment.entries.map { context.getString(it.label) },
             { SettingsStore.captionAlignment(context).ordinal }, { SettingsStore.setCaptionAlignment(context, CaptionAlignment.entries[it]) }, styles)
         colorPalette(styles)
+        val backgroundColorRow = backgroundColorPalette(styles)
         val background = slider(R.id.overlay_bg_alpha, R.id.overlay_bg_alpha_value, R.string.settings_background, 0, 100,
             { SettingsStore.overlayBgAlpha(context) }, { SettingsStore.setOverlayBgAlpha(context, it) }, parent = styles)
         val opacity = slider(R.id.overlay_opacity, R.id.overlay_opacity_value, R.string.settings_opacity, 20, 100,
@@ -73,6 +76,8 @@ internal class AppearanceControls(
         addView(modeRow, LayoutParams(-1, -2).apply { topMargin = dp(20) })
         refreshers.add {
             immersive.isChecked = SettingsStore.immersiveSubtitles(context)
+            backgroundColorRow.alpha = if (immersive.isChecked) 0.45f else 1f
+            for (i in 0 until backgroundColorRow.childCount) backgroundColorRow.getChildAt(i).isEnabled = !immersive.isChecked
             background.isEnabled = !immersive.isChecked
             opacity.isEnabled = !immersive.isChecked
             height.isEnabled = !immersive.isChecked
@@ -127,37 +132,137 @@ internal class AppearanceControls(
         val names = listOf(R.string.settings_color_white, R.string.settings_color_teal, R.string.settings_color_yellow,
             R.string.settings_color_green, R.string.settings_color_pink)
         for ((position, index) in colorIndices.withIndex()) {
-            val button = ImageButton(context).apply {
-                tag = "caption-color-$index"
-                contentDescription = context.getString(R.string.settings_color) + " · " + context.getString(names[position])
-                tooltipText = context.getString(names[position]); isFocusable = true
-                pointerIcon = android.view.PointerIcon.getSystemIcon(context, android.view.PointerIcon.TYPE_HAND)
-                val background = android.util.TypedValue()
-                context.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, background, true)
-                setBackgroundResource(background.resourceId)
-                setPadding(dp(8), dp(8), dp(8), dp(8))
-                setOnClickListener { save { SettingsStore.setTranslationColorIndex(context, index) } }
-            }
+            val button = colorSwatchButton(
+                tag = "caption-color-$index",
+                description = context.getString(R.string.settings_color) + " · " + context.getString(names[position]),
+                tooltip = context.getString(names[position]),
+            ) { save { SettingsStore.setTranslationColorIndex(context, index) } }
             row.addView(button)
             refreshers.add {
-                button.isSelected = SettingsStore.translationColorIndex(context) == index
-                val swatch = android.graphics.drawable.GradientDrawable().apply {
-                    shape = android.graphics.drawable.GradientDrawable.OVAL
-                    setSize(dp(22), dp(22))
-                    setColor(SettingsStore.COLOR_PRESETS[index].toInt()); setStroke(dp(1), color(R.color.mimi_muted))
-                }
-                val ring = android.graphics.drawable.GradientDrawable().apply {
-                    shape = android.graphics.drawable.GradientDrawable.OVAL
-                    setSize(dp(32), dp(32))
-                    setColor(android.graphics.Color.TRANSPARENT)
-                    if (button.isSelected) setStroke(dp(2), color(R.color.mimi_text))
-                }
-                button.setImageDrawable(android.graphics.drawable.LayerDrawable(arrayOf(ring, swatch)).apply {
-                    setLayerInset(1, dp(5), dp(5), dp(5), dp(5))
-                })
+                button.isSelected = !SettingsStore.hasCustomTranslationColor(context) &&
+                    SettingsStore.translationColorIndex(context) == index
+                button.setImageDrawable(swatchDrawable(SettingsStore.COLOR_PRESETS[index].toInt(), button.isSelected))
             }
         }
+        val customButton = colorSwatchButton(
+            tag = "caption-color-custom",
+            description = context.getString(R.string.settings_color) + " · " + context.getString(R.string.settings_color_custom),
+            tooltip = context.getString(R.string.settings_color_custom),
+        ) {
+            CaptionColorPickerDialog.show(
+                context,
+                context.getString(R.string.settings_color),
+                SettingsStore.translationColor(context),
+            ) { chosen -> save { SettingsStore.setTranslationColorCustom(context, chosen) } }
+        }
+        row.addView(customButton)
+        refreshers.add {
+            val isCustom = SettingsStore.hasCustomTranslationColor(context)
+            customButton.isSelected = isCustom
+            customButton.setImageDrawable(
+                if (isCustom) swatchDrawable(SettingsStore.translationColor(context), selected = true)
+                else customSwatchPlusDrawable(),
+            )
+        }
         parent.addView(row, LayoutParams(-1, -2).apply { topMargin = dp(8) })
+    }
+
+    private fun backgroundColorPalette(parent: LinearLayout): CaptionColorPalette {
+        parent.addView(label(R.string.settings_bg_color), LayoutParams(-1, -2).apply { topMargin = dp(20) })
+        val row = CaptionColorPalette(context).apply { id = R.id.overlay_bg_color }
+        val names = listOf(
+            R.string.settings_bg_color_black,
+            R.string.settings_bg_color_charcoal,
+            R.string.settings_bg_color_slate,
+            R.string.settings_bg_color_warm,
+            R.string.settings_bg_color_white,
+        )
+        for ((index, argb) in CaptionColorMath.BG_COLOR_PRESETS.withIndex()) {
+            val button = colorSwatchButton(
+                tag = "caption-bg-color-$index",
+                description = context.getString(R.string.settings_bg_color) + " · " + context.getString(names[index]),
+                tooltip = context.getString(names[index]),
+            ) { save { SettingsStore.setOverlayBgColor(context, argb) } }
+            row.addView(button)
+            refreshers.add {
+                button.isSelected = SettingsStore.overlayBgColor(context) == argb
+                button.setImageDrawable(swatchDrawable(argb, button.isSelected))
+            }
+        }
+        val customButton = colorSwatchButton(
+            tag = "caption-bg-color-custom",
+            description = context.getString(R.string.settings_bg_color) + " · " + context.getString(R.string.settings_color_custom),
+            tooltip = context.getString(R.string.settings_color_custom),
+        ) {
+            CaptionColorPickerDialog.show(
+                context,
+                context.getString(R.string.settings_bg_color),
+                SettingsStore.overlayBgColor(context),
+            ) { chosen -> save { SettingsStore.setOverlayBgColor(context, chosen) } }
+        }
+        row.addView(customButton)
+        refreshers.add {
+            val current = SettingsStore.overlayBgColor(context)
+            val isCustom = CaptionColorMath.BG_COLOR_PRESETS.none { it == current }
+            customButton.isSelected = isCustom
+            customButton.setImageDrawable(
+                if (isCustom) swatchDrawable(current, selected = true)
+                else customSwatchPlusDrawable(),
+            )
+        }
+        parent.addView(row, LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        return row
+    }
+
+    private fun colorSwatchButton(tag: String, description: String, tooltip: String, onClick: () -> Unit): ImageButton =
+        ImageButton(context).apply {
+            this.tag = tag
+            contentDescription = description
+            tooltipText = tooltip
+            isFocusable = true
+            pointerIcon = android.view.PointerIcon.getSystemIcon(context, android.view.PointerIcon.TYPE_HAND)
+            val background = android.util.TypedValue()
+            context.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, background, true)
+            setBackgroundResource(background.resourceId)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            setOnClickListener { onClick() }
+        }
+
+    private fun swatchDrawable(argb: Int, selected: Boolean): android.graphics.drawable.Drawable {
+        val swatch = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            setSize(dp(22), dp(22))
+            setColor(argb)
+            setStroke(dp(1), color(R.color.mimi_muted))
+        }
+        val ring = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            setSize(dp(32), dp(32))
+            setColor(android.graphics.Color.TRANSPARENT)
+            if (selected) setStroke(dp(2), color(R.color.mimi_text))
+        }
+        return android.graphics.drawable.LayerDrawable(arrayOf(ring, swatch)).apply {
+            setLayerInset(1, dp(5), dp(5), dp(5), dp(5))
+        }
+    }
+
+    private fun customSwatchPlusDrawable(): android.graphics.drawable.Drawable {
+        val base = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            setSize(dp(22), dp(22))
+            setColor(color(R.color.mimi_surface))
+            setStroke(dp(1), color(R.color.mimi_muted))
+        }
+        val ring = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            setSize(dp(32), dp(32))
+            setColor(android.graphics.Color.TRANSPARENT)
+        }
+        val plus = requireNotNull(ContextCompat.getDrawable(context, R.drawable.ic_add))
+        return android.graphics.drawable.LayerDrawable(arrayOf(ring, base, plus)).apply {
+            setLayerInset(1, dp(5), dp(5), dp(5), dp(5))
+            setLayerInset(2, dp(9), dp(9), dp(9), dp(9))
+        }
     }
     private fun save(action: () -> Unit) {
         try { action() }

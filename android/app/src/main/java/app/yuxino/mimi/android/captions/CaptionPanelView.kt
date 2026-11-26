@@ -34,6 +34,7 @@ internal class CaptionPanelView(
     val history: TextView
     val transcriptScroll: ScrollView
     val timestamp: TextView
+    val opacitySlider: CaptionOpacitySlider
     private var followCurrentOnLayout = false
     internal var followingLive = true
         private set
@@ -229,13 +230,24 @@ internal class CaptionPanelView(
             // Keep the visible mark in the bottom/right inset, not over a glyph.
             setPadding(dp(32), dp(32), dp(4), dp(4))
         }, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.BOTTOM or Gravity.RIGHT))
+        opacitySlider = CaptionOpacitySlider(context).apply {
+            progress = SettingsStore.overlayBgAlpha(context)
+        }
+        panel.addView(opacitySlider, FrameLayout.LayoutParams(
+            dp(CaptionOpacitySlider.TOUCH_WIDTH_DP),
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            Gravity.TOP or Gravity.LEFT,
+        ).apply {
+            topMargin = dp(CaptionAdjustmentSwitch.TARGET_DP)
+            bottomMargin = dp(8)
+        })
         setAdjustable(SettingsStore.overlayAdjustable(context))
     }
 
     /** Disable actions without dimming or changing the frame's visible appearance. */
     fun setPreviewOnly(preview: Boolean) {
         interactive = !preview && actions.home != null
-        listOf("overlay-drag", "overlay-resize").forEach { tag ->
+        listOf("overlay-drag", "overlay-resize", "overlay-opacity-slider").forEach { tag ->
             findViewWithTag<View>(tag).apply {
                 if (actions.home == null) setOnClickListener(null)
                 isClickable = interactive; isFocusable = interactive
@@ -251,6 +263,7 @@ internal class CaptionPanelView(
         findViewWithTag<CaptionAdjustmentSwitch>("overlay-adjust-mark").isChecked = adjustable
         findViewWithTag<View>("overlay-drag-mark").visibility = if (adjustable) View.VISIBLE else View.INVISIBLE
         findViewWithTag<View>("overlay-resize").visibility = if (adjustable) View.VISIBLE else View.INVISIBLE
+        opacitySlider.visibility = if (adjustable) View.VISIBLE else View.INVISIBLE
         setPreviewOnly(!adjustable)
     }
 
@@ -265,12 +278,31 @@ internal class CaptionPanelView(
         status.textSize = style.fontSize.toFloat()
         history.textSize = (style.fontSize - 1).coerceAtLeast(12).toFloat()
         status.setTextColor(style.color)
-        source.setTextColor(if (style.mode == CaptionDisplayMode.ORIGINAL) style.color else 0xFFD5D5D5.toInt())
         translation.setTextColor(style.color)
         listOf(status, source, translation, history, timestamp).forEach { it.gravity = style.alignment.gravity }
-        CaptionSurface.apply(this, style, false)
+        applySurfaceChrome(style)
         findViewWithTag<View>("history-divider").visibility = if (history.visibility == View.VISIBLE && style.dividers) View.VISIBLE else View.GONE
         followCurrentOnLayout = followingLive
+    }
+
+    /** Live background opacity/color updates keep text/chrome contrast synchronized without relayout. */
+    fun applySurfaceChrome(style: CaptionFrameStyle) {
+        val lightSurface = CaptionColorMath.isLightSurface(style.backgroundColor, style.backgroundAlpha)
+        opacitySlider.progress = style.backgroundAlpha
+        opacitySlider.lightSurface = lightSurface
+        source.setTextColor(when {
+            style.mode == CaptionDisplayMode.ORIGINAL -> style.color
+            lightSurface -> 0xFF3A3A3C.toInt()
+            else -> 0xFFD5D5D5.toInt()
+        })
+        history.setTextColor(if (lightSurface) 0xFF525252.toInt() else 0xFFB9B9B9.toInt())
+        findViewWithTag<View>("history-divider").setBackgroundColor(if (lightSurface) 0x3D000000 else 0xFF555555.toInt())
+        (findViewWithTag<View>("overlay-drag-mark").background as? GradientDrawable)?.setColor(
+            if (lightSurface) 0xFF525252.toInt() else 0xFFB9B9B9.toInt(),
+        )
+        findViewWithTag<ImageButton>("overlay-resize").imageTintList =
+            android.content.res.ColorStateList.valueOf(if (lightSurface) 0xFF1C1C1E.toInt() else Color.WHITE)
+        CaptionSurface.apply(this, style, false)
     }
 
     private fun maxScroll() = ((transcriptScroll.getChildAt(0)?.height ?: 0) - transcriptScroll.height).coerceAtLeast(0)

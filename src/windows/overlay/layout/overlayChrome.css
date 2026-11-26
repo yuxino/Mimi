@@ -115,6 +115,144 @@
   .overlay-action-group + .mimi-tooltip-trigger::before { background: ButtonText; }
 }
 
+/* Compact left-edge background opacity slider revealed on hover while unlocked. */
+.overlay-opacity-slider {
+  position: absolute;
+  left: 8px;
+  top: 44px;
+  bottom: 12px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+.overlay-opacity-slider__control {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 100%;
+  max-height: 96px;
+  min-height: 36px;
+  padding: 6px 0;
+  border-radius: 8px;
+  cursor: ns-resize;
+  pointer-events: auto;
+  touch-action: none;
+  outline: none;
+}
+
+.overlay-opacity-slider__control:has(.overlay-opacity-slider__input:focus-visible) {
+  outline: 1.5px solid var(--overlay-slider-focus, rgba(255, 255, 255, 0.65));
+  outline-offset: 0;
+}
+
+.overlay-opacity-slider__input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: ns-resize;
+}
+
+.overlay-opacity-slider__track {
+  position: relative;
+  width: 4px;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--overlay-slider-track, rgba(255, 255, 255, 0.24));
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.22);
+}
+
+.overlay-opacity-slider__fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: var(--overlay-slider-fill, rgba(255, 255, 255, 0.88));
+}
+
+.overlay-opacity-slider__thumb {
+  position: absolute;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--overlay-slider-thumb, #ffffff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  transform: translate(-50%, 50%);
+}
+
+.overlay-opacity-slider__readout {
+  opacity: 0;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgba(16, 16, 16, 0.86);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.overlay-opacity-slider:is([data-dragging], :has(.overlay-opacity-slider__control:hover), :has(.overlay-opacity-slider__input:focus-visible)) .overlay-opacity-slider__readout {
+  opacity: 1;
+}
+
+/* Light, opaque overlay surfaces adapt chrome contrast to dark neutral ink. */
+.overlay-expanded-canvas[data-light-surface],
+.overlay-compact-canvas[data-light-surface] {
+  --overlay-canvas-outline: rgba(0, 0, 0, 0.16);
+  --overlay-empty-text: rgba(0, 0, 0, 0.56);
+  --overlay-slider-track: rgba(0, 0, 0, 0.22);
+  --overlay-slider-fill: rgba(0, 0, 0, 0.78);
+  --overlay-slider-thumb: #141414;
+  --overlay-slider-focus: rgba(0, 0, 0, 0.55);
+}
+
+.overlay-expanded-canvas[data-light-surface] .overlay-action-strip .overlay-control-button,
+.overlay-compact-canvas[data-light-surface] .overlay-control-button {
+  color: rgba(0, 0, 0, 0.78);
+}
+
+.overlay-expanded-canvas[data-light-surface] .overlay-action-strip .overlay-control-button:is(:hover, :focus-visible):not(:disabled),
+.overlay-expanded-canvas[data-light-surface] .overlay-action-strip .overlay-control-button[data-hovered="true"]:not(:disabled),
+.overlay-compact-canvas[data-light-surface] .overlay-control-button:is(:hover, :focus-visible):not(:disabled) {
+  background: rgba(0, 0, 0, 0.10);
+}
+
+.overlay-expanded-canvas[data-light-surface] .overlay-action-strip .overlay-control-button:active:not(:disabled),
+.overlay-compact-canvas[data-light-surface] .overlay-control-button:active:not(:disabled) {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.overlay-expanded-canvas[data-light-surface] .overlay-action-group + .overlay-action-group::before,
+.overlay-expanded-canvas[data-light-surface] .overlay-action-group + .mimi-tooltip-trigger::before {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.overlay-expanded-canvas[data-light-surface] .subtitle-separator {
+  background: rgba(0, 0, 0, 0.24);
+}
+
+.overlay-expanded-canvas[data-light-surface] .overlay-opacity-slider__track {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.overlay-expanded-canvas[data-light-surface] .overlay-opacity-slider__thumb {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+}
+
 /* A first timing sample or a new request must not displace captions under a stationary pointer. */
 .overlay-expanded-canvas:has(.overlay-status-row[data-session-details-space], .overlay-status-row[data-placement="below"] .overlay-latency) {
   --overlay-status-height: var(--overlay-detail-height, 20px);
@@ -127,12 +265,12 @@
    hover and the native pointer bridge each reveal these controls independently.
    Inactive controls keep their tab order without taking clicks. */
 @media (hover: hover) and (pointer: fine) {
-  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], [data-overlay-keyboard-focus]:has(:focus-visible)) :is(.overlay-hover-control, .overlay-control-embedded[data-quiet-island] .overlay-control-island) {
+  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], [data-overlay-keyboard-focus]:has(:focus-visible), :has(.overlay-opacity-slider[data-dragging])) :is(.overlay-hover-control, .overlay-control-embedded[data-quiet-island] .overlay-control-island) {
     opacity: 0;
     pointer-events: none;
   }
 
-  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], [data-overlay-keyboard-focus]:has(:focus-visible)) :is(.overlay-hover-control, .overlay-control-embedded[data-quiet-island] .overlay-control-island) * {
+  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], [data-overlay-keyboard-focus]:has(:focus-visible), :has(.overlay-opacity-slider[data-dragging])) :is(.overlay-hover-control, .overlay-control-embedded[data-quiet-island] .overlay-control-island) * {
     pointer-events: none;
   }
 

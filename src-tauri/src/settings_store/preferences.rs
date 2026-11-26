@@ -7,7 +7,8 @@ use super::{
 };
 use crate::core::audio::audio_input::AudioInput;
 use crate::core::models::{
-    SourceLanguage, SubtitleColor, SubtitleDisplayMode, TargetLanguage, TranslationMode,
+    SourceLanguage, SubtitleBackgroundColor, SubtitleColor, SubtitleDisplayMode, TargetLanguage,
+    TranslationMode,
 };
 use crate::core::services::network_proxy::ProxyConfig;
 use crate::core::services::provider::{
@@ -62,6 +63,8 @@ pub struct Preferences {
     pub subtitle_font_family: String,
     /// Background opacity in percent; independent of subtitle text.
     pub subtitle_background_opacity: u8,
+    /// Overlay background color; defaults to pure black.
+    pub subtitle_background_color: SubtitleBackgroundColor,
     pub subtitle_color: SubtitleColor,
     pub microphone_subtitle_color: SubtitleColor,
     pub subtitle_alignment: SubtitleAlignment,
@@ -106,6 +109,7 @@ impl Default for Preferences {
             font_size: DEFAULT_FONT_SIZE,
             subtitle_font_family: String::new(),
             subtitle_background_opacity: 80,
+            subtitle_background_color: SubtitleBackgroundColor::default(),
             subtitle_color: SubtitleColor::White,
             microphone_subtitle_color: SubtitleColor::Yellow,
             subtitle_alignment: SubtitleAlignment::Center,

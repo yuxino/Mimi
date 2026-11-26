@@ -131,6 +131,8 @@ export interface SettingsSnapshot {
   subtitleFontFamily?: string;
   /** 0..100, background only. */
   subtitleBackgroundOpacity: number;
+  /** Opaque #RRGGBB overlay background color; defaults to #000000. */
+  subtitleBackgroundColor?: SubtitleBackgroundColor;
   subtitleColor: SubtitleColor;
   microphoneSubtitleColor?: SubtitleColor;
   subtitleAlignment: SubtitleAlignment;
@@ -180,6 +182,7 @@ export type PulseStyle = "syllable" | "ribbon";
 export type SubtitleDisplayMode = "translation" | "bilingual" | "original";
 export type SubtitlePresetColor = "white" | "teal" | "yellow" | "green" | "pink";
 export type SubtitleColor = SubtitlePresetColor | `#${string}`;
+export type SubtitleBackgroundColor = `#${string}`;
 export type SubtitleAlignment = "left" | "center" | "right";
 
 export interface SettingsDraft {
@@ -189,6 +192,7 @@ export interface SettingsDraft {
   fontSize?: number;
   subtitleFontFamily?: string;
   subtitleBackgroundOpacity?: number;
+  subtitleBackgroundColor?: SubtitleBackgroundColor;
   subtitleColor?: SubtitleColor;
   microphoneSubtitleColor?: SubtitleColor;
   subtitleAlignment?: SubtitleAlignment;

@@ -40,6 +40,7 @@ internal fun checkOverlayChromeAlignment(panel: View) {
     val drag = checkNotNull(caption.findViewWithTag<View>("overlay-drag"))
     val mark = checkNotNull(drag.findViewWithTag<View>("overlay-drag-mark"))
     val resize = checkNotNull(caption.findViewWithTag<View>("overlay-resize"))
+    val opacitySlider = checkNotNull(caption.findViewWithTag<View>("overlay-opacity-slider"))
     val scroll = checkNotNull(caption.findViewWithTag<View>("subtitle-transcript-scroll"))
     val switchMark = checkNotNull(caption.findViewWithTag<com.google.android.material.materialswitch.MaterialSwitch>("overlay-adjust-mark"))
     val density = panel.resources.displayMetrics.density
@@ -70,7 +71,12 @@ internal fun checkOverlayChromeAlignment(panel: View) {
         "Decorative switch must not duplicate native input/accessibility"
     }
     check(switchMark.isChecked == SettingsStore.overlayAdjustable(panel.context)) { "Painted adjustment state is stale" }
-    check(drag.visibility != View.GONE && mark.visibility != View.GONE && resize.visibility != View.GONE) { "Lock removed handle bounds" }
+    check(drag.visibility != View.GONE && mark.visibility != View.GONE && resize.visibility != View.GONE &&
+        opacitySlider.visibility != View.GONE) { "Lock removed handle bounds" }
+    check(frame.contains(bounds(opacitySlider)) && !Rect.intersects(switchBounds, bounds(opacitySlider)) &&
+        !Rect.intersects(bounds(drag), bounds(opacitySlider)) && !Rect.intersects(bounds(resize), bounds(opacitySlider))) {
+        "Opacity slider overlaps other adjustment targets or escaped frame"
+    }
     check(abs(bounds(mark).exactCenterY() - 24 * density) <= 1f) { "Drag mark is not vertically centered in the inset controls" }
     check(abs(bounds(mark).exactCenterX() - frame.exactCenterX()) <= 1f) {
         "Drag mark is not centered: frame=$frame mark=${bounds(mark)} drag=${bounds(drag)}"
@@ -142,7 +148,7 @@ internal fun checkAdjustmentSwitchOnScreen(): com.google.android.material.materi
         check(mark.isChecked == toggle.isChecked && toggle.isChecked == SettingsStore.overlayAdjustable(toggle.context)) {
             "Switch input, paint and saved state differ"
         }
-        for (tag in listOf("subtitle-transcript-scroll", "overlay-drag", "overlay-resize")) {
+        for (tag in listOf("subtitle-transcript-scroll", "overlay-drag", "overlay-resize", "overlay-opacity-slider")) {
             check(!Rect.intersects(switchBounds, screenBounds(checkNotNull(caption.findViewWithTag<View>(tag))))) {
                 "Independent inset switch intercepts $tag"
             }
