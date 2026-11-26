@@ -355,6 +355,27 @@ it("shows no network proxy or credential form for Apple recognition plus Apple t
   expect(profileRevealCredential).not.toHaveBeenCalled();
 });
 
+it("places the active target language before Apple translation readiness", async () => {
+  vi.mocked(getAppleSpeechSupport).mockResolvedValue(appleSupport);
+  const native = { ...appleProfile, textTranslation: "apple" as const, credentialState: "present" as const, textCredentialState: "present" as const };
+  await render({ ...appleSettings(), targetLanguage: "zh", profiles: [native], languageCapabilities: { profileId: native.id, provider: native.provider, textTranslation: "apple", targetLanguage: "zh", sourceLanguages: ["en"], targetLanguages: ["original", "zh", "en"] } });
+  const controls = host.querySelector(".service-stage--translation .apple-translation-language-controls");
+  expect(controls).not.toBeNull();
+  expect(controls?.nextElementSibling?.className).toBe("apple-translation-settings");
+  expect(controls?.querySelector(`[aria-label="${I18N.settings.translateTo}"]`)?.textContent).toContain(TARGET_LANGUAGE_DISPLAY_NAMES.zh);
+});
+
+it("does not bind active language controls to an inactive Apple configuration", async () => {
+  vi.mocked(getAppleSpeechSupport).mockResolvedValue(appleSupport);
+  const active = { ...profile, credentialState: "present" as const };
+  const inactive = { ...appleProfile, textTranslation: "apple" as const, credentialState: "present" as const, textCredentialState: "present" as const };
+  await render({ ...settings, profiles: [active, inactive], activeProfileId: active.id, sourceLanguage: "en", targetLanguage: "zh" });
+  await act(async () => host.querySelectorAll<HTMLButtonElement>(".service-row__edit")[1].click());
+  expect(host.querySelector(".service-detail h2")?.textContent).toContain(inactive.name);
+  expect(host.querySelector(".apple-translation-settings")).not.toBeNull();
+  expect(host.querySelector(".apple-translation-language-controls")).toBeNull();
+});
+
 it("retains only the recognition proxy when Alibaba uses local Apple translation", async () => {
   await render({ ...settings, sourceLanguage: "en", profiles: [{ ...profile, credentialState: "present", speechCredentialState: "present", textCredentialState: "present", textTranslation: "apple" }] });
   await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")?.click());
