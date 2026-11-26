@@ -3,8 +3,6 @@ package app.yuxino.mimi.android.services.setup
 import app.yuxino.mimi.android.R
 import app.yuxino.mimi.android.provider.ServiceProvider
 import app.yuxino.mimi.android.provider.TextTranslationProvider
-import app.yuxino.mimi.android.services.presentation.serviceProviderIcon
-import app.yuxino.mimi.android.services.presentation.translationProviderIcon
 import app.yuxino.mimi.android.services.translation.translationProviderLabel
 import app.yuxino.mimi.android.settings.SettingsStore
 
@@ -68,17 +66,6 @@ internal fun speechProviderName(context: android.content.Context, provider: Serv
     ServiceProvider.BAIDU -> R.string.guide_name_baidu
     ServiceProvider.XAI -> R.string.guide_name_xai
 })
-
-/** Compact mobile identity; model details remain in service settings. */
-internal fun overlayServiceLabel(context: android.content.Context): String {
-    val provider = ServiceProvider.fromId(SettingsStore.provider(context))
-    val speech = speechProviderName(context, provider)
-    val translation = SettingsStore.textTranslationProvider(context)
-    return if (SettingsStore.configuration(context).usesIndependentTextTranslation && translation != TextTranslationProvider.BUILTIN &&
-        translation != TextTranslationProvider.NONE && translationProviderIcon(translation) != serviceProviderIcon(provider))
-        "$speech · ${context.getString(translationProviderLabel(translation))}"
-    else speech
-}
 
 internal fun providerDescription(context: android.content.Context, provider: ServiceProvider): String = context.getString(when (provider) {
     ServiceProvider.DASHSCOPE -> R.string.guide_detail_dashscope

@@ -1090,13 +1090,10 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
         source_id: Option<u64>,
         is_final: bool,
     ) -> bool {
-        if pair.source.is_empty()
-            || pair.translation.is_empty()
-            || source_id.is_some_and(|id| {
-                self.display_pair_source_utterance_id
-                    .is_some_and(|owner| owner > id)
-            })
-        {
+        if source_id.is_some_and(|id| {
+            self.display_pair_source_utterance_id
+                .is_some_and(|owner| owner > id)
+        }) {
             return false;
         }
         let known_order = pair
@@ -1179,9 +1176,6 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
         translation: String,
         is_new_utterance: bool,
     ) -> Option<u64> {
-        if source.is_empty() || translation.is_empty() {
-            return None;
-        }
         // Timestamps also identify the frontend's bounded history rows. Two
         // legitimate repeated finals can finish within one millisecond.
         let created_at_ms = self

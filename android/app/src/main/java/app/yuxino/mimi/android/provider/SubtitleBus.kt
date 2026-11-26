@@ -22,9 +22,6 @@ object SubtitleBus {
     private var state: String? = null
     @Volatile private var snapshot = JSONObject()
     private var historyLimit = 0
-    private var sourceId = 0L
-    private var confirmationId = 0L
-    private var draftId: Long? = null
     private var originalOnly = false
     private var runtimeOwned = false
     private var atomicPreview = false
@@ -42,8 +39,6 @@ object SubtitleBus {
     val displayTranslation: String get() = if (originalOnly) "" else
         realtimeText("translation") ?: snapshot.optJSONObject("displayPair")?.optString("translation") ?: translationDraft.ifEmpty { translationFinal }
     val displayPairFinal: Boolean get() = (atomicPreview || snapshot.optJSONObject("realtimePreview") == null) && snapshot.optBoolean("displayPairFinal")
-    val displayPairCreatedAt: Long? get() = if (displayPairFinal)
-        snapshot.optLong("displayPairCreatedAt").takeIf { it > 0 } else null
     @Volatile var statusLine = ""
     @Volatile var liveHidden = false
     @Volatile var detectedSourceLanguage: String? = null
@@ -148,32 +143,6 @@ object SubtitleBus {
     fun onTranslationFinal(text: String) = onCoreEvent(textEvent("translation_final", text))
     fun onFinalPair(source: String, translation: String, language: String? = null) = onCoreEvent(
         JSONObject().put("type", "final_pair").put("source", source).put("translation", translation), language)
-    fun onIdentifiedFinalPair(id: String, source: String, translation: String, language: String? = null) = onCoreEvent(
-        JSONObject().put("type", "identified_final_pair").put("utterance_id", id).put("source", source).put("translation", translation), language)
-
-    /** The returned identity travels with the HTTP request, including repeated text. */
-    fun onUntranslatedSource(text: String, language: String?, final: Boolean): Long {
-        val id = synchronized(lock) {
-            originalOnly = false
-            val current = draftId ?: (++sourceId).also { draftId = it }
-            if (final) draftId = null
-            current
-        }
-        onCoreEvent(JSONObject().put("type", "source_utterance_draft").put("utterance_id", id).put("text", text), language)
-        return id
-    }
-    fun onTranslatedSource(source: String, language: String?, translation: String, sourceUtteranceId: Long? = null) {
-        val id = synchronized(lock) { originalOnly = false; ++confirmationId }
-        val ownedLanguage = synchronized(lock) { if (sourceUtteranceId == null || sourceUtteranceId >= sourceId) language else null }
-        onCoreEvent(JSONObject().put("type", "confirmed_pair").put("utterance_id", id)
-            .put("source_utterance_id", sourceUtteranceId ?: JSONObject.NULL)
-            .put("source", source).put("translation", translation), ownedLanguage)
-    }
-    /** Original-only uses the same atomic confirmation as desktop; rendering hides the second lane. */
-    fun onOriginalSource(source: String, language: String?) {
-        synchronized(lock) { originalOnly = true; draftId = null }
-        onFinalPair(source, source, language)
-    }
     fun setHistoryLimit(limit: Int) {
         synchronized(lock) {
             historyLimit = limit.coerceIn(0, MAX_HISTORY)
@@ -256,7 +225,7 @@ object SubtitleBus {
             atomicPreview = false
             runtimeFeedback = RuntimeFeedback()
             snapshot = JSONObject()
-            sourceId = 0; confirmationId = 0; draftId = null; originalOnly = false
+            originalOnly = false
             statusLine = ""; detectedSourceLanguage = null; liveHidden = false
         }
         notifyListeners()

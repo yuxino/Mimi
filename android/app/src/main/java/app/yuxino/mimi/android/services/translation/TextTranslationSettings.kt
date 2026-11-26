@@ -379,11 +379,9 @@ internal class TextTranslationSettings(private val activity: AppCompatActivity, 
             result.text = when (outcome) {
                 is TranslationResult.Success -> activity.getString(R.string.translation_check_success, outcome.elapsedMs)
                 is TranslationResult.Failure -> activity.getString(when (outcome.code) {
-                    "translation_http_401", "translation_http_403", "translation_rejected_401", "translation_rejected_403" -> R.string.translation_check_auth
-                    "translation_http_404", "translation_rejected_404" -> R.string.translation_check_not_found
-                    "translation_http_429", "translation_http_456", "translation_rejected_429", "translation_rejected_456" -> R.string.translation_check_busy
+                    "translation_http_401" -> R.string.translation_check_auth
+                    "translation_http_429" -> R.string.translation_check_busy
                     "translation_timeout" -> R.string.translation_check_timeout
-                    "translation_response", "translation_empty_response", "translation_incomplete", "translation_too_large" -> R.string.translation_check_response
                     else -> R.string.translation_check_failure
                 }, outcome.elapsedMs)
             }

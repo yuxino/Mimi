@@ -293,29 +293,6 @@ fn manual_start_during_recovery_backoff_wins_the_epoch() {
 }
 
 #[test]
-fn transport_error_during_recovery_is_retried_only_by_the_existing_owner() {
-    let generation = 81;
-    assert!(cancelled_recovery_attempt_is_retryable(
-        generation,
-        generation,
-        generation + 1,
-        true,
-    ));
-    assert!(!cancelled_recovery_attempt_is_retryable(
-        NO_GENERATION,
-        generation,
-        generation + 1,
-        true,
-    ));
-    assert!(!cancelled_recovery_attempt_is_retryable(
-        generation,
-        generation,
-        generation + 2,
-        true,
-    ));
-}
-
-#[test]
 fn terminal_cancellation_clears_global_recovery_state() {
     let recovering = AtomicBool::new(true);
     let retry_generation = AtomicU64::new(82);

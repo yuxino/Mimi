@@ -1,7 +1,7 @@
 use super::{
     control_mode_for_presentation, embedded_control_geometry, measured_island_width,
-    overlay_control_geometry, unscaled_webview_zoom, windows_control_focus_policy,
-    windows_webview_zoom, OverlayControlMode, OverlayControlState, OverlayControlWindowManager,
+    overlay_control_geometry, windows_control_focus_policy, windows_webview_zoom,
+    OverlayControlMode, OverlayControlState, OverlayControlWindowManager,
     WindowsControlFocusPolicy,
 };
 use crate::windows::test_support::WORK_AREA;
@@ -328,17 +328,6 @@ fn windows_text_zoom_is_independent_of_monitor_dpi_and_rejects_invalid_scales() 
     for invalid in [0.0, -1.0, f64::NAN, f64::INFINITY, 17.0] {
         assert_eq!(windows_webview_zoom(invalid, 1.0), None);
         assert_eq!(windows_webview_zoom(1.0, invalid), None);
-    }
-}
-
-#[test]
-fn non_windows_dimensions_ignore_pixel_ratio_including_invalid_values() {
-    let state = OverlayControlState::default();
-    for pixel_ratio in [0.0, -1.0, f64::NAN, f64::INFINITY, 1.5, 17.0] {
-        let zoom = unscaled_webview_zoom(pixel_ratio);
-        state.set_panel_height(356.0, zoom);
-        state.set_island_width(148.0, zoom);
-        assert_eq!(state.dimensions(), (148.0, 356.0, 1.0));
     }
 }
 

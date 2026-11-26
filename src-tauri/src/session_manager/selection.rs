@@ -19,14 +19,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-pub(super) fn translation_mode_after_source_switch(
-    _provider: ProviderKind,
-    _source_language: SourceLanguage,
-    _current_mode: TranslationMode,
-) -> TranslationMode {
-    TranslationMode::Turbo
-}
-
 pub(super) fn pipeline_settings_mutation_is_allowed(
     status: &SessionStatus,
     lifecycle_operations: usize,
@@ -582,8 +574,7 @@ impl SessionManager {
             {
                 return Err("source_switch_unsupported".into());
             }
-            let mode =
-                translation_mode_after_source_switch(provider, language, prefs.translation_mode);
+            let mode = TranslationMode::Turbo;
             let needs_reconnect = source_switch_requires_reconnect(
                 self.controller.lock().unwrap().state.status == SessionStatus::Listening,
                 prefs.source_language,

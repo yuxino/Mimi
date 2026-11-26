@@ -1,0 +1,729 @@
+use super::*;
+use crate::core::protocols::translation::qwen_mt::MAX_TRANSLATION_BYTES;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+#[test]
+fn sse_accepts_every_utf8_chunk_boundary_and_ignores_data_after_done() {
+    let data =
+        "data: {\"choices\":[{\"delta\":{\"content\":\"今天\"}}]}\r\n\ndata: [DONE]\ninvalid";
+    for split in 0..=data.len() {
+        let mut decoder = BoundedSseResponse::default();
+        decoder.push(&data.as_bytes()[..split], &|_| {}).unwrap();
+        decoder.push(&data.as_bytes()[split..], &|_| {}).unwrap();
+        assert_eq!(decoder.finish(&|_| {}).unwrap(), "今天");
+    }
+}
+
+#[test]
+fn sse_accepts_a_final_line_without_newline() {
+    let mut decoder = BoundedSseResponse::default();
+    decoder
+        .push(
+            b"data: {\"choices\":[{\"finish_reason\":\"stop\",\"delta\":{\"content\":\"hello\"}}]}",
+            &|_| {},
+        )
+        .unwrap();
+    assert_eq!(decoder.finish(&|_| {}).unwrap(), "hello");
+}
+
+#[test]
+fn plus_sse_replaces_cumulative_sequences_across_every_utf8_boundary() {
+    // Match the documented Plus shape: successive delta.content values
+    // contain the whole sequence, including the final stop chunk.
+    let data = concat!(
+        "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":null}]}\n\n",
+        "data: {\"choices\":[{\"delta\":{\"content\":\"合成\"},\"finish_reason\":null}]}\n\n",
+        "data: {\"choices\":[{\"delta\":{\"content\":\"合成文本\"},\"finish_reason\":null}]}\n\n",
+        "data: {\"choices\":[{\"delta\":{\"content\":\"字幕。\"},\"finish_reason\":null}]}\n\n",
+        "data: {\"choices\":[{\"delta\":{\"content\":\"字幕。\"},\"finish_reason\":\"stop\"}]}\n\n",
+        "data: [DONE]\n\n"
+    );
+    for split in 0..=data.len() {
+        let mut decoder = BoundedSseResponse {
+            translation: QwenMTStreamText::new(QwenMTModel::Plus),
+            ..Default::default()
+        };
+        let partials = std::sync::Mutex::new(Vec::new());
+        let record = |text| partials.lock().unwrap().push(text);
+        decoder.push(&data.as_bytes()[..split], &record).unwrap();
+        decoder.push(&data.as_bytes()[split..], &record).unwrap();
+        assert_eq!(decoder.finish(&record).unwrap(), "字幕。");
+        assert_eq!(*partials.lock().unwrap(), ["合成", "合成文本", "字幕。"]);
+    }
+}
+
+#[test]
+fn plus_sse_preserves_empty_completion_and_rejects_incomplete_or_empty_results() {
+    for tail in [
+        r#"{"choices":[{"delta":{"content":""},"finish_reason":"stop"}]}"#,
+        r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
+    ] {
+        let mut decoder = BoundedSseResponse {
+            translation: QwenMTStreamText::new(QwenMTModel::Plus),
+            ..Default::default()
+        };
+        decoder
+            .push(
+                format!(
+                    "data: {{\"choices\":[{{\"delta\":{{\"content\":\"complete\"}}}}]}}\n\ndata: {tail}\n"
+                )
+                .as_bytes(),
+                &|_| {},
+            )
+            .unwrap();
+        assert_eq!(decoder.finish(&|_| {}).unwrap(), "complete");
+    }
+    for reason in ["length", "content_filter"] {
+        let mut decoder = BoundedSseResponse {
+            translation: QwenMTStreamText::new(QwenMTModel::Plus),
+            ..Default::default()
+        };
+        assert_eq!(
+            decoder.push(
+                format!(
+                    "data: {{\"choices\":[{{\"delta\":{{\"content\":\"partial\"}},\"finish_reason\":\"{reason}\"}}]}}\n"
+                )
+                .as_bytes(),
+                &|_| panic!("incomplete content must not be published"),
+            ),
+            Err(incomplete_translation_error())
+        );
+    }
+    let mut decoder = BoundedSseResponse {
+        translation: QwenMTStreamText::new(QwenMTModel::Plus),
+        ..Default::default()
+    };
+    decoder
+        .push(
+            b"data: {\"choices\":[{\"delta\":{\"content\":\"\"},\"finish_reason\":\"stop\"}]}\n",
+            &|_| panic!("empty content must not be published"),
+        )
+        .unwrap();
+    assert!(decoder.finish(&|_| {}).unwrap().is_empty());
+}
+
+#[test]
+fn plus_sse_bounds_each_replacement_instead_of_total_snapshot_bytes() {
+    let mut translation = QwenMTStreamText::new(QwenMTModel::Plus);
+    translation
+        .apply(&"x".repeat(MAX_TRANSLATION_BYTES))
+        .unwrap();
+    let valid = format!(
+        "data: {}",
+        serde_json::json!({"choices":[{"delta":{"content": "y".repeat(MAX_TRANSLATION_BYTES)}}]})
+    );
+    handle_sse_line(&valid, &mut translation, &|_| {}).unwrap();
+    assert_eq!(translation.text(), "y".repeat(MAX_TRANSLATION_BYTES));
+    let invalid = format!(
+        "data: {}",
+        serde_json::json!({"choices":[{"delta":{"content": "z".repeat(MAX_TRANSLATION_BYTES + 1)}}]})
+    );
+    assert_eq!(
+        handle_sse_line(&invalid, &mut translation, &|_| {
+            panic!("oversized content must not be published")
+        }),
+        Err(QwenMTClientError::ResponseTooLarge)
+    );
+    assert_eq!(translation.text(), "y".repeat(MAX_TRANSLATION_BYTES));
+}
+
+#[test]
+fn sse_rejects_oversized_unterminated_and_repeated_lines_before_growth() {
+    let mut decoder = BoundedSseResponse::default();
+    decoder
+        .push(&vec![b' '; MAX_RESPONSE_BYTES], &|_| {})
+        .unwrap();
+    assert_eq!(
+        decoder.push(b" ", &|_| {}),
+        Err(QwenMTClientError::ResponseTooLarge)
+    );
+    assert_eq!(decoder.buffer.len(), MAX_RESPONSE_BYTES);
+
+    let mut decoder = BoundedSseResponse::default();
+    for _ in 0..16 {
+        decoder
+            .push(&vec![b'\n'; MAX_RESPONSE_BYTES / 16], &|_| {})
+            .unwrap();
+    }
+    assert!(decoder.buffer.is_empty());
+    assert_eq!(
+        decoder.push(b"\n", &|_| {}),
+        Err(QwenMTClientError::ResponseTooLarge)
+    );
+}
+
+#[test]
+fn translation_limit_rejects_before_publishing_an_oversized_preview() {
+    let mut translation = QwenMTStreamText::new(QwenMTModel::Flash);
+    translation
+        .apply(&"x".repeat(MAX_TRANSLATION_BYTES))
+        .unwrap();
+    let error = handle_sse_line(
+        r#"data: {"choices":[{"delta":{"content":"x"}}]}"#,
+        &mut translation,
+        &|_| panic!("oversized partial must not be published"),
+    );
+    assert_eq!(error, Err(QwenMTClientError::ResponseTooLarge));
+    assert_eq!(translation.text().len(), MAX_TRANSLATION_BYTES);
+}
+
+async fn fixture_client(response: String) -> (QwenMTClient, tokio::task::JoinHandle<String>) {
+    fixture_client_bytes(response.into_bytes()).await
+}
+
+async fn fixture_client_bytes(
+    response: Vec<u8>,
+) -> (QwenMTClient, tokio::task::JoinHandle<String>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = Vec::new();
+        let mut buffer = [0; 1024];
+        loop {
+            let read = socket.read(&mut buffer).await.unwrap();
+            assert!(read > 0);
+            request.extend_from_slice(&buffer[..read]);
+            if let Some(end) = request.windows(4).position(|bytes| bytes == b"\r\n\r\n") {
+                let headers = String::from_utf8_lossy(&request[..end]);
+                let length: usize = headers
+                    .lines()
+                    .find_map(|line| {
+                        line.to_ascii_lowercase()
+                            .strip_prefix("content-length:")
+                            .map(|value| value.trim().parse().unwrap())
+                    })
+                    .unwrap_or(0);
+                if request.len() >= end + 4 + length {
+                    break;
+                }
+            }
+        }
+        // Oversized responses may intentionally close before reading the body.
+        let _ = socket.write_all(&response).await;
+        String::from_utf8(request).unwrap()
+    });
+    let mut client = QwenMTClient::new(
+        "fixture-only",
+        SourceLanguage::English,
+        TargetLanguage::SimplifiedChinese,
+        QwenMTModel::Flash,
+        None,
+        vec![],
+        Duration::from_millis(300),
+    )
+    .unwrap();
+    client.endpoint.url = format!("http://{address}/translate").parse().unwrap();
+    client.client = http_client_builder().no_proxy().build().unwrap();
+    (client, server)
+}
+
+#[tokio::test]
+async fn http_translation_preserves_json_request_and_response() {
+    let body = r#"{"choices":[{"message":{"content":"你好"}}]}"#;
+    let (client, server) = fixture_client(format!(
+        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len(),
+    ))
+    .await;
+    assert_eq!(client.translate("hello", None, &[]).await.unwrap(), "你好");
+    let request = server.await.unwrap();
+    assert!(request.starts_with("POST /translate HTTP/1.1\r\n"));
+    assert!(request.contains("authorization: Bearer fixture-only"));
+    let body: serde_json::Value =
+        serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
+    assert_eq!(body["model"], "qwen-mt-flash");
+    assert_eq!(body["stream"], false);
+}
+
+#[tokio::test]
+async fn http_streaming_preserves_partials_and_done() {
+    let body = "data: {\"choices\":[{\"delta\":{\"content\":\"你\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"好\"}}]}\n\ndata: [DONE]\n";
+    let (client, server) = fixture_client(format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{:x}\r\n{body}\r\n0\r\n\r\n", body.len(),
+    )).await;
+    let partials = std::sync::Mutex::new(Vec::new());
+    assert_eq!(
+        client
+            .translate_streaming("hello", None, &[], |text| {
+                partials.lock().unwrap().push(text);
+            })
+            .await
+            .unwrap(),
+        "你好"
+    );
+    assert_eq!(*partials.lock().unwrap(), vec!["你", "你好"]);
+    let request = server.await.unwrap();
+    assert!(request.contains("accept: text/event-stream"));
+    let body: serde_json::Value =
+        serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
+    assert_eq!(body["stream"], true);
+}
+
+#[tokio::test]
+async fn http_streaming_uses_selected_model_accumulation_and_rejects_empty_plus() {
+    for model in [QwenMTModel::Lite, QwenMTModel::Flash, QwenMTModel::Plus] {
+        let second = if model == QwenMTModel::Plus {
+            "你好"
+        } else {
+            "好"
+        };
+        let body = format!(
+            "data: {{\"choices\":[{{\"delta\":{{\"content\":\"你\"}},\"finish_reason\":null}}]}}\n\ndata: {{\"choices\":[{{\"delta\":{{\"content\":\"{second}\"}},\"finish_reason\":\"stop\"}}]}}\n\n"
+        );
+        let (mut client, server) = fixture_client(format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len(),
+        ))
+        .await;
+        client.model = model;
+        let partials = std::sync::Mutex::new(Vec::new());
+        assert_eq!(
+            client
+                .translate_streaming("hello", None, &[], |text| {
+                    partials.lock().unwrap().push(text);
+                })
+                .await
+                .unwrap(),
+            "你好"
+        );
+        assert_eq!(*partials.lock().unwrap(), ["你", "你好"]);
+        let request = server.await.unwrap();
+        let body: serde_json::Value =
+            serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
+        assert_eq!(body["model"], model.raw_name());
+        assert_eq!(body["stream"], true);
+    }
+
+    let body =
+        "data: {\"choices\":[{\"delta\":{\"content\":\"\"},\"finish_reason\":\"stop\"}]}\n\n";
+    let (mut client, server) = fixture_client(format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len(),
+    ))
+    .await;
+    client.model = QwenMTModel::Plus;
+    assert!(matches!(
+        client
+            .translate_streaming("hello", None, &[], |_| panic!("empty preview"))
+            .await,
+        Err(QwenMTClientError::RequestFailed {
+            status_code: 200,
+            ..
+        })
+    ));
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn qwen_completion_contracts_reject_partial_http_successes() {
+    let contracts: serde_json::Value =
+        serde_json::from_str(include_str!("../../../../../translation-contracts.json")).unwrap();
+    for case in contracts["qwenCompletionResponses"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .chain(contracts["qwenStreamingResponses"].as_array().unwrap())
+    {
+        let body = if let Some(hex) = case["bodyHex"].as_str() {
+            (0..hex.len())
+                .step_by(2)
+                .map(|offset| u8::from_str_radix(&hex[offset..offset + 2], 16).unwrap())
+                .collect::<Vec<_>>()
+        } else {
+            case["body"].as_str().unwrap().as_bytes().to_vec()
+        };
+        let mut response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len(),
+        )
+        .into_bytes();
+        response.extend_from_slice(&body);
+        let (mut client, server) = fixture_client_bytes(response).await;
+        if let Some(model) = case.get("model") {
+            client.model = serde_json::from_value(model.clone()).unwrap();
+        }
+        let result = if case["stream"].as_bool().unwrap() {
+            client
+                .translate_streaming("Synthetic source", None, &[], |_| {})
+                .await
+        } else {
+            client.translate("Synthetic source", None, &[]).await
+        };
+        server.await.unwrap();
+        if let Some(expected) = case["expected"].as_str() {
+            assert_eq!(result.unwrap(), expected, "{}", case["id"]);
+        } else {
+            let error = result.expect_err(case["id"].as_str().unwrap());
+            assert!(!error.to_string().contains("Synthetic partial"));
+            let expected_retry = match case["errorCode"].as_str() {
+                Some("invalid_http_response") => {
+                    assert_eq!(error, QwenMTClientError::InvalidHTTPResponse);
+                    mimi_core::translation_policy::RetryClass::Temporary
+                }
+                None => mimi_core::translation_policy::RetryClass::Permanent,
+                Some(code) => panic!("unexpected fixture error code: {code}"),
+            };
+            assert_eq!(error.retry_class(), expected_retry, "{}", case["id"]);
+        }
+    }
+}
+
+async fn read_fixture_request(socket: &mut tokio::net::TcpStream) -> bool {
+    let mut bytes = Vec::new();
+    loop {
+        let mut buffer = [0; 1024];
+        let Ok(read) = socket.read(&mut buffer).await else {
+            return false;
+        };
+        if read == 0 {
+            return false;
+        }
+        bytes.extend_from_slice(&buffer[..read]);
+        assert!(
+            bytes.len() < 16 * 1024,
+            "synthetic request must stay bounded"
+        );
+        if let Some(end) = bytes.windows(4).position(|bytes| bytes == b"\r\n\r\n") {
+            let length: usize = String::from_utf8_lossy(&bytes[..end])
+                .lines()
+                .find_map(|line| {
+                    line.to_ascii_lowercase()
+                        .strip_prefix("content-length:")
+                        .map(|length| length.trim().parse().unwrap())
+                })
+                .unwrap_or(0);
+            if bytes.len() >= end + 4 + length {
+                return true;
+            }
+        }
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn completed_sse_reuses_tcp_when_http_terminator_arrives_after_done() {
+    assert_eq!(
+        released_sse_tail_connection_count(true).await,
+        1,
+        "both translations must share one TCP connection"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn dropping_completed_sse_without_drain_cannot_reuse_the_late_tail_connection() {
+    assert_eq!(
+        released_sse_tail_connection_count(false).await,
+        2,
+        "the fixture must still expose the original immediate-drop defect"
+    );
+}
+
+async fn released_sse_tail_connection_count(drain_tail: bool) -> usize {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let (release_tail, tail_consumed) = tokio::sync::oneshot::channel();
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        socket.set_nodelay(true).unwrap();
+        assert!(read_fixture_request(&mut socket).await);
+        let body =
+            "data: {\"choices\":[{\"delta\":{\"content\":\"complete\"}}]}\n\ndata: [DONE]\n\n";
+        let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n{:x}\r\n{body}\r\n", body.len());
+        socket.write_all(response.as_bytes()).await.unwrap();
+        // Release the separate HTTP terminator when the client consumes
+        // this single complete SSE chunk, rather than racing a 5 ms sleep
+        // against the product's 20 ms drain. On this current-thread
+        // runtime the callback wakes this task, but it runs only when the
+        // client yields while awaiting the tail. TCP_NODELAY prevents the
+        // tiny terminator from waiting for the first chunk's delayed ACK.
+        tail_consumed.await.unwrap();
+        let _ = socket.write_all(b"0\r\n\r\n").await;
+        let reused =
+            tokio::time::timeout(Duration::from_secs(1), read_fixture_request(&mut socket))
+                .await
+                .unwrap();
+        let connections = if reused {
+            1
+        } else {
+            socket = tokio::time::timeout(Duration::from_secs(1), listener.accept())
+                .await
+                .unwrap()
+                .unwrap()
+                .0;
+            assert!(read_fixture_request(&mut socket).await);
+            2
+        };
+        socket
+            .write_all(format!("{response}0\r\n\r\n").as_bytes())
+            .await
+            .unwrap();
+        connections
+    });
+    let mut client = QwenMTClient::new(
+        "fixture-only",
+        SourceLanguage::English,
+        TargetLanguage::SimplifiedChinese,
+        QwenMTModel::Lite,
+        None,
+        vec![],
+        Duration::from_secs(2),
+    )
+    .unwrap();
+    client.endpoint.url = format!("http://{address}/translate").parse().unwrap();
+    client.client = http_client_builder().no_proxy().build().unwrap();
+    let release_tail = std::sync::Mutex::new(Some(release_tail));
+    for _ in 0..2 {
+        let on_partial = |text| {
+            assert_eq!(text, "complete");
+            if let Some(release) = release_tail.lock().unwrap().take() {
+                release.send(()).unwrap();
+            }
+        };
+        let translated = if drain_tail {
+            client
+                .translate_streaming("synthetic", None, &[], on_partial)
+                .await
+                .unwrap()
+        } else {
+            // Negative control executes the actual decoder/HTTP path but
+            // drops its owned response at DONE, as the old wrapper did.
+            // No production cleanup timeout or implementation is changed.
+            let request = client
+                .client
+                .post(client.endpoint.url.clone())
+                .bearer_auth(&client.api_key)
+                .header("Content-Type", "application/json")
+                .header("Accept", "text/event-stream")
+                .body(client.make_body("synthetic", None, true, &[]).unwrap());
+            let (translated, response) =
+                tokio::time::timeout(Duration::from_secs(2), client.stream(request, &on_partial))
+                    .await
+                    .unwrap()
+                    .unwrap();
+            drop(response);
+            translated
+        };
+        assert_eq!(translated, "complete");
+    }
+    server.await.unwrap()
+}
+
+#[tokio::test]
+async fn completed_sse_with_stalled_tail_returns_success_and_closes_without_waiting_for_request_deadline(
+) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        assert!(read_fixture_request(&mut socket).await);
+        let body =
+            "data: {\"choices\":[{\"delta\":{\"content\":\"complete\"}}]}\n\ndata: [DONE]\n\n";
+        socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n{:x}\r\n{body}\r\n", body.len()).as_bytes()).await.unwrap();
+        // No HTTP terminator follows. Returning the result must drop the
+        // response and close this connection rather than leave a task.
+        tokio::time::timeout(Duration::from_secs(1), socket.read(&mut [0; 1]))
+            .await
+            .unwrap()
+            .unwrap()
+    });
+    let mut client = QwenMTClient::new(
+        "fixture-only",
+        SourceLanguage::English,
+        TargetLanguage::SimplifiedChinese,
+        QwenMTModel::Lite,
+        None,
+        vec![],
+        Duration::from_secs(2),
+    )
+    .unwrap();
+    client.endpoint.url = format!("http://{address}/translate").parse().unwrap();
+    client.client = http_client_builder().no_proxy().build().unwrap();
+    let result = tokio::time::timeout(
+        Duration::from_millis(500),
+        client.translate_streaming("synthetic", None, &[], |_| {}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.unwrap(), "complete");
+    assert_eq!(server.await.unwrap(), 0);
+}
+
+#[tokio::test]
+async fn completed_sse_tail_drain_bounds_bytes_without_collecting_or_spawning() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let polls = AtomicUsize::new(0);
+    let mut stream = futures_util::stream::repeat_with(|| {
+        polls.fetch_add(1, Ordering::Relaxed);
+        Ok::<_, reqwest::Error>(vec![0; 4096])
+    });
+    drain_completed_sse_tail(&mut stream).await;
+    assert_eq!(polls.load(Ordering::Relaxed), 2);
+    let empty_polls = AtomicUsize::new(0);
+    let mut empty_stream = futures_util::stream::repeat_with(|| {
+        empty_polls.fetch_add(1, Ordering::Relaxed);
+        Ok::<_, reqwest::Error>(Vec::<u8>::new())
+    });
+    drain_completed_sse_tail(&mut empty_stream).await;
+    assert_eq!(
+        empty_polls.load(Ordering::Relaxed),
+        MAX_SSE_TAIL_DRAIN_CHUNKS
+    );
+}
+
+#[tokio::test]
+async fn cancelling_completed_sse_during_tail_drain_closes_the_owned_response() {
+    for model in [QwenMTModel::Lite, QwenMTModel::Plus] {
+        assert_eq!(cancelled_completed_sse_connection_bytes(model).await, 0);
+    }
+}
+
+async fn cancelled_completed_sse_connection_bytes(model: QwenMTModel) -> usize {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        assert!(read_fixture_request(&mut socket).await);
+        let body =
+            "data: {\"choices\":[{\"delta\":{\"content\":\"complete\"}}]}\n\ndata: [DONE]\n\n";
+        socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n{:x}\r\n{body}\r\n", body.len()).as_bytes()).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(1), socket.read(&mut [0; 1]))
+            .await
+            .unwrap()
+            .unwrap()
+    });
+    let mut client = QwenMTClient::new(
+        "fixture-only",
+        SourceLanguage::English,
+        TargetLanguage::SimplifiedChinese,
+        model,
+        None,
+        vec![],
+        Duration::from_secs(2),
+    )
+    .unwrap();
+    client.endpoint.url = format!("http://{address}/translate").parse().unwrap();
+    client.client = http_client_builder().no_proxy().build().unwrap();
+    let (partial, received) = tokio::sync::oneshot::channel();
+    let partial = std::sync::Mutex::new(Some(partial));
+    let request = tokio::spawn(async move {
+        client
+            .translate_streaming("synthetic", None, &[], |_| {
+                if let Some(sender) = partial.lock().unwrap().take() {
+                    let _ = sender.send(());
+                }
+            })
+            .await
+    });
+    received.await.unwrap();
+    request.abort();
+    let _ = request.await;
+    server.await.unwrap()
+}
+
+#[tokio::test]
+async fn streaming_deadline_cancels_a_stalled_http_body() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = [0; 4096];
+        let read = socket.read(&mut request).await.unwrap();
+        assert!(read > 0);
+        socket
+            .write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n")
+            .await
+            .unwrap();
+        std::future::pending::<()>().await;
+    });
+    let mut client = QwenMTClient::new(
+        "fixture-only",
+        SourceLanguage::English,
+        TargetLanguage::SimplifiedChinese,
+        QwenMTModel::Flash,
+        None,
+        vec![],
+        Duration::from_millis(100),
+    )
+    .unwrap();
+    client.endpoint.url = format!("http://{address}/translate").parse().unwrap();
+    client.client = http_client_builder().no_proxy().build().unwrap();
+    let result = client.translate_streaming("hello", None, &[], |_| {}).await;
+    server.abort();
+    assert_eq!(result, Err(QwenMTClientError::RequestTimedOut));
+}
+
+#[tokio::test]
+#[ignore = "manual public HTTPS certificate/proxy smoke; sends no credentials or subtitle data"]
+async fn public_https_uses_system_certificate_validation() {
+    let client = http_client_builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .unwrap();
+    for endpoint in ["https://dashscope.aliyuncs.com", "https://github.com"] {
+        client
+            .head(endpoint)
+            .send()
+            .await
+            .expect("public HTTPS handshake must succeed");
+    }
+}
+
+#[tokio::test]
+async fn chunked_http_body_is_bounded_without_content_length() {
+    let chunk = " ".repeat(MAX_RESPONSE_BYTES + 1);
+    let (client, server) = fixture_client(format!(
+        "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{:x}\r\n{chunk}\r\n0\r\n\r\n", chunk.len(),
+    )).await;
+    assert_eq!(
+        client.translate("hello", None, &[]).await,
+        Err(QwenMTClientError::ResponseTooLarge)
+    );
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn oversized_http_error_preserves_authentication_status() {
+    let (client, server) = fixture_client(format!(
+        "HTTP/1.1 401 Unauthorized\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        MAX_RESPONSE_BYTES + 1,
+    ))
+    .await;
+    let error = client.translate("hello", None, &[]).await.unwrap_err();
+    assert!(error.is_authentication_failure());
+    assert_eq!(
+        error,
+        QwenMTClientError::RequestFailed {
+            status_code: 401,
+            message: String::new()
+        }
+    );
+    server.await.unwrap();
+}
+
+#[test]
+fn sse_line_appends_content_and_reports_done() {
+    let mut translation = QwenMTStreamText::new(QwenMTModel::Flash);
+    let partials = std::sync::Mutex::new(Vec::new());
+
+    let handled = handle_sse_line(
+        r#"data:{"choices":[{"delta":{"content":"今天"}}]}"#,
+        &mut translation,
+        &|text| partials.lock().unwrap().push(text),
+    )
+    .unwrap();
+    assert!(!handled);
+    assert_eq!(translation.text(), "今天");
+    assert_eq!(*partials.lock().unwrap(), vec!["今天".to_string()]);
+
+    let done = handle_sse_line("data: [DONE]", &mut translation, &|_| {}).unwrap();
+    assert!(done);
+    assert_eq!(translation.text(), "今天");
+}
+
+#[test]
+fn non_data_lines_are_ignored() {
+    let mut translation = QwenMTStreamText::new(QwenMTModel::Flash);
+    let handled = handle_sse_line("event: message", &mut translation, &|_| {}).unwrap();
+    assert!(!handled);
+    assert!(translation.text().is_empty());
+}

@@ -37,7 +37,6 @@ object SettingsStore {
     private const val KEY_RETAIN_SESSION_HISTORY = "retain_session_history"
     private const val KEY_SUBTITLE_DIVIDERS = "subtitle_dividers"
     private const val KEY_SUBTITLE_TIMESTAMPS = "subtitle_timestamps"
-    private const val KEY_HOTWORDS = "hotwords"
     private const val KEY_TRANSLATION_COLOR = "translation_color"
     private const val KEY_OVERLAY_X = "overlay_x"
     private const val KEY_OVERLAY_Y = "overlay_y"
@@ -49,7 +48,6 @@ object SettingsStore {
     private const val KEY_EXPANDED_X = "expanded_overlay_x"
 
     const val PROVIDER_DASHSCOPE = "dashscope"
-    const val PROVIDER_OPENAI = "openai"
     const val DEFAULT_OVERLAY_HEIGHT = 17
 
     @Volatile private var prefs: SharedPreferences? = null
@@ -186,8 +184,6 @@ object SettingsStore {
 
     fun duplicateProfile(context: Context, id: String, name: String): String? =
         if (!canEditProfiles()) null else runCatching { repository(context).duplicate(id, name) }.getOrNull()
-    fun renameProfile(context: Context, id: String, name: String): Boolean =
-        canEditProfiles() && runCatching { repository(context).rename(id, name) }.getOrDefault(false)
     fun deleteProfile(context: Context, id: String): Boolean =
         canEditProfiles() && runCatching { repository(context).delete(id) }.getOrDefault(false)
     fun activateProfile(context: Context, id: String): Boolean =
@@ -197,21 +193,6 @@ object SettingsStore {
         activeProfile(context)?.takeIf { it.provider == provider } ?: profiles(context).firstOrNull { it.provider == provider }
 
     fun provider(context: Context): String = activeProfile(context)?.provider?.id ?: PROVIDER_DASHSCOPE
-
-    /** Compatibility for existing instrumentation; user-facing selection uses profile IDs. */
-    fun setProvider(context: Context, value: String) {
-        val profile = matchingProfile(context, ServiceProvider.fromId(value)) ?: return
-        check(canEditProfiles() && repository(context).activate(profile.id)) { "profile_activation_failed" }
-    }
-
-    fun apiKey(context: Context, provider: String = provider(context)): String =
-        configuration(context, ServiceProvider.fromId(provider)).value("apiKey")
-
-    fun setApiKey(context: Context, value: String, provider: String = provider(context)) {
-        val saved = configuration(context, ServiceProvider.fromId(provider))
-        check(saveConfiguration(context, ServiceConfiguration(saved.provider,
-            saved.credentials + ("apiKey" to value.trim()), saved.endpoint, saved.model, saved.alibabaRealtimeMode, saved.alibabaWorkspaceId, saved.xaiSpeechMode, saved.xaiTextModel, saved.speechTranslationMode))) { "profile_save_failed" }
-    }
 
     fun configuration(context: Context, provider: ServiceProvider? = null): ServiceConfiguration {
         val profile = if (provider == null) activeProfile(context) else matchingProfile(context, provider)
@@ -266,19 +247,6 @@ object SettingsStore {
     fun activateProvider(context: Context, provider: ServiceProvider): Boolean =
         matchingProfile(context, provider)?.let { activateProfile(context, it.id) } ?: false
 
-    fun baseUrl(context: Context, provider: String): String = configuration(context, ServiceProvider.fromId(provider)).endpoint
-    fun setBaseUrl(context: Context, provider: String, value: String) {
-        val saved = configuration(context, ServiceProvider.fromId(provider))
-        check(saveConfiguration(context, ServiceConfiguration(saved.provider, saved.credentials,
-            value.trim(), saved.model, saved.alibabaRealtimeMode, saved.alibabaWorkspaceId, saved.xaiSpeechMode, saved.xaiTextModel, saved.speechTranslationMode))) { "profile_save_failed" }
-    }
-    fun model(context: Context, provider: String): String = configuration(context, ServiceProvider.fromId(provider)).model
-    fun setModel(context: Context, provider: String, value: String) {
-        val saved = configuration(context, ServiceProvider.fromId(provider))
-        check(saveConfiguration(context, ServiceConfiguration(saved.provider, saved.credentials,
-            saved.endpoint, value.trim(), saved.alibabaRealtimeMode, saved.alibabaWorkspaceId, saved.xaiSpeechMode, saved.xaiTextModel, saved.speechTranslationMode))) { "profile_save_failed" }
-    }
-
     /** Overlay window opacity, 20..100 (percent). */
     fun overlayOpacity(context: Context): Int =
         get(context).getInt(KEY_OVERLAY_OPACITY, 100).coerceIn(20, 100)
@@ -329,29 +297,6 @@ object SettingsStore {
     fun subtitleTimestamps(context: Context): Boolean = get(context).getBoolean(KEY_SUBTITLE_TIMESTAMPS, false)
     fun setSubtitleTimestamps(context: Context, value: Boolean) = writeAppearance(get(context).edit().putBoolean(KEY_SUBTITLE_TIMESTAMPS, value))
 
-    /**
-     * Hotword pairs parsed from comma/newline-separated `source=translation` or bare
-     * `term` entries; bare terms map to themselves. Only DashScope uses them.
-     */
-    fun hotwords(context: Context): Map<String, String> {
-        val raw = get(context).getString(KEY_HOTWORDS, "") ?: ""
-        return raw.split(',', '\n', '，')
-            .mapNotNull { entry ->
-                val item = entry.trim()
-                if (item.isEmpty()) return@mapNotNull null
-                val idx = item.indexOf('=')
-                if (idx > 0) item.substring(0, idx).trim() to item.substring(idx + 1).trim()
-                else item to item
-            }
-            .toMap()
-    }
-
-    fun hotwordsText(context: Context): String =
-        get(context).getString(KEY_HOTWORDS, "") ?: ""
-
-    fun setHotwords(context: Context, value: String) =
-        get(context).edit().putString(KEY_HOTWORDS, value.trim()).apply()
-
     /** Pure black subtitle background, matching desktop: 0 (clear) .. 100 (solid). */
     fun overlayBgAlpha(context: Context): Int =
         get(context).getInt(KEY_OVERLAY_BG_ALPHA, 80).coerceIn(0, 100)
@@ -383,9 +328,6 @@ object SettingsStore {
     /** Last overlay vertical offset from the bottom edge, persisted. */
     fun overlayYOffset(context: Context): Int =
         get(context).getInt(KEY_OVERLAY_Y, 48).coerceIn(0, 2000)
-
-    fun setOverlayYOffset(context: Context, y: Int) =
-        writeAppearance(get(context).edit().putInt(KEY_OVERLAY_Y, y.coerceIn(0, 2000)))
 
     /** Clears a persisted drag position so the card returns to bottom-center. */
     fun clearOverlayPosition(context: Context) =

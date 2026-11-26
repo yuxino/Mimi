@@ -1,34 +1,46 @@
 //! Development-only commands. Content evidence is private and explicitly enabled,
 //! separate from the content-free diagnostic journal.
+
+#[path = "debugger/case_io.rs"]
+mod case_io;
+#[path = "debugger/workspace.rs"]
+mod workspace;
+
 use crate::commands::AppState;
 use crate::core::audio::audio_input::AudioSource;
 use crate::core::development::development_debug::{self as trace, FrontendObservation};
-use crate::core::development::development_evidence_workspace::{
-    valid_workspace_name, EvidenceWorkspace, EXTRA_WORKSPACE_LIMIT,
-};
+use crate::core::development::development_evidence_workspace::EvidenceWorkspace;
+#[cfg(test)]
+#[allow(unused_imports)]
+use crate::core::development::development_evidence_workspace::EXTRA_WORKSPACE_LIMIT;
 use crate::session_manager::SessionStateEvent;
+#[cfg(test)]
+#[allow(unused_imports)]
+use case_io::{case_audio_path, record_trace_event, ALL_CASES_BYTE_LIMIT, CASE_RESERVED_BYTES};
+use case_io::{
+    copy_case_audio, persist_case_report, read_case_audio, read_saved_report, read_trace_page,
+    record_private_event, require_finalized, saved_case_directory, seal_case_trace, start_case,
+    validate_case_id, ContentKind, EvidenceCase, AUDIO_FILE_BYTE_LIMIT, CASE_COUNT_LIMIT,
+    CONTENT_BYTE_LIMIT,
+};
 use serde::{Deserialize, Serialize};
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{mpsc, Arc, Mutex, OnceLock};
+#[cfg(test)]
+#[allow(unused_imports)]
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
-
-const CONTENT_BYTE_LIMIT: u64 = 16 * 1024 * 1024;
-const ALL_CASES_BYTE_LIMIT: u64 = 128 * 1024 * 1024;
-const AUDIO_FILE_BYTE_LIMIT: u64 = 20 * 1024 * 1024;
-const CASE_RESERVED_BYTES: u64 = CONTENT_BYTE_LIMIT + AUDIO_FILE_BYTE_LIMIT + 4 * 1024 * 1024;
-const CASE_COUNT_LIMIT: usize = 64;
-#[derive(Clone, Copy)]
-enum ContentKind {
-    Snapshot,
-    Private,
-    Trace,
-}
-type ContentSender = mpsc::SyncSender<(ContentKind, Vec<u8>)>;
+use workspace::{
+    copy_case_file, evidence_root, initialize_evidence_storage, private_directory, private_file,
+};
+#[cfg(test)]
+#[allow(unused_imports)]
+use workspace::{select_evidence_root, stored_bytes, workspace_count, workspace_directory};
 
 #[derive(Default)]
 struct OperationGate {
@@ -55,28 +67,6 @@ fn operation_gate() -> &'static OperationGate {
     GATE.get_or_init(Default::default)
 }
 
-struct EvidenceCase {
-    id: String,
-    directory: PathBuf,
-    epoch: Instant,
-    tx: Mutex<Option<ContentSender>>,
-    write_gate: Mutex<()>,
-    snapshots: AtomicU64,
-    private_events: AtomicU64,
-    trace_entries: AtomicU64,
-    trace_bytes: AtomicU64,
-    trace_dropped: AtomicU64,
-    trace_limited: AtomicBool,
-    trace_failed: AtomicBool,
-    trace_persistence_enabled: bool,
-    trace_sink: Mutex<Option<trace::TraceSink>>,
-    bytes: AtomicU64,
-    dropped: AtomicU64,
-    limited: AtomicBool,
-    failed: AtomicBool,
-    writer: Mutex<Option<std::thread::JoinHandle<()>>>,
-    finalized: AtomicBool,
-}
 #[derive(Default)]
 struct DebuggerState {
     app_directory: Option<PathBuf>,
@@ -129,182 +119,6 @@ pub fn initialize(app: &AppHandle) {
     }
 }
 
-// Both closures are deliberately evaluated only after the exact dev gate.
-// Production must neither read this selector nor create an evidence directory.
-fn initialize_evidence_storage(
-    available: bool,
-    app_directory: impl FnOnce() -> Option<PathBuf>,
-    selector: impl FnOnce() -> Option<std::ffi::OsString>,
-) -> Result<Option<(PathBuf, PathBuf, EvidenceWorkspace)>, &'static str> {
-    if !available {
-        return Ok(None);
-    }
-    let value = selector();
-    let workspace = EvidenceWorkspace::parse(
-        value
-            .as_ref()
-            .map(|value| {
-                value
-                    .to_str()
-                    .ok_or("development_evidence_workspace_invalid")
-            })
-            .transpose()?,
-    )?;
-    let app_directory = app_directory().ok_or("development_evidence_storage_failed")?;
-    let root = select_evidence_root(&app_directory, &workspace)?;
-    Ok(Some((app_directory, root, workspace)))
-}
-
-fn require_directory(path: &Path) -> Result<(), &'static str> {
-    let metadata = fs::symlink_metadata(path).map_err(|_| "development_evidence_storage_failed")?;
-    if !metadata.is_dir() {
-        return Err("development_evidence_workspace_invalid");
-    }
-    Ok(())
-}
-
-fn workspace_count(container: &Path) -> Result<usize, &'static str> {
-    let mut count = 0;
-    for entry in fs::read_dir(container).map_err(|_| "development_evidence_storage_failed")? {
-        let entry = entry.map_err(|_| "development_evidence_storage_failed")?;
-        let file_type = entry
-            .file_type()
-            .map_err(|_| "development_evidence_storage_failed")?;
-        let name = entry.file_name();
-        if name == ".DS_Store" {
-            // Finder metadata is not an evidence catalog. Keep this exception
-            // narrow and bounded; links and oversized files remain invalid.
-            if !file_type.is_file()
-                || entry
-                    .metadata()
-                    .map_err(|_| "development_evidence_storage_failed")?
-                    .len()
-                    > 64 * 1024
-            {
-                return Err("development_evidence_workspace_invalid");
-            }
-            continue;
-        }
-        if !file_type.is_dir() || !name.to_str().is_some_and(valid_workspace_name) {
-            return Err("development_evidence_workspace_invalid");
-        }
-        count += 1;
-        if count > EXTRA_WORKSPACE_LIMIT {
-            return Err("development_evidence_workspace_limit");
-        }
-    }
-    Ok(count)
-}
-
-fn existing_workspace_count(container: &Path) -> Result<usize, &'static str> {
-    match fs::symlink_metadata(container) {
-        Ok(_) => {
-            require_directory(container)?;
-            workspace_count(container)
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(0),
-        Err(_) => Err("development_evidence_storage_failed"),
-    }
-}
-
-fn workspace_directory(app_directory: &Path, workspace: &EvidenceWorkspace) -> PathBuf {
-    match workspace {
-        EvidenceWorkspace::Default => app_directory.join("development-evidence"),
-        EvidenceWorkspace::Named(name) => app_directory
-            .join("development-evidence-workspaces")
-            .join(name),
-    }
-}
-
-fn select_evidence_root(
-    app_directory: &Path,
-    workspace: &EvidenceWorkspace,
-) -> Result<PathBuf, &'static str> {
-    private_directory(app_directory).map_err(|error| {
-        if error.kind() == std::io::ErrorKind::InvalidInput {
-            "development_evidence_workspace_invalid"
-        } else {
-            "development_evidence_storage_failed"
-        }
-    })?;
-    let root = workspace_directory(app_directory, workspace);
-    let container = app_directory.join("development-evidence-workspaces");
-    existing_workspace_count(&container)?;
-    if let EvidenceWorkspace::Named(name) = workspace {
-        if !valid_workspace_name(name) || name == "default" {
-            return Err("development_evidence_workspace_invalid");
-        }
-        private_directory(&container).map_err(|error| {
-            if error.kind() == std::io::ErrorKind::InvalidInput {
-                "development_evidence_workspace_invalid"
-            } else {
-                "development_evidence_storage_failed"
-            }
-        })?;
-        let count = workspace_count(&container)?;
-        match fs::symlink_metadata(&root) {
-            Ok(_) => require_directory(&root)?,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                if count >= EXTRA_WORKSPACE_LIMIT {
-                    return Err("development_evidence_workspace_limit");
-                }
-                let mut builder = fs::DirBuilder::new();
-                builder.recursive(false);
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::DirBuilderExt;
-                    builder.mode(0o700);
-                }
-                let created = match builder.create(&root) {
-                    Ok(()) => true,
-                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => false,
-                    Err(_) => return Err("development_evidence_storage_failed"),
-                };
-                // Recheck after creation: competing initializations cannot retain
-                // a ninth extra catalog. Only our newly created empty directory
-                // is eligible for rollback; existing evidence is never removed.
-                if let Err(error) = workspace_count(&container) {
-                    if created {
-                        let _ = fs::remove_dir(&root);
-                    }
-                    return Err(error);
-                }
-                require_directory(&root)?;
-            }
-            Err(_) => return Err("development_evidence_storage_failed"),
-        }
-    }
-    private_directory(&root).map_err(|error| {
-        if error.kind() == std::io::ErrorKind::InvalidInput {
-            "development_evidence_workspace_invalid"
-        } else {
-            "development_evidence_storage_failed"
-        }
-    })?;
-    Ok(root)
-}
-
-fn evidence_root(debugger: &DebuggerState) -> Result<PathBuf, &'static str> {
-    if let Some(error) = debugger.storage_error {
-        return Err(error);
-    }
-    let app_directory = debugger
-        .app_directory
-        .as_deref()
-        .ok_or("development_evidence_storage_failed")?;
-    require_directory(app_directory)?;
-    let container = app_directory.join("development-evidence-workspaces");
-    if matches!(debugger.workspace, EvidenceWorkspace::Named(_)) {
-        require_directory(&container)?;
-    }
-    existing_workspace_count(&container)?;
-    let root = debugger
-        .root
-        .as_ref()
-        .ok_or("development_evidence_storage_failed")?;
-    require_directory(root)?;
-    Ok(root.clone())
-}
 fn available() -> Result<(), &'static str> {
     if trace::snapshot(0).available {
         Ok(())
@@ -312,239 +126,7 @@ fn available() -> Result<(), &'static str> {
         Err("development_debug_unavailable")
     }
 }
-fn private_directory(path: &Path) -> std::io::Result<()> {
-    match fs::symlink_metadata(path) {
-        Ok(metadata) if !metadata.is_dir() => {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "private evidence directory must be a regular directory",
-            ));
-        }
-        Ok(_) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error),
-    }
-    fs::create_dir_all(path)?;
-    if !fs::symlink_metadata(path)?.is_dir() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "private evidence directory must be a regular directory",
-        ));
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
-    }
-    Ok(())
-}
-fn private_file(path: &Path) -> std::io::Result<File> {
-    let mut options = OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    options.open(path)
-}
-fn open_case_file(directory: &Path, relative: &str, maximum: u64) -> Result<File, &'static str> {
-    let path = directory.join(relative);
-    let before = fs::symlink_metadata(&path).map_err(|_| "development_case_read_failed")?;
-    if !before.is_file() || before.len() > maximum {
-        return Err("development_case_invalid");
-    }
-    let canonical_directory = directory
-        .canonicalize()
-        .map_err(|_| "development_case_invalid")?;
-    if !path
-        .canonicalize()
-        .map_err(|_| "development_case_invalid")?
-        .starts_with(canonical_directory)
-    {
-        return Err("development_case_invalid");
-    }
-    let mut options = OpenOptions::new();
-    options.read(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        #[cfg(target_os = "macos")]
-        options.custom_flags(0x0100 | 0x0004); // O_NOFOLLOW | O_NONBLOCK.
-        #[cfg(not(target_os = "macos"))]
-        options.custom_flags(0x20000 | 0x0800);
-    }
-    let file = options
-        .open(path)
-        .map_err(|_| "development_case_read_failed")?;
-    let after = file
-        .metadata()
-        .map_err(|_| "development_case_read_failed")?;
-    if !after.is_file() || after.len() > maximum {
-        return Err("development_case_invalid");
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        if before.ino() != after.ino() || before.dev() != after.dev() {
-            return Err("development_case_invalid");
-        }
-    }
-    Ok(file)
-}
-fn copy_case_file(
-    directory: &Path,
-    relative: &str,
-    destination: &Path,
-    maximum: u64,
-) -> Result<bool, &'static str> {
-    match fs::symlink_metadata(directory.join(relative)) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(_) => return Err("development_export_failed"),
-        Ok(_) => {}
-    }
-    let file = open_case_file(directory, relative, maximum)?;
-    let mut destination = private_file(destination).map_err(|_| "development_export_failed")?;
-    let bytes = std::io::copy(&mut file.take(maximum + 1), &mut destination)
-        .map_err(|_| "development_export_failed")?;
-    if bytes > maximum {
-        return Err("development_export_failed");
-    }
-    Ok(true)
-}
-fn stored_bytes(root: &Path) -> std::io::Result<u64> {
-    if !root.exists() {
-        return Ok(0);
-    }
-    let mut bytes = 0_u64;
-    for entry in fs::read_dir(root)? {
-        let entry = entry?;
-        if entry.file_type()?.is_dir() {
-            bytes = bytes.saturating_add(stored_bytes(&entry.path())?);
-        } else if entry.file_type()?.is_file() {
-            bytes = bytes.saturating_add(entry.metadata()?.len());
-        }
-    }
-    Ok(bytes)
-}
-fn start_case(
-    root: PathBuf,
-    route: &serde_json::Value,
-    epoch: Instant,
-) -> Result<Arc<EvidenceCase>, &'static str> {
-    private_directory(&root).map_err(|_| "development_evidence_storage_failed")?;
-    if stored_bytes(&root).map_err(|_| "development_evidence_storage_failed")?
-        > ALL_CASES_BYTE_LIMIT.saturating_sub(CASE_RESERVED_BYTES)
-        || fs::read_dir(&root)
-            .map_err(|_| "development_evidence_storage_failed")?
-            .count()
-            >= CASE_COUNT_LIMIT
-    {
-        return Err("development_evidence_storage_limit");
-    }
-    let id = uuid::Uuid::new_v4().to_string();
-    let directory = root.join(&id);
-    private_directory(&directory).map_err(|_| "development_evidence_storage_failed")?;
-    let mut manifest = private_file(&directory.join("manifest.json"))
-        .map_err(|_| "development_evidence_storage_failed")?;
-    serde_json::to_writer_pretty(&mut manifest, &serde_json::json!({"schemaVersion":1,"id":id,"route":route,"contentByteLimit":CONTENT_BYTE_LIMIT,"audioBoundary":"socketSendCompleted","serverReceiptProven":false,"containsPrivateAudioAndSubtitles":true})).map_err(|_| "development_evidence_storage_failed")?;
-    let mut file = private_file(&directory.join("snapshots.jsonl"))
-        .map_err(|_| "development_evidence_storage_failed")?;
-    let mut private_events = private_file(&directory.join("events.jsonl"))
-        .map_err(|_| "development_evidence_storage_failed")?;
-    let mut trace_events = private_file(&directory.join("trace-events.jsonl"))
-        .map_err(|_| "development_evidence_storage_failed")?;
-    let (tx, rx) = mpsc::sync_channel::<(ContentKind, Vec<u8>)>(32);
-    let case = Arc::new(EvidenceCase {
-        id,
-        directory,
-        epoch,
-        tx: Mutex::new(Some(tx)),
-        write_gate: Mutex::new(()),
-        snapshots: AtomicU64::new(0),
-        private_events: AtomicU64::new(0),
-        trace_entries: AtomicU64::new(0),
-        trace_bytes: AtomicU64::new(0),
-        trace_dropped: AtomicU64::new(0),
-        trace_limited: AtomicBool::new(false),
-        trace_failed: AtomicBool::new(false),
-        trace_persistence_enabled: true,
-        trace_sink: Mutex::new(None),
-        bytes: AtomicU64::new(0),
-        dropped: AtomicU64::new(0),
-        limited: AtomicBool::new(false),
-        failed: AtomicBool::new(false),
-        writer: Mutex::new(None),
-        finalized: AtomicBool::new(false),
-    });
-    let writer = Arc::clone(&case);
-    let handle = std::thread::spawn(move || {
-        while let Ok((kind, bytes)) = rx.recv() {
-            if writer
-                .bytes
-                .load(Ordering::Relaxed)
-                .saturating_add(bytes.len() as u64)
-                > CONTENT_BYTE_LIMIT
-            {
-                writer.limited.store(true, Ordering::Relaxed);
-                writer.dropped.fetch_add(1, Ordering::Relaxed);
-                if matches!(kind, ContentKind::Trace) {
-                    writer.trace_limited.store(true, Ordering::Relaxed);
-                    writer.trace_dropped.fetch_add(1, Ordering::Relaxed);
-                }
-                continue;
-            }
-            let _gate = writer.write_gate.lock().unwrap();
-            if (match kind {
-                ContentKind::Snapshot => file.write_all(&bytes),
-                ContentKind::Private => private_events.write_all(&bytes),
-                ContentKind::Trace => trace_events.write_all(&bytes),
-            })
-            .is_err()
-            {
-                writer.failed.store(true, Ordering::Relaxed);
-                writer.dropped.fetch_add(1, Ordering::Relaxed);
-                if matches!(kind, ContentKind::Trace) {
-                    writer.trace_failed.store(true, Ordering::Relaxed);
-                    writer.trace_dropped.fetch_add(1, Ordering::Relaxed);
-                }
-                continue;
-            }
-            writer
-                .bytes
-                .fetch_add(bytes.len() as u64, Ordering::Relaxed);
-            match kind {
-                ContentKind::Snapshot => {
-                    writer.snapshots.fetch_add(1, Ordering::Relaxed);
-                }
-                ContentKind::Private => {
-                    writer.private_events.fetch_add(1, Ordering::Relaxed);
-                }
-                ContentKind::Trace => {
-                    writer.trace_entries.fetch_add(1, Ordering::Relaxed);
-                    writer
-                        .trace_bytes
-                        .fetch_add(bytes.len() as u64, Ordering::Relaxed);
-                }
-            }
-        }
-        if file.sync_all().is_err() || private_events.sync_all().is_err() {
-            writer.failed.store(true, Ordering::Relaxed);
-        }
-        if trace_events.sync_all().is_err() {
-            writer.failed.store(true, Ordering::Relaxed);
-            writer.trace_failed.store(true, Ordering::Relaxed);
-        }
-    });
-    *case.writer.lock().unwrap() = Some(handle);
-    let weak = Arc::downgrade(&case);
-    *case.trace_sink.lock().unwrap() = Some(trace::TraceSink::new(move |entry| {
-        if let Some(case) = weak.upgrade() {
-            record_trace_event(&case, entry);
-        }
-    }));
-    Ok(case)
-}
+
 pub fn record_snapshot(
     snapshot: &SessionStateEvent,
     settings: &crate::settings_store::SettingsStore,
@@ -583,67 +165,7 @@ pub fn record_snapshot(
         case.dropped.fetch_add(1, Ordering::Relaxed);
     }
 }
-fn record_private_event(case: &EvidenceCase, event: serde_json::Value) {
-    if case.limited.load(Ordering::Relaxed) || case.failed.load(Ordering::Relaxed) {
-        return;
-    }
-    let tx = case.tx.lock().unwrap();
-    let Some(tx) = tx.as_ref() else {
-        return;
-    };
-    let Ok(mut bytes) = serde_json::to_vec(
-        &serde_json::json!({"elapsedMs":case.epoch.elapsed().as_millis() as u64,"event":event}),
-    ) else {
-        case.failed.store(true, Ordering::Relaxed);
-        return;
-    };
-    if bytes.len() > 512 * 1024 {
-        case.dropped.fetch_add(1, Ordering::Relaxed);
-        return;
-    }
-    bytes.push(b'\n');
-    if tx.try_send((ContentKind::Private, bytes)).is_err() {
-        case.dropped.fetch_add(1, Ordering::Relaxed);
-    }
-}
-fn trace_loss(case: &EvidenceCase) {
-    case.trace_dropped.fetch_add(1, Ordering::Relaxed);
-    case.dropped.fetch_add(1, Ordering::Relaxed);
-}
-fn record_trace_event(case: &EvidenceCase, entry: trace::DebugEntry) {
-    if case.limited.load(Ordering::Relaxed) || case.failed.load(Ordering::Relaxed) {
-        case.trace_limited
-            .store(case.limited.load(Ordering::Relaxed), Ordering::Relaxed);
-        case.trace_failed
-            .store(case.failed.load(Ordering::Relaxed), Ordering::Relaxed);
-        trace_loss(case);
-        return;
-    }
-    let tx = case.tx.lock().unwrap();
-    let Some(tx) = tx.as_ref() else {
-        trace_loss(case);
-        return;
-    };
-    let Ok(mut bytes) = serde_json::to_vec(&entry) else {
-        case.trace_failed.store(true, Ordering::Relaxed);
-        case.failed.store(true, Ordering::Relaxed);
-        trace_loss(case);
-        return;
-    };
-    bytes.push(b'\n');
-    if bytes.len() > 512 * 1024 || tx.try_send((ContentKind::Trace, bytes)).is_err() {
-        trace_loss(case);
-    }
-}
-fn seal_case_trace(case: &EvidenceCase, timeout: std::time::Duration) -> Result<(), &'static str> {
-    let target = case.trace_sink.lock().unwrap().clone();
-    if target.is_some_and(|target| !target.wait_idle(timeout)) {
-        return Err("development_evidence_trace_busy");
-    }
-    case.tx.lock().unwrap().take();
-    case.trace_sink.lock().unwrap().take();
-    Ok(())
-}
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DebuggerSnapshot {
@@ -671,6 +193,7 @@ pub struct DebuggerSnapshot {
     content_limited: bool,
     content_failed: bool,
 }
+
 #[tauri::command]
 pub fn development_debug_snapshot() -> DebuggerSnapshot {
     let state = state().lock().unwrap();
@@ -712,6 +235,7 @@ pub fn development_debug_snapshot() -> DebuggerSnapshot {
         content_failed: case.is_some_and(|c| c.failed.load(Ordering::Relaxed)),
     }
 }
+
 fn bound_case(case_id: &str) -> Result<Arc<EvidenceCase>, &'static str> {
     let case = state()
         .lock()
@@ -722,86 +246,7 @@ fn bound_case(case_id: &str) -> Result<Arc<EvidenceCase>, &'static str> {
     validate_case_id(&case.id, case_id)?;
     Ok(case)
 }
-fn validate_case_id(actual: &str, requested: &str) -> Result<(), &'static str> {
-    if actual != requested {
-        return Err("development_evidence_case_changed");
-    }
-    Ok(())
-}
-fn require_finalized(case: &EvidenceCase) -> Result<(), &'static str> {
-    if !case.finalized.load(Ordering::Acquire) {
-        return Err("development_evidence_requires_stop");
-    }
-    Ok(())
-}
-fn persist_case_report(
-    case_directory: &Path,
-    report: &DebuggerSnapshot,
-) -> Result<(), &'static str> {
-    let temporary = case_directory.join(format!(".trace-{}.tmp", uuid::Uuid::new_v4()));
-    let result = (|| {
-        let mut file =
-            private_file(&temporary).map_err(|_| "development_evidence_storage_failed")?;
-        serde_json::to_writer_pretty(&mut file, report)
-            .map_err(|_| "development_evidence_storage_failed")?;
-        file.flush()
-            .map_err(|_| "development_evidence_storage_failed")?;
-        fs::rename(&temporary, case_directory.join("trace.json"))
-            .map_err(|_| "development_evidence_storage_failed")
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(temporary);
-    }
-    result
-}
 
-fn case_audio_path(case_directory: &Path, source: AudioSource) -> PathBuf {
-    case_directory.join("audio-evidence").join(match source {
-        AudioSource::System => "system.wav",
-        AudioSource::Microphone => "microphone.wav",
-    })
-}
-fn read_case_audio(case_directory: &Path, source: AudioSource) -> Result<Vec<u8>, &'static str> {
-    let file =
-        File::open(case_audio_path(case_directory, source)).map_err(|_| "audio_evidence_empty")?;
-    let length = file.metadata().map_err(|_| "audio_read_failed")?.len();
-    if !(44..=AUDIO_FILE_BYTE_LIMIT).contains(&length) {
-        return Err("audio_evidence_invalid");
-    }
-    let mut bytes = Vec::with_capacity(length as usize);
-    file.take(AUDIO_FILE_BYTE_LIMIT + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|_| "audio_read_failed")?;
-    if bytes.len() as u64 != length
-        || bytes.get(0..4) != Some(b"RIFF")
-        || bytes.get(8..12) != Some(b"WAVE")
-    {
-        return Err("audio_evidence_invalid");
-    }
-    Ok(bytes)
-}
-fn copy_case_audio(
-    case_directory: &Path,
-    source: AudioSource,
-    destination: &Path,
-) -> Result<bool, &'static str> {
-    let source = case_audio_path(case_directory, source);
-    if !source.exists() {
-        return Ok(false);
-    }
-    let length = fs::metadata(&source)
-        .map_err(|_| "development_export_failed")?
-        .len();
-    if !(44..=AUDIO_FILE_BYTE_LIMIT).contains(&length) {
-        return Err("audio_evidence_invalid");
-    }
-    let relative = match source.file_name().and_then(|name| name.to_str()) {
-        Some("system.wav") => "audio-evidence/system.wav",
-        Some("microphone.wav") => "audio-evidence/microphone.wav",
-        _ => return Err("audio_evidence_invalid"),
-    };
-    copy_case_file(case_directory, relative, destination, AUDIO_FILE_BYTE_LIMIT)
-}
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SavedCase {
@@ -810,48 +255,7 @@ pub struct SavedCase {
     snapshots: u64,
     provider: serde_json::Value,
 }
-fn read_saved_report(directory: &Path) -> Result<DebuggerSnapshot, &'static str> {
-    let file =
-        File::open(directory.join("trace.json")).map_err(|_| "development_case_read_failed")?;
-    if file
-        .metadata()
-        .map_err(|_| "development_case_read_failed")?
-        .len()
-        > 4 * 1024 * 1024
-    {
-        return Err("development_case_invalid");
-    }
-    let mut report: DebuggerSnapshot = serde_json::from_reader(file.take(4 * 1024 * 1024 + 1))
-        .map_err(|_| "development_case_invalid")?;
-    if report.trace.schema_version != 1
-        || report.trace.enabled
-        || report.trace.entries.len() > trace::ENTRY_LIMIT
-        || report.content_bytes > CONTENT_BYTE_LIMIT
-        || report.trace_bytes > report.content_bytes
-    {
-        return Err("development_case_invalid");
-    }
-    if let Some(route) = report.route.as_object_mut() {
-        route
-            .entry("evidenceWorkspace")
-            .or_insert_with(|| serde_json::json!("default"));
-    }
-    Ok(report)
-}
-fn saved_case_directory(root: &Path, case_id: &str) -> Result<PathBuf, &'static str> {
-    let id = uuid::Uuid::parse_str(case_id).map_err(|_| "development_case_invalid")?;
-    if id.to_string() != case_id {
-        return Err("development_case_invalid");
-    }
-    let directory = root.join(case_id);
-    if !fs::symlink_metadata(&directory)
-        .map_err(|_| "development_case_read_failed")?
-        .is_dir()
-    {
-        return Err("development_case_invalid");
-    }
-    Ok(directory)
-}
+
 #[tauri::command]
 pub async fn development_debug_cases() -> Result<Vec<SavedCase>, String> {
     available()?;
@@ -890,6 +294,7 @@ pub async fn development_debug_cases() -> Result<Vec<SavedCase>, String> {
     .map_err(|_| "development_case_read_failed")?
     .map_err(str::to_string)
 }
+
 #[tauri::command]
 pub async fn development_debug_open_case(case_id: String) -> Result<(), String> {
     available()?;
@@ -945,6 +350,7 @@ pub async fn development_debug_open_case(case_id: String) -> Result<(), String> 
     .map_err(|_| "development_case_read_failed")??;
     Ok(())
 }
+
 #[tauri::command]
 pub async fn development_debug_private_events(
     case_id: String,
@@ -975,28 +381,7 @@ pub async fn development_debug_private_events(
     .map_err(|_| "development_case_read_failed")?
     .map_err(str::to_string)
 }
-fn read_trace_page(
-    directory: &Path,
-    offset: usize,
-    limit: usize,
-) -> Result<Vec<trace::DebugEntry>, &'static str> {
-    if limit == 0 || limit > 64 {
-        return Err("development_debug_batch_limit");
-    }
-    let file = open_case_file(directory, "trace-events.jsonl", CONTENT_BYTE_LIMIT)?;
-    BufReader::new(file.take(CONTENT_BYTE_LIMIT))
-        .lines()
-        .skip(offset)
-        .take(limit)
-        .map(|line| {
-            let line = line.map_err(|_| "development_case_read_failed")?;
-            if line.len() > 512 * 1024 {
-                return Err("development_case_invalid");
-            }
-            serde_json::from_str(&line).map_err(|_| "development_case_invalid")
-        })
-        .collect()
-}
+
 #[tauri::command]
 pub async fn development_debug_trace_events(
     case_id: String,
@@ -1083,6 +468,7 @@ pub fn development_debug_start(
     app_state.session.publish_state();
     Ok(())
 }
+
 #[tauri::command]
 pub async fn development_debug_stop(app: AppHandle) -> Result<(), String> {
     available()?;
@@ -1150,6 +536,7 @@ pub async fn development_debug_stop(app: AppHandle) -> Result<(), String> {
     .map_err(|_| "development_audio_stop_failed")??;
     Ok(())
 }
+
 /// Normal quit must finalize a private case just like the explicit stop button.
 /// Production and a dev launch with collection off do no extra work.
 pub async fn finish_on_quit(app: AppHandle) -> Result<(), String> {
@@ -1158,6 +545,7 @@ pub async fn finish_on_quit(app: AppHandle) -> Result<(), String> {
     }
     Ok(())
 }
+
 #[tauri::command]
 pub fn development_debug_flush_ack(nonce: u64, window: trace::DebugWindow) {
     let mut flush = flush_state().lock().unwrap();
@@ -1166,6 +554,7 @@ pub fn development_debug_flush_ack(nonce: u64, window: trace::DebugWindow) {
         flush_notify().notify_one();
     }
 }
+
 #[tauri::command]
 pub fn development_debug_observe(observations: Vec<FrontendObservation>) -> Result<(), String> {
     available()?;
@@ -1190,6 +579,7 @@ pub fn development_debug_observe(observations: Vec<FrontendObservation>) -> Resu
     }
     Ok(())
 }
+
 #[tauri::command]
 pub async fn development_debug_audio(
     source: AudioSource,
@@ -1210,6 +600,7 @@ pub async fn development_debug_audio(
     .map_err(|_| "development_audio_read_failed")??;
     Ok(tauri::ipc::Response::new(bytes))
 }
+
 #[tauri::command]
 pub async fn development_debug_replay(
     index: usize,
@@ -1237,6 +628,7 @@ pub async fn development_debug_replay(
     .map_err(|_| "development_replay_read_failed")?
     .map_err(str::to_string)
 }
+
 #[tauri::command]
 pub async fn development_debug_export(app: AppHandle) -> Result<bool, String> {
     available()?;

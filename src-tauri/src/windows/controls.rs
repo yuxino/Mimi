@@ -775,8 +775,9 @@ fn measured_webview_zoom(app: &AppHandle, pixel_ratio: f64) -> Option<f64> {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = app;
-        Some(unscaled_webview_zoom(pixel_ratio))
+        // Only Windows applies WebView text zoom to native control geometry.
+        let _ = (app, pixel_ratio);
+        Some(1.0)
     }
 }
 
@@ -790,13 +791,6 @@ fn windows_webview_zoom(pixel_ratio: f64, native_scale: f64) -> Option<f64> {
         return None;
     }
     Some(pixel_ratio / native_scale)
-}
-
-/// Only Windows applies WebView text zoom to native control geometry. Ignore
-/// the extra measurement entirely elsewhere, preserving their size updates.
-#[cfg(any(not(target_os = "windows"), test))]
-fn unscaled_webview_zoom(_pixel_ratio: f64) -> f64 {
-    1.0
 }
 
 fn measured_island_width(width: f64) -> Option<f64> {

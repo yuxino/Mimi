@@ -34,8 +34,7 @@ use super::selection::{
     commit_audio_input_switch_boundary, commit_profile_selection,
     ensure_profile_switch_audio_format, pipeline_settings_mutation_is_allowed,
     profile_switch_action, release_reconfigured_audio_sources, source_switch_requires_reconnect,
-    translation_mode_after_source_switch, validate_system_audio_target, AudioInputSwitchAction,
-    ProfileSwitchAction,
+    validate_system_audio_target, AudioInputSwitchAction, ProfileSwitchAction,
 };
 use crate::audio::send_pipeline::AudioSendPipeline;
 use crate::clients::translation::translation_client::ConnectError;
@@ -53,10 +52,10 @@ use crate::core::services::provider::ProviderKind;
 use crate::session_history::SessionHistory;
 use mimi_runtime::core::lifecycle::health::HEALTH_CHECK_INTERVAL;
 use mimi_runtime::core::lifecycle::recovery::{
-    advance_lifecycle_sequence_if_current, cancelled_recovery_attempt_is_retryable,
-    clear_recovery_atoms, lifecycle_sequence_matches, provider_error_is_retryable,
-    provider_recovery_minimum_delay, recovery_delay, recovery_exhaustion_is_still_owned,
-    RecoveryContinuity, RecoverySchedule, NO_GENERATION, RECOVERY_ATTEMPTS,
+    advance_lifecycle_sequence_if_current, clear_recovery_atoms, lifecycle_sequence_matches,
+    provider_error_is_retryable, provider_recovery_minimum_delay, recovery_delay,
+    recovery_exhaustion_is_still_owned, RecoveryContinuity, RecoverySchedule, NO_GENERATION,
+    RECOVERY_ATTEMPTS,
 };
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};

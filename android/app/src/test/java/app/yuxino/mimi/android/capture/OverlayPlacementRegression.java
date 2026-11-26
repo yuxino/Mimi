@@ -150,10 +150,6 @@ public final class OverlayPlacementRegression {
         equal(106, OverlayPlacement.exitY(0, 100, 1000, 48, 6));
         equal(952, OverlayPlacement.exitY(0, 1000, 1000, 48, 6));
         equal(0, OverlayPlacement.exitY(0, 100, 40, 48, 6));
-        // An editor blocks the below-caption slot; move above, or use the
-        // below-caption slot only when the entire target clears the editor.
-        equal(806, OverlayPlacement.exitY(700, 100, 1000, 48, 6, 700));
-        equal(726, OverlayPlacement.exitY(780, 100, 1000, 48, 6, 700));
         cases++;
     }
     private static void checkInsetY(int safeHeight, int panelY, int panelHeight, int topInset) {
