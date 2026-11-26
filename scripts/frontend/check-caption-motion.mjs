@@ -156,12 +156,19 @@ try {
   const address = vite.httpServer.address();
   const baseUrl = `http://127.0.0.1:${address.port}`;
   const started = Date.now();
+  // Avoid invalid D-Bus session addresses and GPU/SHM stalls under Linux Xvfb
+  // while keeping desktop hover/fine-pointer capabilities and all 15s bounds intact.
+  const browserEnv = { ...process.env };
+  if (browserEnv.DBUS_SESSION_BUS_ADDRESS && !/^(?:unix|tcp):/.test(browserEnv.DBUS_SESSION_BUS_ADDRESS)) {
+    delete browserEnv.DBUS_SESSION_BUS_ADDRESS;
+  }
   // Chromium's standard inherited pipe avoids endpoint-file discovery and a
   // debugging TCP listener. The documentation renderer uses the same fd3/fd4.
   browser = spawn(executable, ["--remote-debugging-pipe",
     `--user-data-dir=${temporary}`, "--disable-background-networking", "--disable-component-update", "--disable-sync",
+    "--disable-gpu", "--disable-dev-shm-usage", "--disable-extensions", "--disable-features=Translate,MediaRouter",
     "--no-first-run", "--no-default-browser-check", "--password-store=basic", "--use-mock-keychain", "about:blank"],
-  { stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"] });
+  { env: browserEnv, stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"] });
   let firstErrors = "", lastErrors = "";
   browser.stderr.setEncoding("utf8");
   browser.stderr.on("data", data => {
