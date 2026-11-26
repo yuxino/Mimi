@@ -1342,4 +1342,46 @@ describe("batch delete saved sessions", () => {
     expect(host.querySelectorAll(".session-history__group .session-history__item")).toHaveLength(0);
     expect(host.querySelector(".settings-toast")).toBeNull();
   });
+
+  it("surfaces sanitized failure reasons for single and batch delete errors without leaking raw paths", async () => {
+    await select(1);
+    await confirm();
+    ipc.sessionHistoryDelete.mockRejectedValueOnce("history_delete_permission_denied");
+    await click(button(I18N.settings.historyDelete));
+    expect(document.querySelector(".settings-confirmation .settings-toast")?.textContent).toBe(
+      copy().deleteFailedWithReason(copy().deleteFailureReasons.permissionDenied),
+    );
+    await click(button(I18N.settings.cancel));
+
+    await library();
+    await click(button(copy().clearAll));
+    ipc.sessionHistoryDeleteMany.mockRejectedValueOnce(
+      "session_history_delete_many not allowed. Permissions associated with this command: /Users/private/secret",
+    );
+    await click(button(copy().clearAll));
+    const aclToast = document.querySelector(".settings-confirmation .settings-toast")?.textContent;
+    expect(aclToast).toBe(copy().deleteFailedWithReason(copy().deleteFailureReasons.commandDenied));
+    expect(aclToast).not.toContain("/Users/private/secret");
+
+    ipc.sessionHistoryDeleteMany.mockResolvedValueOnce({
+      deleted: [],
+      failed: ["A", "B"],
+      failureReason: "active_session",
+    });
+    await click(button(copy().clearAll));
+    expect(document.querySelector(".settings-confirmation .settings-toast")?.textContent).toBe(
+      copy().deleteFailedWithReason(copy().deleteFailureReasons.activeSession),
+    );
+
+    ipc.sessionHistoryDeleteMany.mockResolvedValueOnce({
+      deleted: ["A"],
+      failed: ["B"],
+      failureReason: "not_found",
+    });
+    ipc.sessionHistoryList.mockResolvedValue(catalog().filter(item => item.id !== "A"));
+    await click(button(copy().clearAll));
+    expect(document.querySelector(".settings-confirmation .settings-toast")?.textContent).toBe(
+      copy().deletePartialFailedWithReason(1, 1, copy().deleteFailureReasons.notFound),
+    );
+  });
 });

@@ -531,6 +531,7 @@ mod tests {
             report["failed"],
             json!([active_id, "00000000-0000-0000-0000-000000000000"])
         );
+        assert_eq!(report["failureReason"], json!("active_session"));
 
         let after = exchange(&json!({"operation":"history_list","directory":directory})).unwrap();
         assert_eq!(after["items"].as_array().unwrap().len(), 1);

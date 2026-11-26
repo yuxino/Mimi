@@ -55,6 +55,10 @@ use settings_store::{SettingsStore, DEVELOPMENT_APPLICATION_IDENTIFIER};
 use std::sync::Arc;
 use tauri::{Manager, WindowEvent};
 
+pub(crate) fn app_context() -> tauri::Context<tauri::Wry> {
+    tauri::generate_context!()
+}
+
 /// Runs the mimi Tauri application.
 pub fn run() {
     // Xlib threading must be initialized before GTK opens its display.
@@ -69,7 +73,7 @@ pub fn run() {
         )
         .init();
 
-    let context = tauri::generate_context!();
+    let context = app_context();
     #[cfg(all(target_os = "macos", feature = "development-debugger"))]
     if let Some(options) = audio::macos_smoke::options_from_args() {
         audio::macos_smoke::run(context, options);
