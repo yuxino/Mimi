@@ -39,7 +39,6 @@ import {
   sessionSwitchTargetLanguage,
   sessionSwitchAudioInput,
   sessionSwitchSystemAudioTarget,
-  sessionSwitchTranslationMode,
   sessionTogglePaused,
   settingsGet,
   settingsSave,
@@ -50,7 +49,6 @@ import {
   sourceLanguagesForSettings,
   targetLanguagesForSettings,
   targetLanguageAfterSourceSwitch,
-  translationModesForSettings,
 } from "./providers/providerCapabilities";
 import {
   SnapshotStreamBootstrap,
@@ -71,7 +69,6 @@ import type {
   SystemAudioTarget,
   TargetLanguage,
   SubtitleSnapshot,
-  TranslationMode,
 } from "./types";
 
 const EMPTY_SUBTITLES: SubtitleSnapshot = {
@@ -153,7 +150,6 @@ interface StoreState {
   switchTargetLanguage: (language: TargetLanguage) => Promise<void>;
   switchAudioInput: (input: AudioInput) => Promise<void>;
   switchSystemAudioTarget: (target: SystemAudioTarget) => Promise<void>;
-  switchTranslationMode: (mode: TranslationMode) => Promise<void>;
   saveSettings: (draft: SettingsDraft) => Promise<void>;
   createProfile: (
     provider: ServiceProvider,
@@ -412,23 +408,6 @@ export const useStore = create<StoreState>()((set, get) => ({
     const sources = sourceLanguagesForSettings(settings);
     if (!sources.includes(settings.sourceLanguage)) settings.sourceLanguage = sources[0] ?? settings.sourceLanguage;
     set({ settings });
-  },
-
-  switchTranslationMode: async (mode) => {
-    const current = get();
-    if (
-      sessionSettingsAreChanging(current.session) ||
-      !translationModesForSettings(current.settings).includes(mode)
-    ) {
-      return;
-    }
-    if (isTauri) {
-      await sessionSwitchTranslationMode(mode);
-      return;
-    }
-    set((state) => ({
-      settings: { ...state.settings, translationMode: mode },
-    }));
   },
 
   switchAudioInput: async (input) => {

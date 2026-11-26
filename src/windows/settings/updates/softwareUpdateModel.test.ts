@@ -4,7 +4,6 @@ import {
   downloadPercent,
   normalizeReleaseNotes,
   updateInteraction,
-  withRecoveryStatus,
   type UpdateCheckState,
 } from "./softwareUpdateModel";
 import {
@@ -38,13 +37,13 @@ describe("software update interaction", () => {
       emphasized: true,
     },
     {
-      state: { kind: "downloadError", update, recovery: "idle" },
+      state: { kind: "downloadError", update },
       action: "download",
       busy: false,
       emphasized: true,
     },
     {
-      state: { kind: "installError", update, recovery: "idle" },
+      state: { kind: "installError", update },
       action: "install",
       busy: false,
       emphasized: true,
@@ -78,21 +77,6 @@ describe("software update interaction", () => {
       { event: "Started", data: {} },
     );
     expect(downloadPercent(unknown)).toBeUndefined();
-  });
-
-  it("keeps error retry state while changing recovery activity", () => {
-    const state: UpdateCheckState = {
-      kind: "downloadError",
-      update,
-      recovery: "idle",
-    };
-    expect(withRecoveryStatus(state, "opening")).toEqual({
-      ...state,
-      recovery: "opening",
-    });
-    expect(updateInteraction(withRecoveryStatus(state, "error")).action).toBe(
-      "download",
-    );
   });
 
   it("bounds release notes and detects Windows only from a Windows user agent", () => {

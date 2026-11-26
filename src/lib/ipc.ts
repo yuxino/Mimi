@@ -30,7 +30,6 @@ import type {
   SystemAudioTarget,
   TargetLanguage,
   TextTranslation,
-  TranslationMode,
 } from "./types";
 
 /**
@@ -127,12 +126,6 @@ export function sessionSwitchSystemAudioTarget(target: SystemAudioTarget): Promi
 
 export function sessionSwitchTargetLanguage(language: TargetLanguage): Promise<void> {
   return invoke("session_switch_target_language", { language });
-}
-
-export function sessionSwitchTranslationMode(
-  mode: TranslationMode,
-): Promise<void> {
-  return invoke("session_switch_translation_mode", { mode });
 }
 
 export function installedFontFamilies(): Promise<string[]> {

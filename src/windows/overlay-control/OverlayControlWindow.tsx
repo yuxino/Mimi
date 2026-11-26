@@ -222,7 +222,6 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
     settings,
   );
   const status = languageStatus(settings, settings.audioInput === "both" ? null : detectedLanguage);
-  if (status === null) return null;
   const isWaiting = sourceTranslationPending ?? isWaitingForFinalTranslation(
     settings,
     detectedLanguage,

@@ -20,12 +20,7 @@ export type CredentialFieldName =
   | "secretKey"
   | "appKey";
 
-export type CredentialDraft = Record<CredentialFieldName, string> & { model: string };
-
-interface CredentialEditorLocalState {
-  draft: CredentialDraft;
-  editingSavedCredential: boolean;
-}
+export type CredentialDraft = Record<CredentialFieldName, string>;
 
 export function emptyCredentialDraft(): CredentialDraft {
   return {
@@ -40,18 +35,6 @@ export function emptyCredentialDraft(): CredentialDraft {
     secretId: "",
     secretKey: "",
     appKey: "",
-  };
-}
-
-/** Clears write-only fields before a confirmed credential deletion starts. */
-export function credentialEditorStateAfterDeleteRequest(
-  current: CredentialEditorLocalState,
-  confirmingDelete: boolean,
-): CredentialEditorLocalState {
-  if (!confirmingDelete) return current;
-  return {
-    draft: emptyCredentialDraft(),
-    editingSavedCredential: false,
   };
 }
 

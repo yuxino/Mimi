@@ -1,22 +1,16 @@
 import {
-  effectiveTranslationModeForSettings,
   sourceLanguagesForSettings,
   targetLanguagesForSettings,
-  translationModesForSettings,
 } from "../../../lib/providers/providerCapabilities";
-import {
-  targetLanguageTranslatesAudio,
-  type SettingsSnapshot,
-  type SourceLanguage,
-  type TargetLanguage,
-  type TranslationMode,
+import type {
+  SettingsSnapshot,
+  SourceLanguage,
+  TargetLanguage,
 } from "../../../lib/types";
 
 export interface OverlayControlPanelModel {
   sourceOptions: readonly SourceLanguage[];
   targetOptions: readonly TargetLanguage[];
-  translationModeOptions: readonly TranslationMode[];
-  effectiveTranslationMode: TranslationMode;
   immersiveModeEnabled: boolean;
   overlayLocked: boolean;
 }
@@ -25,17 +19,9 @@ export interface OverlayControlPanelModel {
 export function overlayControlPanelModel(
   settings: SettingsSnapshot,
 ): OverlayControlPanelModel {
-  const sourceLanguages = sourceLanguagesForSettings(settings);
-  const translationModes = translationModesForSettings(settings);
   return {
-    sourceOptions: sourceLanguages,
+    sourceOptions: sourceLanguagesForSettings(settings),
     targetOptions: targetLanguagesForSettings(settings),
-    translationModeOptions:
-      targetLanguageTranslatesAudio(settings.targetLanguage) &&
-      translationModes.length > 1
-        ? translationModes
-        : [],
-    effectiveTranslationMode: effectiveTranslationModeForSettings(settings),
     immersiveModeEnabled: settings.subtitleBlendsWithBackground,
     overlayLocked: settings.isOverlayLocked,
   };

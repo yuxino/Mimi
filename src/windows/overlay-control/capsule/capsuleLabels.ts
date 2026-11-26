@@ -20,8 +20,8 @@ export function capsuleLabels(settings: Pick<SettingsSnapshot, "sourceLanguage" 
   const profile = settings.profiles && settings.activeProfileId ? activeServiceProfile({ profiles: settings.profiles, activeProfileId: settings.activeProfileId }) : undefined;
   const bilingual = profile?.provider === "volcanoEngine";
   return {
-    source: bilingual && settings.sourceLanguage === "zh_en" ? text.bilingual : settings.sourceLanguage === "auto" && settings.profiles && settings.activeProfileId &&
-      isCustomSpeechProvider(activeServiceProfile({ profiles: settings.profiles, activeProfileId: settings.activeProfileId })?.provider ?? "alibabaCloud")
+    source: bilingual && settings.sourceLanguage === "zh_en" ? text.bilingual : settings.sourceLanguage === "auto" && profile &&
+      isCustomSpeechProvider(profile.provider)
       ? text.serviceDefault : settings.sourceLanguage in text
       ? text[settings.sourceLanguage as keyof typeof text]
       : sourceLanguageDisplayName(settings.sourceLanguage, language),

@@ -50,6 +50,39 @@ export default defineConfig(({ command, mode }) => {
     },
     build: {
       target: buildTarget,
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [
+              {
+                name: "vendor-react",
+                test: /[\\/]node_modules[\\/](?:react|react-dom|scheduler)[\\/]/,
+                priority: 30,
+              },
+              {
+                name: "locales-primary",
+                test: /[\\/]src[\\/]lib[\\/]locales[\\/](?:zh|zh-TW|en|ja)(?:-supplemental|-development)?\.ts$/,
+                priority: 25,
+              },
+              {
+                name: "locales-europe",
+                test: /[\\/]src[\\/]lib[\\/]locales[\\/](?:de|fr|ru)(?:-supplemental|-development)?\.ts$/,
+                priority: 23,
+              },
+              {
+                name: "locales-extra",
+                test: /[\\/]src[\\/]lib[\\/]locales[\\/]/,
+                priority: 20,
+              },
+              {
+                name: "vendor",
+                test: /[\\/]node_modules[\\/]/,
+                priority: 10,
+              },
+            ],
+          },
+        },
+      },
     },
     test: {
       dir: "src",

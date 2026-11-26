@@ -51,7 +51,7 @@ impl ServiceProfilePayload {
             |(speech, text)| speech.combined(text),
         );
         let text_translation = profile.text_translation();
-        let credential_storage = store.profile_credential_storage(&profile.id);
+        let credential_storage = store.credential_storage();
         Self {
             speech_network_proxy: profile.speech_network_proxy,
             text_network_proxy: profile.text_network_proxy,

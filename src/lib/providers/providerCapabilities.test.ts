@@ -14,7 +14,6 @@ import {
   activeServiceProfile,
   capabilitiesForProfile,
   credentialStateForTarget,
-  effectiveTranslationModeForSettings,
   sourceLanguagesForSettings,
   subtitlePreferencesChanged,
   targetLanguageAfterSourceSwitch,
@@ -128,7 +127,6 @@ describe("provider capabilities", () => {
 
   it("normalizes legacy Alibaba preferences to Turbo for automatic detection", () => {
     expect(translationModesForSettings(BASE_SETTINGS)).toEqual(["turbo"]);
-    expect(effectiveTranslationModeForSettings(BASE_SETTINGS)).toBe("turbo");
   });
 
   it("limits OpenAI Realtime to auto, supported targets, and turbo", () => {
@@ -138,7 +136,6 @@ describe("provider capabilities", () => {
     expect(sourceLanguagesForSettings(settings)).toEqual(["auto"]);
     expect(targetLanguagesForSettings(settings)).toEqual(OPENAI_TRANSLATION_TARGETS);
     expect(translationModesForSettings(settings)).toEqual(["turbo"]);
-    expect(effectiveTranslationModeForSettings(settings)).toBe("turbo");
   });
 
   it("keeps the full target set for Alibaba and OpenAI automatic input", () => {
@@ -177,16 +174,6 @@ describe("provider capabilities", () => {
     },
   );
 
-  it("keeps OpenAI's effective mode on turbo for a stale stored mode", () => {
-    const settings = {
-      ...BASE_SETTINGS,
-      activeProfileId: "openai",
-      translationMode: "lowLatency" as const,
-    };
-
-    expect(effectiveTranslationModeForSettings(settings)).toBe("turbo");
-  });
-
   it("lists every provider exactly once with custom recognition protocols after built-in services", () => {
     expect(new Set(SERVICE_PROVIDERS).size).toBe(11);
     expect(SERVICE_PROVIDERS).toEqual([
@@ -218,7 +205,6 @@ describe("provider capabilities", () => {
       activeProfileId: "google",
     };
     expect(sourceLanguagesForSettings(automatic)).toEqual(["auto"]);
-    expect(effectiveTranslationModeForSettings(automatic)).toBe("turbo");
 
     const explicit = {
       ...automatic,
@@ -300,7 +286,6 @@ it("applies actual Audio3+DeepLX capabilities only when selected", () => {
   const settings: SettingsSnapshot = { ...BASE_SETTINGS, profiles: [{ ...BASE_SETTINGS.profiles[0], textTranslation: "deepLX" }] };
   expect(targetLanguagesForSettings(settings)).toEqual(languageCatalogs.deepLX.targetLanguages);
   expect(translationModesForSettings(settings)).toEqual(["turbo"]);
-  expect(effectiveTranslationModeForSettings(settings)).toBe("turbo");
   expect(effectiveProviderForProfile({ ...BASE_SETTINGS.profiles[1], textTranslation: "deepLX" })).toBe("openAIRealtime");
 });
 

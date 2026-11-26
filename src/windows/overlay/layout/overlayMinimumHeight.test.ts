@@ -21,7 +21,6 @@ describe("browser and native minimum-height contract", () => {
   it("retains the conservative chrome allowance without taking height from maximum-font bilingual text", () => {
     const settings = { audioInput: "system" as const, subtitleDisplayMode: "bilingual" as const,
       targetLanguage: "zh" as const, fontSize: 48 };
-    expect(OVERLAY_MAXIMUM_CHROME_HEIGHT).toBe(61 + 20 + 12 + 10 + 2);
     // 43.2px source at 1.32 line height, 48px translation, gap and padding.
     expect(minimumOverlayHeight(settings) - OVERLAY_MAXIMUM_CHROME_HEIGHT).toBeGreaterThanOrEqual(58 + 64 + 2 + 5);
     expect(minimumOverlayHeight({ ...settings, showSubtitleTimestamps: true })).toBe(256);

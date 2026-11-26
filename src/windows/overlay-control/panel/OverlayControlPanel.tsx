@@ -285,7 +285,7 @@ export function OverlayControlPanel({
             </div>
           </div>
           <div className="overlay-control-picker overlay-control-picker--profile" aria-busy={pendingAction === "profile"}>
-            <Select label={I18N.settings.currentProfile} value={settings.activeProfileId ?? ""}
+            <Select label={I18N.settings.currentProfile} value={settings.activeProfileId}
               valueLabel={I18N.settings.noActiveProfile}
               options={settings.profiles.map((profile) => ({ value: profile.id, label: profile.name, ...profileSelectionState(profile, settings.targetLanguage),
                 icon: <ProviderIcon provider={profile.provider === "deepLX" ? "alibabaCloud" : profile.provider} size={32} /> }))}
