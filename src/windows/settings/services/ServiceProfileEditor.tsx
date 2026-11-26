@@ -33,6 +33,7 @@ import { ProviderCredentialEditor } from "./credentials/ProviderCredentialEditor
 import { SpeechAndTextCredentialEditor } from "./credentials/SpeechAndTextCredentialEditor";
 import { CustomSpeechLanguageSettings } from "./languages/CustomSpeechLanguageSettings";
 import { ProfileLanguagePresetSettings } from "./languages/ProfileLanguagePresetSettings";
+import { ProfileLanguageSettings } from "./languages/ProfileLanguageSettings";
 import { NetworkProxySettings } from "./network/NetworkProxySettings";
 import { AutoSaveNameField } from "./profiles/AutoSaveNameField";
 import { profileDescription, profileTitle } from "./profiles/serviceProfilePresentation";
@@ -281,6 +282,11 @@ export function ServiceProfileEditor({
             failed={apple.failed}
             sourceLanguage={settings.sourceLanguage}
             targetLanguage={settings.targetLanguage}
+            translationLanguageControls={profile.id === settings.activeProfileId ? () => (
+              // Language writes belong to the active configuration, not the
+              // inactive profile whose credentials happen to be open.
+              <ProfileLanguageSettings settings={settings} embedded hideSourceLanguage busy={selectionDisabled} />
+            ) : undefined}
             speechModeSettings={speechModeSettings}
             resourceRefreshDisabled={actionPending}
             languageChangesDisabled={selectionDisabled}
