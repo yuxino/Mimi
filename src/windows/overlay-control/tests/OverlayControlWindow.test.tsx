@@ -312,3 +312,44 @@ it.each([false, true])("shows the Mac unlock shortcut only with native shortcut 
     vi.unstubAllGlobals();
   }
 });
+
+it.each([false, true])("marks light opaque island surfaces for dark ink contrast (embedded=%s)", async embedded => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+  const initial = useStore.getState();
+  useStore.setState({
+    settings: {
+      ...initial.settings,
+      subtitleBackgroundColor: "#FFFFFF",
+      subtitleBackgroundOpacity: 85,
+      subtitleBlendsWithBackground: false,
+    },
+    session: { ...initial.session, isActive: true, status: { kind: "listening" } },
+  });
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(() => root.render(<OverlayControlWindow embedded={embedded} />));
+    await act(() => native.onMode?.("island"));
+    const surface = host.querySelector<HTMLElement>(".overlay-control-embedded, .overlay-control-detached")!;
+    expect(surface.hasAttribute("data-light-surface")).toBe(true);
+
+    await act(() => useStore.setState(state => ({ settings: { ...state.settings, subtitleBackgroundOpacity: 20 } })));
+    expect(surface.hasAttribute("data-light-surface")).toBe(false);
+
+    await act(() => useStore.setState(state => ({ settings: { ...state.settings, subtitleBackgroundOpacity: 85, subtitleBlendsWithBackground: true } })));
+    expect(surface.hasAttribute("data-light-surface")).toBe(false);
+
+    await act(() => useStore.setState(state => ({ settings: { ...state.settings, subtitleBlendsWithBackground: false } })));
+    await act(() => native.onMode?.("panel"));
+    expect(surface.hasAttribute("data-light-surface")).toBe(false);
+  } finally {
+    await act(() => root.unmount());
+    host.remove();
+    useStore.setState(initial, true);
+    native.reportWidth.mockClear();
+    vi.unstubAllGlobals();
+  }
+});

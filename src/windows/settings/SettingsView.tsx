@@ -97,6 +97,7 @@ export function SettingsView() {
     color: settings.audioInput === "microphone" ? settings.microphoneSubtitleColor ?? "yellow" : settings.subtitleColor,
     blendsWithBackground: settings.subtitleBlendsWithBackground,
     lightBackground: previewLightSurface,
+    lowOpacityBackground: !settings.subtitleBlendsWithBackground && (settings.subtitleBackgroundOpacity ?? 80) < 35,
   });
 
   const activeProfile =

@@ -26,6 +26,8 @@ class CaptionColorMathTest {
 
     @Test
     fun detectsLightOpaqueBackgroundSurfaces() {
+        assertTrue(CaptionColorMath.isLightColor(0xFFFFFFFF.toInt()))
+        assertFalse(CaptionColorMath.isLightColor(0xFF141414.toInt()))
         assertFalse(CaptionColorMath.isLightSurface(0xFF000000.toInt(), 80))
         assertFalse(CaptionColorMath.isLightSurface(0xFF1E293B.toInt(), 90))
         assertTrue(CaptionColorMath.isLightSurface(0xFFFFFFFF.toInt(), 80))

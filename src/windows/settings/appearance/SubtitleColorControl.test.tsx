@@ -40,7 +40,7 @@ describe("SubtitleColorControl", () => {
     expect(hexInput.value).toBe("#FFFFFF");
 
     act(() => {
-      setNativeValue(hexInput, "1e293b");
+      setNativeValue(hexInput, " #1e293b ");
     });
     act(() => {
       hexInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));

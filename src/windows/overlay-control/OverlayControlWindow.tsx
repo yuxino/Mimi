@@ -1,4 +1,5 @@
 import { isSystemAudioPermissionDenied } from "../../lib/audio/systemAudioPermissions";
+import { isLightSubtitleBackground } from "../../lib/subtitles/subtitleColor";
 import { useLanguageNormalizationToast } from "../settings/services/languages/useLanguageNormalizationToast";
 import { settingsToastSnapshot, subscribeSettingsToast, useSettingsToast } from "../settings/feedback/useSettingsToast";
 import { memo, useCallback, useEffect, useRef, useSyncExternalStore, type RefObject } from "react";
@@ -99,6 +100,8 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
   const quietIsland = (isTauri || embedded) && visibleMode === "island" && sessionStatusKind !== "error" &&
     !collapsed && !settings.subtitleBlendsWithBackground &&
     (!audioRecording || audioRecording === "off");
+  const lightIslandSurface = visibleMode === "island" && !settings.subtitleBlendsWithBackground &&
+    isLightSubtitleBackground(settings.subtitleBackgroundColor, settings.subtitleBackgroundOpacity);
 
   const toggle = useCallback(() => {
     if (mode !== "island") return;
@@ -247,7 +250,8 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
     <div ref={surfaceRef} className={embedded ? "overlay-control-embedded" : "overlay-control-detached"}
       aria-hidden={visibleMode === "hidden" ? true : undefined}
       inert={visibleMode === "hidden" ? true : undefined}
-      data-mode={embedded ? visibleMode : undefined} data-quiet-island={quietIsland ? "" : undefined}>
+      data-mode={embedded ? visibleMode : undefined} data-quiet-island={quietIsland ? "" : undefined}
+      data-light-surface={lightIslandSurface ? "" : undefined}>
       {mode === "panel" && !lockedPresentation && (
         <OverlayControlPanel
           phase={phase}

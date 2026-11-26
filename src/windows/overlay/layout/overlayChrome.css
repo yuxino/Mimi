@@ -118,13 +118,13 @@
 /* Compact left-edge background opacity slider revealed on hover while unlocked. */
 .overlay-opacity-slider {
   position: absolute;
-  left: 8px;
-  top: 44px;
-  bottom: 12px;
+  left: 1px;
+  top: 38px;
+  bottom: 8px;
   z-index: 4;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   pointer-events: none;
 }
 
@@ -133,16 +133,25 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
+  width: 16px;
   height: 100%;
   max-height: 96px;
-  min-height: 36px;
-  padding: 6px 0;
+  min-height: 24px;
+  padding: 5px 0;
   border-radius: 8px;
   cursor: ns-resize;
   pointer-events: auto;
   touch-action: none;
   outline: none;
+}
+
+.overlay-opacity-slider:is([data-dragging], :has(.overlay-opacity-slider__control:hover), :has(.overlay-opacity-slider__input:focus-visible)) .overlay-opacity-slider__control {
+  background: var(--overlay-slider-scrim, rgba(16, 16, 16, 0.72));
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+}
+
+.overlay-expanded-canvas[data-low-opacity] .overlay-opacity-slider__track {
+  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85));
 }
 
 .overlay-opacity-slider__control:has(.overlay-opacity-slider__input:focus-visible) {
@@ -194,9 +203,10 @@
 .overlay-opacity-slider__readout {
   opacity: 0;
   padding: 2px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 5px;
-  background: rgba(16, 16, 16, 0.86);
-  color: rgba(255, 255, 255, 0.92);
+  background: rgba(16, 16, 16, 0.88);
+  color: rgba(255, 255, 255, 0.94);
   font-size: 11px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
@@ -212,12 +222,14 @@
 /* Light, opaque overlay surfaces adapt chrome contrast to dark neutral ink. */
 .overlay-expanded-canvas[data-light-surface],
 .overlay-compact-canvas[data-light-surface] {
+  --control-text: rgba(0, 0, 0, 0.78);
   --overlay-canvas-outline: rgba(0, 0, 0, 0.16);
   --overlay-empty-text: rgba(0, 0, 0, 0.56);
   --overlay-slider-track: rgba(0, 0, 0, 0.22);
   --overlay-slider-fill: rgba(0, 0, 0, 0.78);
   --overlay-slider-thumb: #141414;
   --overlay-slider-focus: rgba(0, 0, 0, 0.55);
+  --overlay-slider-scrim: rgba(255, 255, 255, 0.86);
 }
 
 .overlay-expanded-canvas[data-light-surface] .overlay-action-strip .overlay-control-button,
@@ -276,7 +288,7 @@
 
   /* In quiet mode ordinary translation work gives both lines back to captions.
      An actionable error or a session action still has its own visible line. */
-  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], [data-overlay-island-pinned], [data-overlay-keyboard-focus]:has(:focus-visible)) .overlay-expanded-canvas[data-overlay-has-captions] {
+  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], [data-overlay-island-pinned], [data-overlay-keyboard-focus]:has(:focus-visible), :has(.overlay-opacity-slider[data-dragging])) .overlay-expanded-canvas[data-overlay-has-captions] {
     --overlay-toolbar-height: 0px;
     --overlay-detail-height: 0px;
   }

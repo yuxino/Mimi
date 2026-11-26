@@ -534,6 +534,7 @@ export function OverlayWindow() {
               audioInput={settings.audioInput}
               microphoneColor={settings.microphoneSubtitleColor}
               lightBackground={lightSurface}
+              lowOpacityBackground={(settings.subtitleBackgroundOpacity ?? 80) < 35}
               motionEnabled={motionOn}
               followTailRequest={followTailRequest}
               onReadingHistoryChange={setReadingHistory}

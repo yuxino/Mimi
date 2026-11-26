@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isLightHexColor,
   isLightSubtitleBackground,
   normalizeSubtitleHex,
   parseSubtitleHexInput,
@@ -7,6 +8,11 @@ import {
   subtitleBackgroundHex,
   subtitleColorHex,
 } from "./subtitleColor";
+import {
+  LOW_OPACITY_DARK_TEXT_SHADOW,
+  LOW_OPACITY_LIGHT_TEXT_SHADOW,
+  subtitleTextStyle,
+} from "./subtitleTypography";
 
 describe("custom subtitle colors", () => {
   it("normalizes complete RGB colors while preserving black and white", () => {
@@ -36,5 +42,13 @@ describe("custom subtitle colors", () => {
     expect(isLightSubtitleBackground("#000000", 80)).toBe(false);
     expect(isLightSubtitleBackground("#FFFFFF", 80)).toBe(true);
     expect(isLightSubtitleBackground("#FFFFFF", 20)).toBe(false);
+    expect(isLightHexColor("#FFFFFF")).toBe(true);
+    expect(isLightHexColor("#141414")).toBe(false);
+  });
+  it("adds contrasting text shadows on very translucent backgrounds without altering opaque cards", () => {
+    const base = { fontSize: 16, fontFamily: "sans-serif", displayMode: "translation" as const, kind: "translation" as const };
+    expect(subtitleTextStyle({ ...base, color: "white", lowOpacityBackground: false }).textShadow).toBeUndefined();
+    expect(subtitleTextStyle({ ...base, color: "white", lowOpacityBackground: true }).textShadow).toBe(LOW_OPACITY_DARK_TEXT_SHADOW);
+    expect(subtitleTextStyle({ ...base, color: "#141414", lowOpacityBackground: true }).textShadow).toBe(LOW_OPACITY_LIGHT_TEXT_SHADOW);
   });
 });

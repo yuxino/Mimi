@@ -14,14 +14,16 @@ function clampOpacity(value: number): number {
 
 /** Compact left-edge vertical background-opacity slider revealed on overlay hover. */
 export function OverlayOpacitySlider({ opacity, disabled = false, onChange }: OverlayOpacitySliderProps) {
-  const trackRef = useRef<HTMLDivElement>(null);
+  const controlRef = useRef<HTMLDivElement>(null);
+  const visualTrackRef = useRef<HTMLSpanElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const draggingPointerRef = useRef<number | null>(null);
   const [dragging, setDragging] = useState(false);
   const clamped = clampOpacity(opacity);
 
   const opacityFromClientY = useCallback((clientY: number) => {
-    const rect = trackRef.current?.getBoundingClientRect();
+    const visualRect = visualTrackRef.current?.getBoundingClientRect();
+    const rect = visualRect && visualRect.height > 0 ? visualRect : controlRef.current?.getBoundingClientRect();
     if (!rect || rect.height <= 0) return clamped;
     const ratio = 1 - (clientY - rect.top) / rect.height;
     return clampOpacity(ratio * 100);
@@ -34,7 +36,7 @@ export function OverlayOpacitySlider({ opacity, disabled = false, onChange }: Ov
     draggingPointerRef.current = null;
     setDragging(false);
     try {
-      trackRef.current?.releasePointerCapture(activeId);
+      controlRef.current?.releasePointerCapture(activeId);
     } catch {
       // Capture may already have been released or unavailable in tests.
     }
@@ -75,7 +77,7 @@ export function OverlayOpacitySlider({ opacity, disabled = false, onChange }: Ov
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (disabled || draggingPointerRef.current !== event.pointerId) return;
-    if ((event.buttons & 1) === 0) {
+    if (event.pointerType === "mouse" && (event.buttons & 1) === 0) {
       finishDrag(event.pointerId);
       return;
     }
@@ -116,6 +118,21 @@ export function OverlayOpacitySlider({ opacity, disabled = false, onChange }: Ov
     if (next !== clamped) onChange(next);
   };
 
+  useEffect(() => {
+    const control = controlRef.current;
+    if (!control) return;
+    const handleWheel = (event: WheelEvent) => {
+      if (disabled || event.deltaY === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const step = event.deltaY < 0 ? 5 : -5;
+      const next = clampOpacity(clamped + step);
+      if (next !== clamped) onChange(next);
+    };
+    control.addEventListener("wheel", handleWheel, { passive: false });
+    return () => control.removeEventListener("wheel", handleWheel);
+  }, [clamped, disabled, onChange]);
+
   const label = I18N.overlay.backgroundOpacity;
   const valueText = `${clamped}%`;
 
@@ -126,7 +143,7 @@ export function OverlayOpacitySlider({ opacity, disabled = false, onChange }: Ov
       data-testid="overlay-opacity-slider"
     >
       <div
-        ref={trackRef}
+        ref={controlRef}
         className="overlay-opacity-slider__control"
         title={`${label}: ${valueText}`}
         onPointerDown={handlePointerDown}
@@ -153,7 +170,7 @@ export function OverlayOpacitySlider({ opacity, disabled = false, onChange }: Ov
           }}
           onKeyDown={handleKeyDown}
         />
-        <span className="overlay-opacity-slider__track" aria-hidden="true">
+        <span ref={visualTrackRef} className="overlay-opacity-slider__track" aria-hidden="true">
           <span className="overlay-opacity-slider__fill" style={{ height: `${clamped}%` }} />
           <span className="overlay-opacity-slider__thumb" style={{ bottom: `${clamped}%` }} />
         </span>

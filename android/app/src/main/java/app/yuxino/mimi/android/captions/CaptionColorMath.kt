@@ -34,13 +34,18 @@ internal object CaptionColorMath {
     fun formatHexColor(argb: Int): String =
         String.format("#%06X", argb and 0xFFFFFF)
 
-    /** Matches desktop threshold: light, sufficiently opaque surfaces switch chrome to dark ink. */
-    fun isLightSurface(argb: Int, alphaPercent: Int): Boolean {
-        if (alphaPercent.coerceIn(0, 100) < 35) return false
+    /** Whether an ARGB color has high relative luminance (light ink / light surface). */
+    fun isLightColor(argb: Int): Boolean {
         val red = (argb ushr 16) and 0xFF
         val green = (argb ushr 8) and 0xFF
         val blue = argb and 0xFF
         return (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255.0 > 0.45
+    }
+
+    /** Matches desktop threshold: light, sufficiently opaque surfaces switch chrome to dark ink. */
+    fun isLightSurface(argb: Int, alphaPercent: Int): Boolean {
+        if (alphaPercent.coerceIn(0, 100) < 35) return false
+        return isLightColor(argb)
     }
 
     fun red(argb: Int): Int = (argb ushr 16) and 0xFF

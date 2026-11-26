@@ -391,10 +391,13 @@ internal class CaptureOverlayWindow(
         var gestureGeneration = -1
         var previewAlpha: Int? = null
         var baseStyle: CaptionFrameStyle? = null
+        var moved = false
 
         fun restoreSaved() {
             previewAlpha = null
             baseStyle = null
+            moved = false
+            slider.dragging = false
             panel.applySurfaceChrome(CaptionFrameStyle.saved(service, sessionOriginalOnly))
         }
 
@@ -413,12 +416,15 @@ internal class CaptureOverlayWindow(
         slider.setOnTouchListener { _, event ->
             if (immersiveSession || !adjustable) return@setOnTouchListener false
             if (event.actionMasked != MotionEvent.ACTION_DOWN && gestureGeneration != overlayGeometryGeneration) {
-                if (previewAlpha != null) restoreSaved()
+                if (previewAlpha != null || slider.dragging) restoreSaved()
                 return@setOnTouchListener true
             }
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    slider.parent?.requestDisallowInterceptTouchEvent(true)
                     gestureGeneration = overlayGeometryGeneration
+                    moved = false
+                    slider.dragging = true
                     val style = CaptionFrameStyle.saved(service, sessionOriginalOnly)
                     baseStyle = style
                     val next = slider.valueFromY(event.y)
@@ -427,6 +433,7 @@ internal class CaptureOverlayWindow(
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
+                    moved = true
                     val style = baseStyle ?: CaptionFrameStyle.saved(service, sessionOriginalOnly)
                     val next = slider.valueFromY(event.y)
                     if (previewAlpha != next) {
@@ -437,8 +444,11 @@ internal class CaptureOverlayWindow(
                 }
                 MotionEvent.ACTION_UP -> {
                     val committed = previewAlpha
+                    val wasTap = !moved
                     previewAlpha = null
                     baseStyle = null
+                    moved = false
+                    slider.dragging = false
                     if (committed != null) {
                         try {
                             SettingsStore.setOverlayBgAlpha(service, committed)
@@ -448,6 +458,7 @@ internal class CaptureOverlayWindow(
                             Toast.makeText(InterfaceLanguage.context(service), R.string.service_save_failed, Toast.LENGTH_LONG).show()
                         }
                     }
+                    if (wasTap) slider.performClick()
                     true
                 }
                 MotionEvent.ACTION_CANCEL -> {

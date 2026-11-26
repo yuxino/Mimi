@@ -63,9 +63,16 @@ export function subtitleBackgroundColor(opacity = 80, color?: SubtitleBackground
   return `rgba(${red},${green},${blue},${Math.min(100, Math.max(0, opacity)) / 100})`;
 }
 
+/** Whether a `#RRGGBB` color has high relative luminance (light ink / light surface). */
+export function isLightHexColor(hex: string): boolean {
+  const normalized = normalizeSubtitleHex(hex);
+  if (!normalized) return false;
+  const [red, green, blue] = hexRgb(normalized);
+  return (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255 > 0.45;
+}
+
 /** Light, sufficiently opaque surfaces switch overlay chrome to dark ink for legibility. */
 export function isLightSubtitleBackground(color?: SubtitleBackgroundColor, opacity = 80): boolean {
   if (Math.min(100, Math.max(0, opacity)) < 35) return false;
-  const [red, green, blue] = hexRgb(subtitleBackgroundHex(color));
-  return (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255 > 0.45;
+  return isLightHexColor(subtitleBackgroundHex(color));
 }

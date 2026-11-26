@@ -2405,7 +2405,7 @@
 .subtitle-color-swatch span {
   width: 22px;
   height: 22px;
-  border: 1px solid rgba(128, 128, 128, 0.35);
+  border: 1px solid rgba(128, 128, 128, 0.45);
   border-radius: 50%;
 }
 .subtitle-color-swatch.is-selected {

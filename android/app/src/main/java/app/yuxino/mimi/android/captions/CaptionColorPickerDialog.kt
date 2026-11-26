@@ -13,17 +13,19 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.Editable
 import android.text.InputFilter
+import android.text.InputType
 import android.text.TextWatcher
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import app.yuxino.mimi.android.R
-import kotlin.math.max
 
 /** Native color picker dialog combining an HSV color palette with a synced #RRGGBB HEX field. */
 internal object CaptionColorPickerDialog {
@@ -46,7 +48,7 @@ internal object CaptionColorPickerDialog {
 
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(16), dp(20), dp(8))
+            setPadding(dp(16), dp(12), dp(16), dp(8))
         }
 
         val svView = SaturationValueView(context, hsv)
@@ -55,6 +57,7 @@ internal object CaptionColorPickerDialog {
         val previewRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), 0, dp(4), 0)
         }
         val swatchDrawable = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
@@ -70,7 +73,11 @@ internal object CaptionColorPickerDialog {
             typeface = Typeface.MONOSPACE
             textSize = 15f
             isSingleLine = true
-            filters = arrayOf(InputFilter.LengthFilter(9))
+            inputType = InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
+                InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            filters = arrayOf(InputFilter.LengthFilter(12))
             background = ContextCompat.getDrawable(context, R.drawable.settings_field)
             setPadding(dp(12), dp(10), dp(12), dp(10))
             contentDescription = context.getString(R.string.settings_hex_color)
@@ -79,6 +86,7 @@ internal object CaptionColorPickerDialog {
             textSize = 13f
             setTextColor(0xFFDC2626.toInt())
             text = context.getString(R.string.settings_hex_invalid)
+            setPadding(dp(4), 0, dp(4), 0)
             visibility = View.GONE
         }
 
@@ -126,36 +134,51 @@ internal object CaptionColorPickerDialog {
             marginStart = dp(12)
         })
 
-        root.addView(svView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(164)))
-        root.addView(hueView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(28)).apply {
-            topMargin = dp(12)
+        root.addView(svView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(180)))
+        root.addView(hueView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(36)).apply {
+            topMargin = dp(6)
         })
         root.addView(View(context).apply { setBackgroundColor(borderColor) },
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1)).apply {
-                topMargin = dp(16); bottomMargin = dp(14)
+                leftMargin = dp(4); rightMargin = dp(4); topMargin = dp(12); bottomMargin = dp(14)
             })
         root.addView(previewRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         root.addView(errorText, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
             topMargin = dp(6)
         })
 
+        val scroll = ScrollView(context).apply {
+            addView(root, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+
         val dialog = AlertDialog.Builder(context)
             .setTitle(title)
-            .setView(root)
+            .setView(scroll)
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(android.R.string.ok, null)
             .create()
 
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val parsed = CaptionColorMath.parseHexColor(hexInput.text?.toString())
-                if (parsed == null) {
-                    errorText.visibility = View.VISIBLE
-                    return@setOnClickListener
-                }
-                onSelected(parsed)
-                dialog.dismiss()
+        fun confirmAndDismiss() {
+            val parsed = CaptionColorMath.parseHexColor(hexInput.text?.toString())
+            if (parsed == null) {
+                errorText.visibility = View.VISIBLE
+                return
             }
+            onSelected(parsed)
+            dialog.dismiss()
+        }
+
+        hexInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                confirmAndDismiss()
+                true
+            } else {
+                false
+            }
+        }
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { confirmAndDismiss() }
         }
         dialog.show()
     }
@@ -166,19 +189,21 @@ internal object CaptionColorPickerDialog {
         private var value = initialHsv[2]
         var onChanged: ((Float, Float) -> Unit)? = null
 
+        private val density = resources.displayMetrics.density
+        private val pad = 10f * density
         private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val ringOuter = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = 2.5f * resources.displayMetrics.density
+            strokeWidth = 2.5f * density
             color = Color.WHITE
         }
         private val ringInner = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = 1.5f * resources.displayMetrics.density
+            strokeWidth = 1.5f * density
             color = 0xAA000000.toInt()
         }
         private val bounds = RectF()
-        private val corner = 8f * resources.displayMetrics.density
+        private val corner = 8f * density
 
         init {
             setLayerType(LAYER_TYPE_SOFTWARE, null)
@@ -200,60 +225,68 @@ internal object CaptionColorPickerDialog {
 
         override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
             super.onSizeChanged(w, h, oldw, oldh)
-            bounds.set(0f, 0f, w.toFloat(), h.toFloat())
+            bounds.set(pad, pad, (w - pad).coerceAtLeast(pad + 1f), (h - pad).coerceAtLeast(pad + 1f))
             rebuildShader()
         }
 
         private fun rebuildShader() {
-            if (width <= 0 || height <= 0) return
+            if (bounds.width() <= 0f || bounds.height() <= 0f) return
             val hueColor = Color.HSVToColor(floatArrayOf(hue, 1f, 1f))
-            val satShader = LinearGradient(0f, 0f, width.toFloat(), 0f, Color.WHITE, hueColor, Shader.TileMode.CLAMP)
-            val valShader = LinearGradient(0f, 0f, 0f, height.toFloat(), Color.TRANSPARENT, Color.BLACK, Shader.TileMode.CLAMP)
+            val satShader = LinearGradient(bounds.left, bounds.top, bounds.right, bounds.top, Color.WHITE, hueColor, Shader.TileMode.CLAMP)
+            val valShader = LinearGradient(bounds.left, bounds.top, bounds.left, bounds.bottom, Color.TRANSPARENT, Color.BLACK, Shader.TileMode.CLAMP)
             fillPaint.shader = ComposeShader(satShader, valShader, PorterDuff.Mode.SRC_OVER)
         }
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
             canvas.drawRoundRect(bounds, corner, corner, fillPaint)
-            val cx = sat * width
-            val cy = (1f - value) * height
-            val radius = 7f * resources.displayMetrics.density
+            val cx = bounds.left + sat * bounds.width()
+            val cy = bounds.top + (1f - value) * bounds.height()
+            val radius = 7f * density
             canvas.drawCircle(cx, cy, radius, ringOuter)
-            canvas.drawCircle(cx, cy, radius + 1.5f * resources.displayMetrics.density, ringInner)
+            canvas.drawCircle(cx, cy, radius + 1.5f * density, ringInner)
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
                     parent?.requestDisallowInterceptTouchEvent(true)
-                    sat = (event.x / max(1, width)).coerceIn(0f, 1f)
-                    value = (1f - event.y / max(1, height)).coerceIn(0f, 1f)
+                    sat = ((event.x - bounds.left) / bounds.width().coerceAtLeast(1f)).coerceIn(0f, 1f)
+                    value = (1f - (event.y - bounds.top) / bounds.height().coerceAtLeast(1f)).coerceIn(0f, 1f)
                     invalidate()
                     onChanged?.invoke(sat, value)
+                    return true
+                }
+                MotionEvent.ACTION_UP -> {
+                    performClick()
                     return true
                 }
             }
             return super.onTouchEvent(event)
         }
+
+        override fun performClick(): Boolean = super.performClick()
     }
 
     private class HueBarView(context: Context, initialHue: Float) : View(context) {
         private var hue = initialHue.coerceIn(0f, 360f)
         var onHueChanged: ((Float) -> Unit)? = null
 
+        private val density = resources.displayMetrics.density
+        private val padX = 11f * density
         private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val thumbPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = 2.5f * resources.displayMetrics.density
+            strokeWidth = 2.5f * density
             color = Color.WHITE
         }
         private val thumbShadow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = 1.5f * resources.displayMetrics.density
+            strokeWidth = 1.5f * density
             color = 0xAA000000.toInt()
         }
         private val rect = RectF()
-        private val corner = 10f * resources.displayMetrics.density
+        private val corner = 8f * density
 
         fun setHue(nextHue: Float) {
             hue = nextHue.coerceIn(0f, 360f)
@@ -262,10 +295,10 @@ internal object CaptionColorPickerDialog {
 
         override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
             super.onSizeChanged(w, h, oldw, oldh)
-            val pad = 4f * resources.displayMetrics.density
-            rect.set(0f, pad, w.toFloat(), (h - pad).coerceAtLeast(pad + 1f))
+            val padY = 10f * density
+            rect.set(padX, padY, (w - padX).coerceAtLeast(padX + 1f), (h - padY).coerceAtLeast(padY + 1f))
             barPaint.shader = LinearGradient(
-                0f, 0f, w.toFloat(), 0f,
+                rect.left, 0f, rect.right, 0f,
                 intArrayOf(Color.RED, Color.YELLOW, Color.GREEN, Color.CYAN, Color.BLUE, Color.MAGENTA, Color.RED),
                 null,
                 Shader.TileMode.CLAMP,
@@ -275,24 +308,30 @@ internal object CaptionColorPickerDialog {
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
             canvas.drawRoundRect(rect, corner, corner, barPaint)
-            val cx = (hue / 360f) * width
+            val cx = rect.left + (hue / 360f) * rect.width()
             val cy = height / 2f
-            val r = 9f * resources.displayMetrics.density
+            val r = 8.5f * density
             canvas.drawCircle(cx, cy, r, thumbPaint)
-            canvas.drawCircle(cx, cy, r + 1.5f * resources.displayMetrics.density, thumbShadow)
+            canvas.drawCircle(cx, cy, r + 1.5f * density, thumbShadow)
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
                     parent?.requestDisallowInterceptTouchEvent(true)
-                    hue = ((event.x / max(1, width)).coerceIn(0f, 1f) * 360f)
+                    hue = (((event.x - rect.left) / rect.width().coerceAtLeast(1f)).coerceIn(0f, 1f) * 360f)
                     invalidate()
                     onHueChanged?.invoke(hue)
+                    return true
+                }
+                MotionEvent.ACTION_UP -> {
+                    performClick()
                     return true
                 }
             }
             return super.onTouchEvent(event)
         }
+
+        override fun performClick(): Boolean = super.performClick()
     }
 }

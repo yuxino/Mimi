@@ -288,20 +288,35 @@ internal class CaptionPanelView(
     /** Live background opacity/color updates keep text/chrome contrast synchronized without relayout. */
     fun applySurfaceChrome(style: CaptionFrameStyle) {
         val lightSurface = CaptionColorMath.isLightSurface(style.backgroundColor, style.backgroundAlpha)
+        val lowOpacity = style.backgroundAlpha.coerceIn(0, 100) < 35
         opacitySlider.progress = style.backgroundAlpha
         opacitySlider.lightSurface = lightSurface
         source.setTextColor(when {
             style.mode == CaptionDisplayMode.ORIGINAL -> style.color
             lightSurface -> 0xFF3A3A3C.toInt()
+            lowOpacity -> 0xFFF2F2F2.toInt()
             else -> 0xFFD5D5D5.toInt()
         })
-        history.setTextColor(if (lightSurface) 0xFF525252.toInt() else 0xFFB9B9B9.toInt())
+        history.setTextColor(if (lightSurface) 0xFF525252.toInt() else if (lowOpacity) 0xFFE6E6E6.toInt() else 0xFFB9B9B9.toInt())
+        timestamp.setTextColor(if (lightSurface) 0xFF525252.toInt() else if (lowOpacity) 0xFFE6E6E6.toInt() else 0xFFBBBBBB.toInt())
+        val shadowRadius = if (lowOpacity) dp(3).toFloat() else 0f
+        val shadowDy = if (lowOpacity) dp(1).toFloat() else 0f
+        val primaryShadow = if (!lowOpacity) Color.TRANSPARENT
+            else if (CaptionColorMath.isLightColor(style.color)) 0xE0000000.toInt() else 0xD9FFFFFF.toInt()
+        val referenceShadow = if (lowOpacity) 0xE0000000.toInt() else Color.TRANSPARENT
+        translation.setShadowLayer(shadowRadius, 0f, shadowDy, primaryShadow)
+        status.setShadowLayer(shadowRadius, 0f, shadowDy, primaryShadow)
+        source.setShadowLayer(shadowRadius, 0f, shadowDy, if (style.mode == CaptionDisplayMode.ORIGINAL) primaryShadow else referenceShadow)
+        history.setShadowLayer(shadowRadius, 0f, shadowDy, referenceShadow)
+        timestamp.setShadowLayer(shadowRadius, 0f, shadowDy, referenceShadow)
         findViewWithTag<View>("history-divider").setBackgroundColor(if (lightSurface) 0x3D000000 else 0xFF555555.toInt())
         (findViewWithTag<View>("overlay-drag-mark").background as? GradientDrawable)?.setColor(
-            if (lightSurface) 0xFF525252.toInt() else 0xFFB9B9B9.toInt(),
+            if (lightSurface) 0xFF525252.toInt() else if (lowOpacity) 0xFF8E8E93.toInt() else 0xFFB9B9B9.toInt(),
         )
         findViewWithTag<ImageButton>("overlay-resize").imageTintList =
-            android.content.res.ColorStateList.valueOf(if (lightSurface) 0xFF1C1C1E.toInt() else Color.WHITE)
+            android.content.res.ColorStateList.valueOf(
+                if (lightSurface) 0xFF1C1C1E.toInt() else if (lowOpacity) 0xFF8E8E93.toInt() else Color.WHITE,
+            )
         CaptionSurface.apply(this, style, false)
     }
 

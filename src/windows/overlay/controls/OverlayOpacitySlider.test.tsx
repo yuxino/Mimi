@@ -80,6 +80,24 @@ describe("OverlayOpacitySlider", () => {
     expect(host?.querySelector("[data-dragging]")).toBeNull();
   });
 
+  it("supports wheel adjustment over the slider without bubbling", () => {
+    const onChange = vi.fn();
+    const { control } = mount(50, onChange);
+    const parentWheel = vi.fn();
+    host!.addEventListener("wheel", parentWheel);
+
+    act(() => {
+      control.dispatchEvent(new WheelEvent("wheel", { deltaY: -10, bubbles: true, cancelable: true }));
+    });
+    expect(onChange).toHaveBeenLastCalledWith(55);
+    expect(parentWheel).not.toHaveBeenCalled();
+
+    act(() => {
+      control.dispatchEvent(new WheelEvent("wheel", { deltaY: 10, bubbles: true, cancelable: true }));
+    });
+    expect(onChange).toHaveBeenLastCalledWith(45);
+  });
+
   it("ignores input when disabled", () => {
     const onChange = vi.fn();
     const { input } = mount(50, onChange, true);
