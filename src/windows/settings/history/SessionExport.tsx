@@ -19,6 +19,8 @@ import { useStore } from "../../../lib/store";
 import type {
   AudioSource,
   SessionArchiveState,
+  SessionHistoryDeleteFailureReason,
+  SessionHistoryDeleteResult,
   SessionHistoryItem,
   SettingsDraft,
   TranscriptExportOptions,
@@ -39,6 +41,52 @@ import { SessionTranscriptReader } from "./SessionTranscriptReader";
 import { sessionWorkspaceCopy } from "./sessionWorkspaceCopy";
 import { useSessionAudioPreview } from "./useSessionAudioPreview";
 import "./session-workspace.css";
+
+type DeleteFailureReasonKey = keyof typeof sessionWorkspaceCopy.en.deleteFailureReasons;
+
+const DELETE_FAILURE_REASON_MAP: Record<SessionHistoryDeleteFailureReason, DeleteFailureReasonKey> = {
+  active_session: "activeSession",
+  history_disabled: "historyDisabled",
+  not_found: "notFound",
+  permission_denied: "permissionDenied",
+  invalid_id: "invalidId",
+  io_error: "ioError",
+};
+
+const DELETE_ERROR_CODE_MAP: Record<string, DeleteFailureReasonKey> = {
+  history_delete_active_session: "activeSession",
+  history_delete_disabled: "historyDisabled",
+  history_delete_not_found: "notFound",
+  history_delete_permission_denied: "permissionDenied",
+  history_delete_invalid_id: "invalidId",
+  history_delete_io_error: "ioError",
+};
+
+function resolveDeleteFailureReason(error: unknown, reportReason?: SessionHistoryDeleteFailureReason): DeleteFailureReasonKey | null {
+  if (reportReason && Object.hasOwn(DELETE_FAILURE_REASON_MAP, reportReason)) {
+    return DELETE_FAILURE_REASON_MAP[reportReason];
+  }
+  const message = typeof error === "string" ? error : error instanceof Error ? error.message : "";
+  if (!message) return null;
+  if (Object.hasOwn(DELETE_ERROR_CODE_MAP, message)) return DELETE_ERROR_CODE_MAP[message];
+  // Match Tauri v2 ACL rejections without interpolating raw runtime strings.
+  if (/\bnot allowed\b/i.test(message) || /\bpermissions? associated with this command\b/i.test(message)) {
+    return "commandDenied";
+  }
+  return null;
+}
+
+function formatHistoryDeleteFailure(error: unknown, report?: SessionHistoryDeleteResult): string {
+  const strings = sessionWorkspaceCopy[effectiveUiLanguage()];
+  const reasonKey = resolveDeleteFailureReason(error, report?.failureReason);
+  const reason = reasonKey ? strings.deleteFailureReasons[reasonKey] : null;
+  if (report && report.deleted.length > 0 && report.failed.length > 0) {
+    return reason
+      ? strings.deletePartialFailedWithReason(report.deleted.length, report.failed.length, reason)
+      : strings.deletePartialFailed(report.deleted.length, report.failed.length);
+  }
+  return reason ? strings.deleteFailedWithReason(reason) : I18N.settings.historyDeleteFailed;
+}
 
 function archivePresentationKey(hasDates: boolean): string {
   // Polling also owns calendar refresh. Keep midnight, OS time-zone and locale
@@ -164,6 +212,22 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
     audioPreview.clear();
     setReaderOpen(false);
     clearToast();
+  }
+
+  function clearSelectedSessionState() {
+    selectedHistoryId.current = null;
+    transcriptRequest.current += 1;
+    audioPreview.clear();
+    setTranscriptError(false);
+    setConfirmDelete(false);
+    setRenameOpen(false);
+    setExportOpen(false);
+    setManualCopy(null);
+    setSelectedId(null);
+    setQuery("");
+    setPage(0);
+    setTranscript(undefined);
+    setReaderOpen(false);
   }
 
   function selectHistory(id: string | null) {
@@ -374,9 +438,9 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
       setHistory((items) => items.filter((item) => item.id !== id));
       setHistoryRefresh(value => value + 1);
       if (selectedHistoryId.current === id) { selectHistory(null); setReaderOpen(false); }
-    } catch {
+    } catch (error) {
       if (lifetime.current === currentLifetime && interaction.current === currentInteraction) {
-        notify(I18N.settings.historyDeleteFailed, true);
+        notify(formatHistoryDeleteFailure(error), true);
       }
     } finally {
       operation.current = false;
@@ -401,8 +465,7 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
         setHistoryRefresh(value => value + 1);
         setSelectedHistoryIds((items) => items.filter((id) => !deletedSet.has(id)));
         if (selectedHistoryId.current && deletedSet.has(selectedHistoryId.current)) {
-          selectHistory(null);
-          setReaderOpen(false);
+          clearSelectedSessionState();
         }
       }
       if (result.failed.length === 0) {
@@ -416,14 +479,14 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
         setPendingBatchDelete({ mode, ids: result.failed });
         if (selectMode) setSelectedHistoryIds(result.failed);
         if (interaction.current === currentInteraction) {
-          notify(sessionWorkspaceCopy[effectiveUiLanguage()].deletePartialFailed(result.deleted.length, result.failed.length), true);
+          notify(formatHistoryDeleteFailure(null, result), true);
         }
       } else if (interaction.current === currentInteraction) {
-        notify(I18N.settings.historyDeleteFailed, true);
+        notify(formatHistoryDeleteFailure(null, result), true);
       }
-    } catch {
+    } catch (error) {
       if (lifetime.current === currentLifetime && interaction.current === currentInteraction) {
-        notify(I18N.settings.historyDeleteFailed, true);
+        notify(formatHistoryDeleteFailure(error), true);
       }
     } finally {
       operation.current = false;

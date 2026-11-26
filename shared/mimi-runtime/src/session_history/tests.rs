@@ -1263,6 +1263,10 @@ fn batch_delete_removes_requested_sessions_and_preserves_unselected_and_protecte
         report.failed,
         vec![active.clone(), missing, "not-a-uuid".to_owned()]
     );
+    assert_eq!(
+        report.failure_reason,
+        Some(HistoryDeleteFailureReason::ActiveSession)
+    );
     for removed in [&first, &second] {
         assert!(!history.path(removed, "json").unwrap().exists());
         assert!(!history.path(removed, "meta.json").unwrap().exists());

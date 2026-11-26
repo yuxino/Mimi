@@ -48,6 +48,7 @@ commands.allow = [
   "session_history_audio",
   "session_archive_audio",
   "session_history_delete",
+  "session_history_delete_many",
   "session_history_rename",
   "session_archive_clear",
   "session_export",

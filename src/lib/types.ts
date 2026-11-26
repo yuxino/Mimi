@@ -747,9 +747,18 @@ export interface SessionHistoryItem {
   hasAudio: boolean;
 }
 
+export type SessionHistoryDeleteFailureReason =
+  | "active_session"
+  | "history_disabled"
+  | "not_found"
+  | "permission_denied"
+  | "invalid_id"
+  | "io_error";
+
 export interface SessionHistoryDeleteResult {
   deleted: string[];
   failed: string[];
+  failureReason?: SessionHistoryDeleteFailureReason;
 }
 
 export type SessionExportKind = "transcript" | "audio";

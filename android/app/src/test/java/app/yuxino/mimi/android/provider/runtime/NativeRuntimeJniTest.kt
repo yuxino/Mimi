@@ -1406,6 +1406,7 @@ class NativeRuntimeJniTest {
             val failed = report.getJSONArray("failed")
             assertEquals(listOf(first, second), List(deleted.length()) { deleted.getString(it) })
             assertEquals(listOf(missing), List(failed.length()) { failed.getString(it) })
+            assertEquals("not_found", report.getString("failureReason"))
 
             val remaining = NativeRuntimeConfiguration.exchange(request("history_list")).getJSONArray("items")
             assertEquals(1, remaining.length())

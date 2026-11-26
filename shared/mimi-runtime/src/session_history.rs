@@ -38,11 +38,49 @@ pub struct HistoryItem {
     pub has_audio: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryDeleteFailureReason {
+    ActiveSession,
+    HistoryDisabled,
+    NotFound,
+    PermissionDenied,
+    InvalidId,
+    IoError,
+}
+
+impl HistoryDeleteFailureReason {
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::ActiveSession => "history_delete_active_session",
+            Self::HistoryDisabled => "history_delete_disabled",
+            Self::NotFound => "history_delete_not_found",
+            Self::PermissionDenied => "history_delete_permission_denied",
+            Self::InvalidId => "history_delete_invalid_id",
+            Self::IoError => "history_delete_io_error",
+        }
+    }
+}
+
+pub fn classify_delete_error(error: &io::Error) -> HistoryDeleteFailureReason {
+    match error.kind() {
+        io::ErrorKind::NotFound if error.to_string() == "history disabled" => {
+            HistoryDeleteFailureReason::HistoryDisabled
+        }
+        io::ErrorKind::NotFound => HistoryDeleteFailureReason::NotFound,
+        io::ErrorKind::PermissionDenied => HistoryDeleteFailureReason::PermissionDenied,
+        io::ErrorKind::InvalidInput => HistoryDeleteFailureReason::InvalidId,
+        _ => HistoryDeleteFailureReason::IoError,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryDeleteReport {
     pub deleted: Vec<String>,
     pub failed: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<HistoryDeleteFailureReason>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -658,6 +696,7 @@ impl SessionHistory {
         let mut report = HistoryDeleteReport {
             deleted: Vec::new(),
             failed: Vec::new(),
+            failure_reason: None,
         };
         for id in ids {
             let id = id.as_ref();
@@ -666,11 +705,19 @@ impl SessionHistory {
             }
             if protected.contains(id) {
                 report.failed.push(id.to_owned());
+                report
+                    .failure_reason
+                    .get_or_insert(HistoryDeleteFailureReason::ActiveSession);
                 continue;
             }
             match self.delete(id) {
                 Ok(()) => report.deleted.push(id.to_owned()),
-                Err(_) => report.failed.push(id.to_owned()),
+                Err(error) => {
+                    report.failed.push(id.to_owned());
+                    report
+                        .failure_reason
+                        .get_or_insert(classify_delete_error(&error));
+                }
             }
         }
         Ok(report)

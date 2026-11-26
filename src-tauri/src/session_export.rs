@@ -4,7 +4,9 @@ use crate::core::audio::audio_input::AudioSource;
 use crate::core::lifecycle::session_archive::{
     ArchiveState, TranscriptExportFormat, TranscriptExportOptions, TranscriptPage,
 };
-use crate::session_history::{HistoryDeleteReport, HistoryItem};
+use crate::session_history::{
+    classify_delete_error, HistoryDeleteFailureReason, HistoryDeleteReport, HistoryItem,
+};
 use serde::Deserialize;
 use std::io::Write;
 use std::path::Path;
@@ -179,13 +181,31 @@ async fn read_stopped_audio(
 #[tauri::command]
 pub async fn session_history_delete(state: State<'_, AppState>, id: String) -> Result<(), String> {
     if state.session.current_history_id().as_deref() == Some(id.as_str()) {
-        return Err("Could not delete session history.".into());
+        tracing::warn!(
+            reason = HistoryDeleteFailureReason::ActiveSession.code(),
+            "session history delete blocked"
+        );
+        return Err(HistoryDeleteFailureReason::ActiveSession.code().into());
     }
     let history = state.session.history();
-    tauri::async_runtime::spawn_blocking(move || history.delete(&id))
+    let result = tauri::async_runtime::spawn_blocking(move || history.delete(&id))
         .await
-        .map_err(|_| "Could not delete session history.")?
-        .map_err(|_| "Could not delete session history.".into())
+        .map_err(|_| {
+            tracing::warn!(
+                reason = HistoryDeleteFailureReason::IoError.code(),
+                "session history delete worker failed"
+            );
+            HistoryDeleteFailureReason::IoError.code().to_owned()
+        })?;
+    result.map_err(|error| {
+        let reason = classify_delete_error(&error);
+        tracing::warn!(
+            reason = reason.code(),
+            error_kind = ?error.kind(),
+            "session history delete failed"
+        );
+        reason.code().into()
+    })
 }
 
 #[tauri::command]
@@ -203,13 +223,43 @@ async fn delete_saved_history_many(
     ids: Vec<String>,
     current_history_id: impl FnOnce() -> Option<String> + Send + 'static,
 ) -> Result<HistoryDeleteReport, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    let result = tauri::async_runtime::spawn_blocking(move || {
         let protected: Vec<String> = current_history_id().into_iter().collect();
         history.delete_many(&ids, &protected)
     })
     .await
-    .map_err(|_| "Could not delete session history.")?
-    .map_err(|_| "Could not delete session history.".into())
+    .map_err(|_| {
+        tracing::warn!(
+            reason = HistoryDeleteFailureReason::IoError.code(),
+            "session history batch delete worker failed"
+        );
+        HistoryDeleteFailureReason::IoError.code().to_owned()
+    })?;
+    match result {
+        Ok(report) => {
+            if !report.failed.is_empty() {
+                tracing::warn!(
+                    deleted = report.deleted.len(),
+                    failed = report.failed.len(),
+                    reason = report
+                        .failure_reason
+                        .map(HistoryDeleteFailureReason::code)
+                        .unwrap_or("unknown"),
+                    "session history batch delete incomplete"
+                );
+            }
+            Ok(report)
+        }
+        Err(error) => {
+            let reason = classify_delete_error(&error);
+            tracing::warn!(
+                reason = reason.code(),
+                error_kind = ?error.kind(),
+                "session history batch delete failed"
+            );
+            Err(reason.code().into())
+        }
+    }
 }
 
 #[tauri::command]
@@ -704,6 +754,10 @@ mod tests {
 
         assert_eq!(report.deleted, vec![saved_id]);
         assert_eq!(report.failed, vec![current_id.clone()]);
+        assert_eq!(
+            report.failure_reason,
+            Some(HistoryDeleteFailureReason::ActiveSession)
+        );
         let remaining: Vec<String> = history
             .list()
             .unwrap()
@@ -711,5 +765,16 @@ mod tests {
             .map(|item| item.id)
             .collect();
         assert_eq!(remaining, vec![current_id]);
+    }
+
+    #[tokio::test]
+    async fn batch_delete_command_helper_reports_sanitized_reason_when_history_disabled() {
+        let directory = tempfile::tempdir().unwrap();
+        let history = Arc::new(SessionHistory::new(directory.path().join("history"), true));
+        let id = uuid::Uuid::new_v4().to_string();
+        let error = delete_saved_history_many(history, vec![id], || None)
+            .await
+            .unwrap_err();
+        assert_eq!(error, HistoryDeleteFailureReason::HistoryDisabled.code());
     }
 }
