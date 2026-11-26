@@ -68,13 +68,8 @@ public final class OverlayPlacement {
 
     /** Keep the small restore control beside captions, below when space permits. */
     public static int exitY(int captionY, int captionHeight, int availableHeight, int controlHeight, int gap) {
-        return exitY(captionY, captionHeight, availableHeight, controlHeight, gap, 0);
-    }
-
-    /** A bottom editor is occupied space, even while the restore control is inert. */
-    public static int exitY(int captionY, int captionHeight, int availableHeight, int controlHeight, int gap, int minimumY) {
         int below = captionY - controlHeight - gap;
-        int desired = below >= Math.max(0, minimumY) ? below : captionY + captionHeight + gap;
-        return clampY(Math.max(desired, minimumY), availableHeight, controlHeight);
+        int desired = below >= 0 ? below : captionY + captionHeight + gap;
+        return clampY(desired, availableHeight, controlHeight);
     }
 }

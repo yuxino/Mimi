@@ -217,13 +217,12 @@ class ServiceProfileRepositoryTest {
         assertEquals(2, disk.secrets.size)
     }
 
-    @Test fun duplicateDeleteAndRenameAreIndependentAndKeepStableOrder() {
+    @Test fun duplicateAndDeleteAreIndependentAndKeepStableOrder() {
         val disk = MemoryDisk(); val repository = ServiceProfileRepository(disk)
         val first = repository.save(null, "First", contents("one"))!!
         val copy = repository.duplicate(first, "Copy")!!
         assertNotEquals(first, copy); assertEquals(first, repository.activeId())
-        assertTrue(repository.rename(copy, "Second"))
-        assertEquals(listOf("First", "Second"), repository.profiles().map { it.name })
+        assertEquals(listOf("First", "Copy"), repository.profiles().map { it.name })
         assertTrue(repository.delete(first)); assertEquals(copy, repository.activeId())
         assertEquals("one", repository.contents(copy).speech.value("apiKey")); assertEquals(1, disk.secrets.size)
         assertTrue(repository.delete(copy)); assertNull(repository.activeId()); assertTrue(disk.secrets.isEmpty())
@@ -239,10 +238,10 @@ class ServiceProfileRepositoryTest {
         assertNull(repository.save(first, "Changed", contents("two"))); assertEquals(before, disk.catalog)
         disk.failReadback = false; disk.failCatalog = true
         assertNull(repository.save(null, "New", contents("three"), true)); assertEquals(before, disk.catalog)
-        assertFalse(repository.delete(first)); assertFalse(repository.rename(first, "Changed"))
+        assertFalse(repository.delete(first))
         assertEquals("one", repository.contents(first).speech.value("apiKey")); assertEquals(first, repository.activeId())
         disk.failCatalog = false
-        assertTrue(repository.rename(first, "Final")); assertEquals(1, disk.secrets.size)
+        assertEquals(first, repository.save(first, "Final", contents("one"))); assertEquals(1, disk.secrets.size)
     }
 
     @Test fun failedActivationDoesNotLoseThePreviousSelection() {
@@ -343,10 +342,10 @@ class ServiceProfileRepositoryTest {
         disk.failCatalogReadAfterWrite = true
         assertThrows(IllegalStateException::class.java) { repository.save(id, "Changed", contents("two")) }
         assertEquals(2, disk.secrets.size)
-        // The rename already committed; both old and new secrets remain recoverable.
+        // The update already committed; both old and new secrets remain recoverable.
         assertEquals("two", repository.contents(id).speech.value("apiKey"))
         disk.failCatalogReadAfterWrite = false
-        assertTrue(repository.rename(id, "Verified")); assertEquals(1, disk.secrets.size)
+        assertEquals(id, repository.save(id, "Verified", contents("two"))); assertEquals(1, disk.secrets.size)
     }
 
     @Test fun activeContentsKeepsSpeechTranslationAndModelTogetherDuringSelectionChanges() {

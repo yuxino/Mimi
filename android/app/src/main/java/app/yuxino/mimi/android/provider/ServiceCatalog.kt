@@ -2,35 +2,25 @@ package app.yuxino.mimi.android.provider
 
 import org.json.JSONObject
 
-internal const val OPENAI_REALTIME_ENDPOINT = "wss://api.openai.com/v1/realtime/translations"
-internal const val OPENAI_REALTIME_MODEL = "gpt-realtime-translate"
-
 /** Pure metadata shared by setup, language selection and session creation. */
 data class CredentialField(val id: String, val label: String, val secret: Boolean = true)
 
 enum class ServiceProvider(
-    val id: String, val title: String, val description: String, val sampleRate: Int,
+    val id: String, val title: String,
     val fields: List<CredentialField>,
-    val endpoint: String = "", val model: String = "",
 ) {
-    DASHSCOPE("dashscope", "阿里云", "Audio 3.0 · Qwen-MT", 16000,
-        listOf(CredentialField("apiKey", "API Key"))),
-    OPENAI("openai", "OpenAI", "Realtime Translation", 24000,
-        listOf(CredentialField("apiKey", "API Key")), OPENAI_REALTIME_ENDPOINT, OPENAI_REALTIME_MODEL),
-    GEMINI("gemini", "Google Gemini", "Live Translation", 16000,
-        listOf(CredentialField("apiKey", "API Key")),
-        "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent", "gemini-3.5-live-translate-preview"),
-    AZURE("azure", "Azure OpenAI", "使用自己的 Azure 部署", 24000,
+    DASHSCOPE("dashscope", "阿里云", listOf(CredentialField("apiKey", "API Key"))),
+    OPENAI("openai", "OpenAI", listOf(CredentialField("apiKey", "API Key"))),
+    GEMINI("gemini", "Google Gemini", listOf(CredentialField("apiKey", "API Key"))),
+    AZURE("azure", "Azure OpenAI",
         listOf(CredentialField("endpoint", "资源地址", false), CredentialField("deployment", "翻译部署名称", false),
             CredentialField("transcriptionDeployment", "转写部署名称", false), CredentialField("apiKey", "API Key"))),
-    VOLCANO("volcano", "火山引擎", "豆包同声传译 2.0", 16000,
-        listOf(CredentialField("apiKey", "API Key"))),
-    TENCENT("tencent", "腾讯云", "实时语音翻译", 16000,
+    VOLCANO("volcano", "火山引擎", listOf(CredentialField("apiKey", "API Key"))),
+    TENCENT("tencent", "腾讯云",
         listOf(CredentialField("appId", "AppID", false), CredentialField("secretId", "SecretID"), CredentialField("secretKey", "SecretKey"))),
-    BAIDU("baidu", "百度翻译", "实时语音翻译", 16000,
+    BAIDU("baidu", "百度翻译",
         listOf(CredentialField("appId", "AppID", false), CredentialField("appKey", "AppKey"))),
-    XAI("xai", "xAI Grok", "Grok Voice · 按语音轮次翻译", 24000,
-        listOf(CredentialField("apiKey", "API Key")), "wss://api.x.ai/v1/realtime", "grok-voice-latest");
+    XAI("xai", "xAI Grok", listOf(CredentialField("apiKey", "API Key")));
 
     val wireProvider: String get() = when (this) {
         DASHSCOPE -> "alibabaCloud"
@@ -113,16 +103,14 @@ internal fun normalizeQwenMTModel(value: String?): String = value?.takeIf { it i
 
 /** Android-only cleartext permission is checked before shared typed credentials. */
 internal fun TranslationConfiguration.runtimeCredentials(): JSONObject? {
-    if (provider in listOf(TextTranslationProvider.BUILTIN, TextTranslationProvider.NONE)) return null
-    validateTranslationConfiguration(this)
-    val credentials = JSONObject().put("kind", provider.runtimeRoute())
+    fun validated() = validateTranslationConfiguration(this).let { JSONObject().put("kind", provider.runtimeRoute()) }
     return when (provider) {
-        TextTranslationProvider.DEEPL -> credentials.put("apiKey", apiKey.trim())
-        TextTranslationProvider.DEEPLX -> credentials.put("endpoint", endpoint.trim()).put("token", apiKey.trim())
+        TextTranslationProvider.BUILTIN, TextTranslationProvider.NONE -> null
+        TextTranslationProvider.DEEPL -> validated().put("apiKey", apiKey.trim())
+        TextTranslationProvider.DEEPLX -> validated().put("endpoint", endpoint.trim()).put("token", apiKey.trim())
         TextTranslationProvider.CHAT_MOCK, TextTranslationProvider.OPENAI_COMPATIBLE ->
-            credentials.put("endpoint", endpoint.trim()).put("model", model.trim()).put("apiKey", apiKey.trim())
-        TextTranslationProvider.XAI -> credentials.put("model", model.trim()).put("apiKey", apiKey.trim())
-        else -> null
+            validated().put("endpoint", endpoint.trim()).put("model", model.trim()).put("apiKey", apiKey.trim())
+        TextTranslationProvider.XAI -> validated().put("model", model.trim()).put("apiKey", apiKey.trim())
     }
 }
 

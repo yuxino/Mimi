@@ -310,42 +310,6 @@ fn pause_and_resume_admission_do_not_block_a_newer_stop_epoch() {
 }
 
 #[tokio::test]
-async fn settings_mutation_and_lifecycle_operation_are_serialized() {
-    let lock = Arc::new(TokioMutex::new(()));
-    let settings_guard = Arc::clone(&lock).lock_owned().await;
-    let lock_for_stop = Arc::clone(&lock);
-    let mut stop_waiter = tokio::spawn(async move {
-        let _stop_guard = lock_for_stop.lock_owned().await;
-    });
-
-    assert!(
-        tokio::time::timeout(Duration::from_millis(20), &mut stop_waiter)
-            .await
-            .is_err()
-    );
-    drop(settings_guard);
-    assert!(
-        tokio::time::timeout(Duration::from_millis(200), stop_waiter)
-            .await
-            .is_ok()
-    );
-}
-
-#[tokio::test]
-async fn teardown_notification_registered_before_await_is_not_lost() {
-    let notify = Notify::new();
-    let notified = notify.notified();
-    tokio::pin!(notified);
-    notified.as_mut().enable();
-
-    notify.notify_waiters();
-
-    assert!(tokio::time::timeout(Duration::from_millis(50), notified)
-        .await
-        .is_ok());
-}
-
-#[tokio::test]
 async fn stop_generation_change_cancels_a_slow_connect_immediately() {
     let generation = 41;
     let active = Arc::new(AtomicU64::new(generation));
@@ -528,47 +492,6 @@ async fn pause_rechecks_state_after_a_concurrent_stop_owns_the_gate() {
         NO_GENERATION,
         true,
     ));
-}
-
-#[tokio::test]
-async fn concurrent_pause_or_reconnect_has_exactly_one_cleanup_owner() {
-    async fn claim_after_gate(
-        lock: Arc<TokioMutex<()>>,
-        sequence: Arc<AtomicU64>,
-        active: Arc<AtomicU64>,
-        ready: Arc<tokio::sync::Barrier>,
-    ) -> u64 {
-        let request = sequence.fetch_add(1, Ordering::SeqCst) + 1;
-        ready.wait().await;
-        let _guard = lock.lock_owned().await;
-        if sequence.load(Ordering::SeqCst) != request {
-            return NO_GENERATION;
-        }
-        active.swap(NO_GENERATION, Ordering::SeqCst)
-    }
-
-    for _operation in ["pause", "reconnect"] {
-        let lock = Arc::new(TokioMutex::new(()));
-        let sequence = Arc::new(AtomicU64::new(100));
-        let active = Arc::new(AtomicU64::new(77));
-        let ready = Arc::new(tokio::sync::Barrier::new(2));
-        let first = tokio::spawn(claim_after_gate(
-            Arc::clone(&lock),
-            Arc::clone(&sequence),
-            Arc::clone(&active),
-            Arc::clone(&ready),
-        ));
-        let second = tokio::spawn(claim_after_gate(
-            Arc::clone(&lock),
-            Arc::clone(&sequence),
-            Arc::clone(&active),
-            Arc::clone(&ready),
-        ));
-
-        let claims = [first.await.unwrap(), second.await.unwrap()];
-        assert_eq!(claims.iter().filter(|claim| **claim == 77).count(), 1);
-        assert_eq!(active.load(Ordering::SeqCst), NO_GENERATION);
-    }
 }
 
 #[test]

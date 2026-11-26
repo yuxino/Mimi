@@ -134,13 +134,6 @@ internal class ServiceProfileRepository(private val disk: ProfilePersistence) {
         return publish(current.copy(activeId = id))
     }
 
-    @Synchronized fun rename(id: String, name: String): Boolean {
-        val current = catalog()
-        val cleaned = name.trim()
-        if (cleaned.isEmpty() || cleaned.length > 80 || cleaned.any(Char::isISOControl) || current.entries.none { it.profile.id == id }) return false
-        return publish(current.copy(entries = current.entries.map { if (it.profile.id == id) it.copy(profile = it.profile.copy(name = cleaned)) else it }))
-    }
-
     @Synchronized fun duplicate(id: String, name: String): String? = save(null, name, contents(id))
 
     @Synchronized fun delete(id: String): Boolean {

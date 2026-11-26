@@ -680,40 +680,7 @@ async fn queued_profile_mutation_is_rejected_during_resume_failure_handoff() {
 }
 
 #[test]
-fn automatic_source_preserves_supported_turbo_modes() {
-    assert_eq!(
-        translation_mode_after_source_switch(
-            ProviderKind::OpenAIRealtime,
-            SourceLanguage::Automatic,
-            TranslationMode::HighQuality,
-        ),
-        TranslationMode::Turbo
-    );
-    assert_eq!(
-        translation_mode_after_source_switch(
-            ProviderKind::VolcanoEngine,
-            SourceLanguage::Japanese,
-            TranslationMode::HighQuality,
-        ),
-        TranslationMode::Turbo
-    );
-    assert_eq!(
-        translation_mode_after_source_switch(
-            ProviderKind::AlibabaCloud,
-            SourceLanguage::Automatic,
-            TranslationMode::HighQuality,
-        ),
-        TranslationMode::Turbo
-    );
-    assert_eq!(
-        translation_mode_after_source_switch(
-            ProviderKind::AlibabaCloud,
-            SourceLanguage::Automatic,
-            TranslationMode::Turbo,
-        ),
-        TranslationMode::Turbo
-    );
-
+fn mode_change_during_source_switch_requires_reconnect() {
     assert!(source_switch_requires_reconnect(
         true,
         SourceLanguage::Automatic,

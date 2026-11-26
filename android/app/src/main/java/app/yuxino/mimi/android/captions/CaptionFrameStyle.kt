@@ -4,10 +4,6 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.view.View
-import app.yuxino.mimi.android.provider.ServiceProvider
-import app.yuxino.mimi.android.provider.TextTranslationProvider
-import app.yuxino.mimi.android.services.presentation.serviceProviderIcon
-import app.yuxino.mimi.android.services.presentation.translationProviderIcon
 import app.yuxino.mimi.android.settings.SettingsStore
 
 internal data class CaptionFrameStyle(
@@ -38,17 +34,6 @@ internal object CaptionSurface {
             if (immersive) 0 else style.backgroundAlpha.coerceIn(0, 100) * 255 / 100, 0, 0, 0,
         ))
     }
-}
-
-internal fun captionProviderMarks(context: Context): List<Int> {
-    val provider = ServiceProvider.fromId(SettingsStore.provider(context))
-    val translator = SettingsStore.textTranslationProvider(context)
-    return buildList {
-        add(serviceProviderIcon(provider))
-        if (SettingsStore.configuration(context).usesIndependentTextTranslation && translator != TextTranslationProvider.BUILTIN && translator != TextTranslationProvider.NONE) {
-            add(translationProviderIcon(translator))
-        }
-    }.distinct()
 }
 
 /** Native frame sizing shared by the preview and WindowManager adapter. */

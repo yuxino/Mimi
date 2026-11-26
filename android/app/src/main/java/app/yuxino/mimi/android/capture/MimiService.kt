@@ -1,21 +1,12 @@
 package app.yuxino.mimi.android.capture
 
 import android.Manifest
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.content.pm.ServiceInfo
 import android.content.res.Configuration
-import android.graphics.Color
-import android.graphics.PixelFormat
-import android.graphics.Rect
-import android.graphics.drawable.GradientDrawable
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
@@ -24,32 +15,12 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
-import android.view.ContextThemeWrapper
-import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
-import android.view.WindowInsets
 import android.view.WindowManager
-import android.widget.FrameLayout
-import android.widget.ImageView
-import android.widget.ScrollView
-import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
-import app.yuxino.mimi.android.MainActivity
 import app.yuxino.mimi.android.MimiApplication
 import app.yuxino.mimi.android.R
-import app.yuxino.mimi.android.captions.CaptionAdjustmentSwitch
-import app.yuxino.mimi.android.captions.CaptionDisplayMode
-import app.yuxino.mimi.android.captions.CaptionFrameContent
-import app.yuxino.mimi.android.captions.CaptionFrameStyle
-import app.yuxino.mimi.android.captions.CaptionOverlayHost
-import app.yuxino.mimi.android.captions.CaptionPanelActions
-import app.yuxino.mimi.android.captions.CaptionPanelView
-import app.yuxino.mimi.android.captions.CaptionSurface
-import app.yuxino.mimi.android.captions.CompactCaptionView
-import app.yuxino.mimi.android.captions.ImmersiveModeHelp
-import app.yuxino.mimi.android.captions.captionPanelHeight
 import app.yuxino.mimi.android.localization.InterfaceLanguage
 import app.yuxino.mimi.android.onboarding.FirstRunEvidence
 import app.yuxino.mimi.android.provider.EngineListener
@@ -59,16 +30,13 @@ import app.yuxino.mimi.android.provider.SharedRuntimeEngine
 import app.yuxino.mimi.android.provider.SubtitleBus
 import app.yuxino.mimi.android.services.presentation.runtimeModelNames
 import app.yuxino.mimi.android.settings.SettingsStore
-import com.google.android.material.materialswitch.MaterialSwitch
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
-import kotlin.concurrent.thread
 import org.json.JSONObject
 
 /**
  * Foreground service that owns independent selected audio-capture lanes and
- * the overlay subtitle window. One service, one lifecycle, one notification.
+ * coordinates the overlay window, session history archive and notification.
  */
 class MimiService : Service() {
 
@@ -89,7 +57,7 @@ class MimiService : Service() {
             }
             updateCaptureObservations()
             stateListeners.forEach { listener -> listener() }
-            renderBus()
+            overlayWindow.render()
             mainHandler.postDelayed(this, 1_000)
         }
     }
@@ -101,63 +69,61 @@ class MimiService : Service() {
         !getSystemService(android.os.PowerManager::class.java).isInteractive
 
     private fun queueUnlockContinuation(permissionsValid: Boolean, locked: Boolean) {
-        (application as MimiApplication).captionShortcuts.onLockInterruption(captureInput,
-            active = isRunning && mediaProjection != null && lanes.isNotEmpty(), preview = previewMode,
-            stopping = finishingSession || isStopping, permissionsValid = permissionsValid, locked = locked)
+        (application as MimiApplication).captionShortcuts.onLockInterruption(
+            captureInput,
+            active = isRunning && mediaProjection != null && lanes.isNotEmpty(),
+            preview = overlayWindow.isPreviewMode,
+            stopping = finishingSession || isStopping,
+            permissionsValid = permissionsValid,
+            locked = locked,
+        )
     }
+
     private fun updateCaptureObservations() {
         val now = SystemClock.elapsedRealtime()
         captureObservations = lanes.mapNotNull { (source, lane) -> lane.observation(now)?.let { source to it } }.toMap()
         captureObservation = captureObservationForSources(captureObservations.values)
     }
-    private var testCaptureMode = false
-    private var historyHandle: Long? = null
+
     private var stopObservingStorage: (() -> Unit)? = null
-    private val historyStates = mutableMapOf<CaptureSource, Pair<Boolean, Boolean>>()
     private var generation = 0
     private var finishingSession = false
     private var projectionCallback: MediaProjection.Callback? = null
-    private lateinit var immersiveHelp: ImmersiveModeHelp
 
+    // Retained on MimiService for instrumentation geometry checks reading this window host.
+    @Suppress("unused")
     private var windowManager: WindowManager? = null
-    private var overlayView: View? = null
-    private var overlayParams: WindowManager.LayoutParams? = null
-    private var immersiveExitView: View? = null
-    private var immersiveExitParams: WindowManager.LayoutParams? = null
-    private var compactView: View? = null
-    private var expandedView: View? = null
-    private val overlayPlacement = OverlayPlacement()
-    private val expanded get() = overlayPlacement.isExpanded
-    private val immersiveSession get() = overlayPlacement.isImmersive
-    private var draggingOverlay = false
-    private var resizeWidthPercent: Int? = null
-    private var resizeHeightPercent: Int? = null
-    private var overlayGeometryGeneration = 0
-    private val ownUiUpdate = Runnable { renderBus() }
-    private var previewMode = false
-    private var sessionSourceLanguage = "auto"
-    private var sessionTargetLanguage = "zh"
-    private var sessionOriginalOnly = false
-    private var statusView: TextView? = null
-    private var historyView: TextView? = null
-    private var sourceView: TextView? = null
-    private var translationView: TextView? = null
-    private var expandedStatusView: TextView? = null
-    private var expandedSourceView: TextView? = null
-    private var expandedTranslationView: TextView? = null
-    private var transcriptScrollView: ScrollView? = null
+
+    private val overlayWindow = CaptureOverlayWindow(
+        service = this,
+        mainHandler = mainHandler,
+        onWindowManagerChanged = { windowManager = it },
+        currentGeneration = { generation },
+        isRunning = { isRunning },
+        isStopping = { isStopping },
+        currentObservation = { captureObservation },
+        onFirstRunCompleted = { stateListeners.forEach { it() } },
+    )
+    private val historyTracker = SessionHistoryTracker(
+        context = this,
+        readStatus = { historySaveError to historyLimited },
+        writeStatus = { saveError, limited, notify ->
+            historySaveError = saveError
+            historyLimited = limited
+            if (notify) stateListeners.forEach { it() }
+        },
+        onAsyncFinalized = Companion::applyFinalizedHistoryStatus,
+    )
+
+    private val ownUiUpdate = Runnable { overlayWindow.render() }
     private var interfaceLocaleTags = ""
     private val interfaceLanguageListener: () -> Unit = { mainHandler.post { refreshInterfaceLanguage() } }
     private var stopObservingAppearance: (() -> Unit)? = null
-    private var adjustmentSwitch: MaterialSwitch? = null
-    private var adjustmentParams: WindowManager.LayoutParams? = null
-    private var adjustable = true
-    private var syncingAdjustment = false
-    private val appearanceUpdate = Runnable { applyAppearance() }
+    private val appearanceUpdate = Runnable { overlayWindow.applyAppearance() }
     private val captionUpdatePending = AtomicBoolean(false)
     private val captionUpdate = Runnable {
         captionUpdatePending.set(false)
-        renderBus()
+        overlayWindow.render()
     }
 
     private val busListener = object : SubtitleBus.Listener {
@@ -197,7 +163,6 @@ class MimiService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        immersiveHelp = ImmersiveModeHelp(ContextThemeWrapper(InterfaceLanguage.context(this), R.style.Theme_Mimi), overlayWindow = true)
         interfaceLocaleTags = InterfaceLanguage.context(this).resources.configuration.locales.toLanguageTags()
         InterfaceLanguage.addListener(interfaceLanguageListener)
         stopObservingAppearance = SettingsStore.observeAppearance(this) {
@@ -206,19 +171,14 @@ class MimiService : Service() {
         }
         stopObservingStorage = SettingsStore.observeSessionStorage(this) {
             mainHandler.post {
-                if (!SettingsStore.retainSessionHistory(this)) disableSessionHistory()
+                if (!SettingsStore.retainSessionHistory(this)) historyTracker.disable()
             }
         }
         ownUiChanged = {
             mainHandler.removeCallbacks(ownUiUpdate)
-            if (ownUiVisible) {
-                if (!previewOverOwnUi) {
-                    immersiveHelp.dismiss()
-                }
-                renderBus()
-            } else mainHandler.postDelayed(ownUiUpdate, 120)
+            if (ownUiVisible) overlayWindow.render() else mainHandler.postDelayed(ownUiUpdate, 120)
         }
-        createChannel()
+        CaptureServiceNotification.createChannel(this)
         SubtitleBus.addListener(busListener)
     }
 
@@ -252,23 +212,22 @@ class MimiService : Service() {
             return START_NOT_STICKY
         }
         if (intent?.action == ACTION_APPLY_APPEARANCE) {
-            applyAppearance()
-            if (overlayView == null && !isRunning) stopSelf()
+            overlayWindow.applyAppearance()
+            if (!overlayWindow.isShowing && !isRunning) stopSelf()
             return START_NOT_STICKY
         }
-        if (intent?.action == ACTION_UI_PREVIEW_HISTORY && previewMode &&
+        if (intent?.action == ACTION_UI_PREVIEW_HISTORY && overlayWindow.isPreviewMode &&
             applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
         ) {
-            previewHistoryEnabled = true
-            seedPreviewHistory()
-            renderBus()
+            overlayWindow.enablePreviewHistory()
             return START_NOT_STICKY
         }
-        if (isRunning || overlayView != null) return START_NOT_STICKY
+        if (isRunning || overlayWindow.isShowing) return START_NOT_STICKY
         // Instrumentation can exercise the ordinary consent/shortcut path with an
         // in-process discard engine. A fresh visible-activity request is still required.
         val testEngines = if ((intent?.action == null || intent.action == ACTION_CAPTURE_TEST) &&
-            applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) captureEnginesForTests else null
+            applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+        ) captureEnginesForTests else null
         if (intent?.action == ACTION_CAPTURE_TEST && testEngines == null) {
             stopSelf()
             return START_NOT_STICKY
@@ -278,15 +237,7 @@ class MimiService : Service() {
         if (intent?.action == ACTION_UI_PREVIEW &&
             applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
         ) {
-            previewMode = true
-            previewOverOwnUi = intent.getBooleanExtra("preview_over_own_ui", false)
-            previewHistoryEnabled = false
-            sessionSourceLanguage = "ja"
-            SubtitleBus.clear()
-            SubtitleBus.setHistoryLimit(0)
-            SubtitleBus.onSourceDraft("もう少し歩いてみましょう。", "ja")
-            SubtitleBus.onTranslationDraft("再往前走一会儿吧。")
-            showOverlay()
+            overlayWindow.showPreview(overOwnUi = intent.getBooleanExtra("preview_over_own_ui", false))
             return START_NOT_STICKY
         }
         // Actual capture is always delivered from a currently visible Activity.
@@ -298,7 +249,8 @@ class MimiService : Service() {
         val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, Int.MIN_VALUE) ?: Int.MIN_VALUE
         val resultData = intent?.compatGetParcelableExtra(EXTRA_RESULT_DATA)
         if (input == null || input.needsProjection && (resultCode != android.app.Activity.RESULT_OK || resultData == null) ||
-            testEngines != null && testEngines.keys != input.sources.toSet()) {
+            testEngines != null && testEngines.keys != input.sources.toSet()
+        ) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -315,7 +267,7 @@ class MimiService : Service() {
             } else null
             startCapture(input, projection, testEngines)
             setRunning(true)
-            renderBus()
+            overlayWindow.render()
         } catch (_: Exception) {
             lastCaptureError = "capture.start_failed"
             Log.w(TAG, "capture_start_failed")
@@ -326,52 +278,28 @@ class MimiService : Service() {
     }
 
     private fun startAsForeground(input: CaptureInput) {
-        val type = (if (input.needsProjection) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION else 0) or
-            (if (input.usesMicrophone && Build.VERSION.SDK_INT >= 30) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0)
-        startForeground(NOTIFICATION_ID, notification(), type)
+        startForeground(
+            CaptureServiceNotification.NOTIFICATION_ID,
+            CaptureServiceNotification.build(this, input),
+            CaptureServiceNotification.foregroundServiceType(input),
+        )
         captureForegroundTypesForTests = foregroundServiceType
     }
 
-    private fun notification(): Notification {
-        val stopIntent = PendingIntent.getService(
-            this, 1,
-            Intent(this, MimiService::class.java).setAction(ACTION_STOP),
-            PendingIntent.FLAG_IMMUTABLE,
-        )
-        return Notification.Builder(this, CHANNEL_ID)
-            .apply {
-                if (Build.VERSION.SDK_INT >= 31) setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
-            }
-            .setSmallIcon(R.drawable.ic_mimi)
-            .setContentTitle(interfaceString(R.string.notification_title))
-            .setContentText(interfaceString(if (captureInput == CaptureInput.MICROPHONE) R.string.notification_microphone_text else if (captureInput == CaptureInput.BOTH) R.string.capture_both_source_hint else R.string.notification_text))
-            .setContentIntent(mainActivityIntent())
-            .addAction(
-                Notification.Action.Builder(
-                    null, interfaceString(R.string.stop_action), stopIntent,
-                ).build(),
-            )
-            .setOngoing(true)
-            .build()
-    }
-
-    private fun mainActivityIntent(): PendingIntent =
-        PendingIntent.getActivity(
-            this, 0,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE,
-        )
-
-    private fun startCapture(input: CaptureInput, projection: MediaProjection?, testEngines: Map<CaptureSource, ProviderEngine>? = null) {
+    private fun startCapture(
+        input: CaptureInput,
+        projection: MediaProjection?,
+        testEngines: Map<CaptureSource, ProviderEngine>? = null,
+    ) {
         check(ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             "audio_permission_required"
         }
-        check(android.provider.Settings.canDrawOverlays(this) &&
-            getSystemService(android.os.PowerManager::class.java).isInteractive &&
-            !getSystemService(android.app.KeyguardManager::class.java).isDeviceLocked) { "capture_permission_or_lock_changed" }
+        check(
+            android.provider.Settings.canDrawOverlays(this) &&
+                getSystemService(android.os.PowerManager::class.java).isInteractive &&
+                !getSystemService(android.app.KeyguardManager::class.java).isDeviceLocked,
+        ) { "capture_permission_or_lock_changed" }
         val sessionGeneration = ++generation
-        testCaptureMode = testEngines != null
-        sessionOriginalOnly = false
         SubtitleBus.clear()
         SubtitleBus.setHistoryLimit(SettingsStore.historyLines(this))
         synchronized(firstRunEvidence) { firstRunEvidence.reset() }
@@ -390,20 +318,9 @@ class MimiService : Service() {
         }
         captureProjectionForTests = if (testEngines != null) projection else null
         val configuration = if (testEngines == null) SettingsStore.runtimeConfiguration(this) else null
-        sessionSourceLanguage = configuration?.getString("sourceLanguage") ?: "auto"
-        sessionTargetLanguage = configuration?.getString("targetLanguage") ?: "original"
-        sessionOriginalOnly = sessionTargetLanguage == "original"
+        val sessionOriginalOnly = (configuration?.getString("targetLanguage") ?: "original") == "original"
         activeModelNames = configuration?.let { runtimeModelNames(it) } ?: emptyList()
-        historyStatusGeneration.incrementAndGet()
-        historySaveError = false
-        historyLimited = false
-        historyStates.clear()
-        if (testEngines == null && SettingsStore.retainSessionHistory(this)) {
-            historyHandle = runCatching {
-                NativeRuntimeConfiguration.exchange(JSONObject().put("operation", "history_begin")
-                    .put("directory", java.io.File(filesDir, "session-history").absolutePath)).getLong("historyHandle")
-            }.getOrElse { historySaveError = true; null }
-        }
+        val historyHandle = historyTracker.begin(testEngines == null && SettingsStore.retainSessionHistory(this))
 
         for (source in input.sources) {
             fun dispatch(action: () -> Unit) {
@@ -411,12 +328,8 @@ class MimiService : Service() {
             }
             val sessionEngine = testEngines?.get(source) ?: run {
                 val listener = object : EngineListener {
-                    override fun onRuntimeSnapshot(state: org.json.JSONObject, originalOnly: Boolean) = dispatch {
-                        val previousStorage = historySaveError to historyLimited
-                        historyStates[source] = state.optBoolean("historySaveError") to state.optBoolean("historyLimited")
-                        historySaveError = historySaveError || historyStates.values.any { it.first }
-                        historyLimited = historyLimited || historyStates.values.any { it.second }
-                        if (previousStorage != (historySaveError to historyLimited)) stateListeners.forEach { it() }
+                    override fun onRuntimeSnapshot(state: JSONObject, originalOnly: Boolean) = dispatch {
+                        historyTracker.onSnapshot(source, state)
                         SubtitleBus.onRuntimeSnapshot(state, originalOnly, source.id)
                         if (SubtitleBus.displayPairFinal) scheduleAutoHide() else cancelAutoHide()
                     }
@@ -437,7 +350,7 @@ class MimiService : Service() {
         // tears the whole session down; it cannot silently become single-source.
         for (lane in lanes.values) startCaptureLane(lane, sessionGeneration)
         updateCaptureObservations()
-        showOverlay()
+        overlayWindow.show(originalOnly = sessionOriginalOnly)
         mainHandler.post(healthTick)
     }
 
@@ -459,7 +372,6 @@ class MimiService : Service() {
     }
 
     private fun releaseSession() {
-        immersiveHelp.dismiss()
         ++generation
         finishingSession = false
         isStopping = false
@@ -471,17 +383,7 @@ class MimiService : Service() {
         lanes.clear()
         retired.forEach(CaptureLane::stopCapture)
         retired.forEach(CaptureLane::release)
-        historyHandle?.let { handle ->
-            val operation = if (SettingsStore.retainSessionHistory(this)) "history_finish" else "history_disable"
-            runCatching { NativeRuntimeConfiguration.exchange(JSONObject().put("operation", operation).put("historyHandle", handle)) }
-                .onSuccess { response ->
-                    historySaveError = historySaveError || response.optJSONObject("state")?.optBoolean("saveError") == true
-                    if (response.optBoolean("pending")) observeHistoryFinalization(handle)
-                }
-                .onFailure { historySaveError = true }
-        }
-        historyHandle = null
-        historyStates.clear()
+        historyTracker.finish(retain = SettingsStore.retainSessionHistory(this))
         synchronized(firstRunEvidence) { firstRunEvidence.reset() }
         val projection = mediaProjection
         mediaProjection = null
@@ -491,9 +393,7 @@ class MimiService : Service() {
         projectionCallback = null
         try { projection?.stop() } catch (_: Exception) { }
         SubtitleBus.finishSnapshot()
-        hideOverlay()
-        previewMode = false
-        testCaptureMode = false
+        overlayWindow.hide()
         activeModelNames = emptyList()
         setRunning(false)
     }
@@ -501,7 +401,10 @@ class MimiService : Service() {
     /** User stop drains accepted work; revocation/errors/destruction still abort. */
     private fun finishSession() {
         if (finishingSession) return
-        if (lanes.isEmpty() || previewMode) { stopEverything(); return }
+        if (lanes.isEmpty() || overlayWindow.isPreviewMode) {
+            stopEverything()
+            return
+        }
         finishingSession = true
         isStopping = true
         stateListeners.forEach { it() }
@@ -522,23 +425,12 @@ class MimiService : Service() {
                     remaining--
                     if (remaining == 0) {
                         // Snapshot publication is queued before each finish callback.
-                        renderBus()
+                        overlayWindow.render()
                         mainHandler.post { if (generation == owner && finishingSession) stopEverything() }
                     }
                 }
             }
         }
-    }
-
-    private fun disableSessionHistory() {
-        val handle = historyHandle ?: return
-        runCatching { NativeRuntimeConfiguration.exchange(JSONObject().put("operation", "history_disable").put("historyHandle", handle)) }
-            .onSuccess { response ->
-                historySaveError = response.optJSONObject("state")?.optBoolean("saveError") == true
-                historyLimited = false
-                historyStates.clear()
-            }.onFailure { historySaveError = true }
-        stateListeners.forEach { it() }
     }
 
     private fun stopEverything() {
@@ -563,15 +455,10 @@ class MimiService : Service() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        // A gesture measured in the previous screen's axes cannot be committed
-        // after rotation. Reapply saved bounds and clamp only the visible frame.
-        draggingOverlay = false
-        resizeWidthPercent = null
-        resizeHeightPercent = null
-        overlayGeometryGeneration++
+        overlayWindow.onConfigurationChanged()
         mainHandler.post {
             refreshInterfaceLanguage()
-            applyAppearance()
+            overlayWindow.applyAppearance()
         }
     }
 
@@ -579,605 +466,8 @@ class MimiService : Service() {
         val localeTags = InterfaceLanguage.context(this).resources.configuration.locales.toLanguageTags()
         if (localeTags == interfaceLocaleTags) return
         interfaceLocaleTags = localeTags
-        immersiveHelp.dismiss()
-        immersiveHelp = ImmersiveModeHelp(ContextThemeWrapper(InterfaceLanguage.context(this), R.style.Theme_Mimi), overlayWindow = true)
-        fun label(tag: String, text: Int?, description: Int) {
-            val control = overlayView?.findViewWithTag<View>(tag)
-                ?: immersiveExitView?.takeIf { it.tag == tag } ?: return
-            if (text != null && control is TextView) control.text = interfaceString(text)
-            control.contentDescription = interfaceString(description)
-            control.tooltipText = control.contentDescription
-        }
-        updateOverlayFontSize()
-        label("exit-immersive", null, R.string.overlay_exit_immersive)
-        label("overlay-drag", null, R.string.overlay_drag)
-        label("overlay-resize", null, R.string.overlay_resize)
-        adjustmentSwitch?.contentDescription = interfaceString(R.string.overlay_adjust)
-        expandedView?.requestLayout()
-        renderBus()
-        if (isRunning) {
-            createChannel()
-            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification())
-        }
-    }
-
-    /** The actual floating window: a small live line that opens a bounded reading panel. */
-    private fun showOverlay() {
-        if (overlayView != null) return
-        val displayManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        @Suppress("DEPRECATION")
-        val overlayContext = if (Build.VERSION.SDK_INT >= 30) {
-            createDisplayContext(displayManager.defaultDisplay)
-                .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
-        } else this
-        val wm = overlayContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        windowManager = wm
-
-        adjustable = SettingsStore.overlayAdjustable(this)
-        overlayPlacement.reset(SettingsStore.overlayYOffset(this), SettingsStore.immersiveSubtitles(this))
-        overlayPlacement.setExpandedOffsetDp(SettingsStore.expandedYOffset(this))
-        val compact = CompactCaptionView(this)
-        val status = compact.status; val source = compact.source; val translation = compact.translation
-        compact.applyStyle(CaptionFrameStyle.saved(this, sessionOriginalOnly), immersiveSession)
-        val panel = buildExpandedPanel()
-        val root = CaptionOverlayHost(this).apply {
-            tag = "mimi-overlay"
-            addView(compact, FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER,
-            ))
-            compact.visibility = if (expanded) View.GONE else View.VISIBLE
-            panel.visibility = if (expanded) View.VISIBLE else View.GONE
-            addView(panel, FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT,
-            ))
-        }
-
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-                or (if (immersiveSession || !adjustable) WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE else 0),
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            y = overlayPlacement.compactY(resources.displayMetrics.density, overlayAvailableSize().second, 0)
-            fitOverlayInsets(this)
-            // Android 12+ passes touches through an untrusted overlay only when
-            // its window opacity stays at or below the system threshold (0.8).
-            // Android blocks touches through an obscuring overlay above .8.
-            // Keep this cap in BOTH adjustment states so toggling never dims captions.
-            alpha = 0.8f
-        }
-
-        fun attachDrag(control: View) {
-            var initialY = 0
-            var initialX = 0
-            var touchY = 0f
-            var touchX = 0f
-            var dragged = false
-            var gestureGeneration = -1
-            control.setOnTouchListener { _, event ->
-                if (immersiveSession || !adjustable) return@setOnTouchListener false
-                if (event.actionMasked != MotionEvent.ACTION_DOWN && gestureGeneration != overlayGeometryGeneration)
-                    return@setOnTouchListener true
-                when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        gestureGeneration = overlayGeometryGeneration
-                        initialY = params.y; initialX = params.x
-                        touchY = event.rawY; touchX = event.rawX
-                        dragged = false; draggingOverlay = false
-                        true
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        if (kotlin.math.abs(event.rawY - touchY) > dp(8) || kotlin.math.abs(event.rawX - touchX) > dp(8)) dragged = true
-                        if (dragged) {
-                            draggingOverlay = true
-                            val (width, height) = overlayAvailableSize()
-                            params.y = OverlayPlacement.clampY((initialY - (event.rawY - touchY)).toInt(), height, root.height)
-                            params.x = OverlayPlacement.clampX((initialX + event.rawX - touchX).toInt(), width, root.width)
-                            wm.updateViewLayout(root, params)
-                            updateOverlayGeometry()
-                        }
-                        true
-                    }
-                    MotionEvent.ACTION_UP -> {
-                        draggingOverlay = false
-                        if (dragged) {
-                            try {
-                                val density = resources.displayMetrics.density
-                                SettingsStore.setOverlayPosition(this, true,
-                                    kotlin.math.round(params.x / density).toInt(), kotlin.math.round(params.y / density).toInt())
-                                overlayPlacement.setExpandedOffsetDp(SettingsStore.expandedYOffset(this))
-                            } catch (_: RuntimeException) { Toast.makeText(InterfaceLanguage.context(this), R.string.service_save_failed, Toast.LENGTH_LONG).show() }
-                            updateOverlayGeometry()
-                        } else control.performClick()
-                        true
-                    }
-                    MotionEvent.ACTION_CANCEL -> { draggingOverlay = false; updateOverlayGeometry(); true }
-                    else -> false
-                }
-            }
-        }
-        attachDrag(panel.findViewWithTag("overlay-drag"))
-        var resizeStartWidth = 0
-        var resizeStartHeight = 0
-        var resizeStartX = 0f
-        var resizeStartY = 0f
-        var resizeStartOffsetX = 0
-        var resizeStartOffsetY = 0
-        var resizeGestureGeneration = -1
-        panel.findViewWithTag<View>("overlay-resize").setOnTouchListener { control, event ->
-            if (immersiveSession || !adjustable) return@setOnTouchListener false
-            if (event.actionMasked != MotionEvent.ACTION_DOWN && resizeGestureGeneration != overlayGeometryGeneration)
-                return@setOnTouchListener true
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    resizeGestureGeneration = overlayGeometryGeneration
-                    resizeStartWidth = root.width; resizeStartHeight = root.height
-                    resizeStartX = event.rawX; resizeStartY = event.rawY
-                    resizeStartOffsetX = params.x; resizeStartOffsetY = params.y
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val deltaX = event.rawX - resizeStartX
-                    val deltaY = event.rawY - resizeStartY
-                    if (kotlin.math.abs(deltaX) > dp(8) || kotlin.math.abs(deltaY) > dp(8)) {
-                        val (width, height) = overlayAvailableSize()
-                        draggingOverlay = true
-                        resizeWidthPercent = ((resizeStartWidth + deltaX) * 100 / width).toInt().coerceIn(55, 100)
-                        resizeHeightPercent = ((resizeStartHeight + deltaY) * 100 / height).toInt().coerceIn(10, 70)
-                        // Keep the top-left corner fixed while the touched corner follows the finger.
-                        params.x = resizeStartOffsetX + ((captionWindowWidth(true) - resizeStartWidth) / 2)
-                        params.y = resizeStartOffsetY - (expandedPanelHeight() - resizeStartHeight)
-                        updateOverlayGeometry(); expandedView?.requestLayout()
-                    }
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    val width = resizeWidthPercent
-                    val height = resizeHeightPercent
-                    if (width == null || height == null) control.performClick()
-                    else try {
-                        val density = resources.displayMetrics.density
-                        SettingsStore.setOverlayBounds(this, width, height,
-                            kotlin.math.round(params.x / density).toInt(), kotlin.math.round(params.y / density).toInt())
-                        overlayPlacement.setExpandedOffsetDp(SettingsStore.expandedYOffset(this))
-                    } catch (_: RuntimeException) {
-                        Toast.makeText(InterfaceLanguage.context(this), R.string.service_save_failed, Toast.LENGTH_LONG).show()
-                    }
-                    resizeWidthPercent = null; resizeHeightPercent = null; draggingOverlay = false
-                    updateOverlayGeometry(); true
-                }
-                MotionEvent.ACTION_CANCEL -> {
-                    resizeWidthPercent = null; resizeHeightPercent = null; draggingOverlay = false
-                    updateOverlayGeometry(); true
-                }
-                else -> false
-            }
-        }
-
-        root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            if (overlayView === root) updateOverlayGeometry()
-        }
-        root.setOnApplyWindowInsetsListener { _, insets ->
-            mainHandler.post { if (overlayView === root) updateOverlayGeometry() }
-            insets
-        }
-        applyOverlaySurface(compact, panel)
-        wm.addView(root, params)
-        overlayView = root
-        overlayParams = params
-        compactView = compact
-        expandedView = panel
-        statusView = status
-        sourceView = source
-        translationView = translation
-        // Observe the real overlay drawing once per overlay, without accumulating listeners.
-        val renderGeneration = generation
-        overlayView?.viewTreeObserver?.addOnDrawListener {
-            val caption = (if (expanded) listOf(expandedTranslationView, expandedSourceView)
-                else listOf(translationView, sourceView)).firstOrNull { it?.isShown == true && !it.text.isNullOrBlank() }
-            val newlyComplete = synchronized(firstRunEvidence) {
-                val wasComplete = firstRunEvidence.complete
-                if (generation == renderGeneration && isRunning && caption != null) {
-                    firstRunEvidence.rendered(!caption.text.isNullOrBlank(), caption.isShown &&
-                        caption.width > 0 && caption.height > 0 && android.provider.Settings.canDrawOverlays(this), previewMode)
-                }
-                !wasComplete && firstRunEvidence.complete
-            }
-            if (newlyComplete) mainHandler.post {
-                getSharedPreferences("first_run", 0).edit().putBoolean("completed", true).apply()
-                stateListeners.forEach { it() }
-            }
-        }
-        if (immersiveSession) showImmersiveExitControl(wm) else showAdjustmentSwitch(wm)
-        (panel as CaptionPanelView).setAdjustable(adjustable)
-        updateOverlayFontSize()
-        renderBus()
-    }
-
-    private fun showImmersiveExitControl(wm: WindowManager) {
-        if (immersiveExitView != null) return
-        val exit = FrameLayout(this).apply {
-            tag = "exit-immersive"
-            contentDescription = interfaceString(R.string.overlay_exit_immersive)
-            isClickable = true; isFocusable = true
-            addView(ImageView(this@MimiService).apply {
-                setImageResource(R.drawable.ic_overlay_close)
-                setPadding(dp(5), dp(5), dp(5), dp(5))
-                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0x99000000.toInt()) }
-                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            }, FrameLayout.LayoutParams(dp(24), dp(24), Gravity.CENTER))
-            minimumWidth = dp(48); minimumHeight = dp(48)
-            setOnClickListener { setImmersiveMode(false) }
-            addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                if (immersiveExitView === this) updateOverlayGeometry()
-            }
-        }
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            // A tiny touchable companion keeps the caption itself touch-through.
-            // WindowManager fits both windows to the same safe display frame.
-            gravity = Gravity.BOTTOM or Gravity.RIGHT
-            x = dp(4)
-            y = exitControlY()
-            fitOverlayInsets(this)
-        }
-        wm.addView(exit, params)
-        immersiveExitView = exit
-        immersiveExitParams = params
-        updateOverlayGeometry()
-    }
-
-    private fun exitControlY(): Int = OverlayPlacement.exitY(
-        overlayParams?.y ?: 0, compactView?.height ?: 0, overlayAvailableSize().second,
-        immersiveExitView?.height?.takeIf { it > 0 } ?: dp(48), dp(6),
-        0,
-    )
-
-    private fun setImmersiveMode(enabled: Boolean) {
-        if (immersiveSession == enabled) return
-        if (enabled) {
-            immersiveHelp.requestEnable(onConfirmed = {
-                runCatching { applyImmersiveMode(true) }.onFailure {
-                    Toast.makeText(InterfaceLanguage.context(this), R.string.service_save_failed, Toast.LENGTH_LONG).show()
-                }
-            })
-        } else {
-            immersiveHelp.dismiss()
-            runCatching { applyImmersiveMode(false) }.onFailure {
-                Toast.makeText(InterfaceLanguage.context(this), R.string.service_save_failed, Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
-    private fun applyImmersiveMode(enabled: Boolean) {
-        SettingsStore.setImmersiveSubtitles(this, enabled)
-        applyAppearance()
-    }
-
-    private fun buildExpandedPanel(): View {
-        val panel = CaptionPanelView(this,
-            CaptionPanelActions(
-                home = { startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
-            ))
-        panel.applyStyle(CaptionFrameStyle.saved(this, sessionOriginalOnly))
-        expandedStatusView = panel.status; expandedSourceView = panel.source
-        expandedTranslationView = panel.translation; historyView = panel.history
-        transcriptScrollView = panel.transcriptScroll
-        panel.status.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updateOverlayGeometry() }
-        listOf(panel.source, panel.translation, panel.timestamp).forEach { row ->
-            row.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                mainHandler.post { if (expandedView === panel) updateOverlayGeometry() }
-            }
-        }
-        return panel
-    }
-
-    private var previewHistoryEnabled = false
-    private var previewOverOwnUi = false
-
-    private fun seedPreviewHistory() {
-        SubtitleBus.setHistoryLimit(3)
-        listOf(
-            "少し待ってください。" to "请稍等一下。",
-            "今日はいい天気ですね。" to "今天天气真好。",
-            "次はどこへ行きますか？" to "接下来去哪里？",
-        ).forEach { (source, translation) ->
-            SubtitleBus.onSourceFinal(source, "ja")
-            SubtitleBus.onTranslationFinal(translation)
-        }
-        SubtitleBus.onSourceDraft("もう少し歩いてみましょう。", "ja")
-        SubtitleBus.onTranslationDraft("再往前走一会儿吧。")
-    }
-
-    /** A separate touchable window is essential: the locked caption receives no input. */
-    private fun showAdjustmentSwitch(wm: WindowManager) {
-        if (adjustmentSwitch != null) return
-        val themed = ContextThemeWrapper(InterfaceLanguage.context(this), R.style.Theme_Mimi)
-        // Paint belongs to CaptionPanelView so native and preview share one
-        // surface. This fully inset window owns only input and accessibility.
-        val control = CaptionAdjustmentSwitch(themed, paintsControl = false).apply {
-            tag = "overlay-adjust"
-            isChecked = adjustable
-            setOnCheckedChangeListener { _, enabled ->
-                if (!syncingAdjustment) {
-                    val previous = adjustable
-                    try {
-                        SettingsStore.setOverlayAdjustable(this@MimiService, enabled)
-                        applyAdjustment(enabled)
-                    } catch (_: RuntimeException) {
-                        if (adjustable != previous) runCatching {
-                            SettingsStore.setOverlayAdjustable(this@MimiService, previous)
-                            applyAdjustment(previous)
-                        }
-                        syncingAdjustment = true
-                        isChecked = previous
-                        syncingAdjustment = false
-                        Toast.makeText(themed, R.string.service_save_failed, Toast.LENGTH_LONG).show()
-                    }
-                }
-            }
-            addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                if (adjustmentSwitch === this) updateOverlayGeometry()
-            }
-        }
-        val params = WindowManager.LayoutParams(dp(CaptionAdjustmentSwitch.TARGET_DP), dp(CaptionAdjustmentSwitch.TARGET_DP),
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-            PixelFormat.TRANSLUCENT).apply {
-            gravity = Gravity.BOTTOM or Gravity.RIGHT
-            fitOverlayInsets(this)
-        }
-        wm.addView(control, params)
-        adjustmentSwitch = control
-        adjustmentParams = params
-        updateOverlayGeometry()
-    }
-
-    private fun applyAdjustment(enabled: Boolean) {
-        if (adjustable != enabled) {
-            // Cancel, rather than persist, a gesture whose input ownership changed.
-            overlayGeometryGeneration++
-            draggingOverlay = false
-            resizeWidthPercent = null
-            resizeHeightPercent = null
-            adjustable = enabled
-        }
-        syncingAdjustment = true
-        adjustmentSwitch?.isChecked = enabled
-        syncingAdjustment = false
-        (expandedView as? CaptionPanelView)?.setAdjustable(enabled)
-        overlayParams?.let { params ->
-            val flags = if (immersiveSession || !enabled) params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-                else params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
-            val alpha = .8f
-            if (params.flags != flags || params.alpha != alpha) {
-                params.flags = flags; params.alpha = alpha
-                overlayView?.let { windowManager?.updateViewLayout(it, params) }
-            }
-        }
-        updateOverlayGeometry()
-    }
-
-    private fun applyAppearance() {
-        val root = overlayView ?: return
-        if (overlayPlacement.setImmersive(SettingsStore.immersiveSubtitles(this))) {
-            draggingOverlay = false
-            resizeWidthPercent = null; resizeHeightPercent = null
-            overlayGeometryGeneration++
-            val params = checkNotNull(overlayParams)
-            params.flags = if (immersiveSession || !adjustable) params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-                else params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
-            params.alpha = 0.8f
-            // Update child presentation before WindowManager measures the new
-            // compact frame or positions its companion restore control.
-            compactView?.visibility = if (expanded) View.GONE else View.VISIBLE
-            expandedView?.visibility = if (expanded) View.VISIBLE else View.GONE
-            if (immersiveSession) {
-                adjustmentSwitch?.let { windowManager?.removeView(it) }
-                adjustmentSwitch = null; adjustmentParams = null
-                showImmersiveExitControl(checkNotNull(windowManager))
-            } else {
-                immersiveExitView?.let { windowManager?.removeView(it) }
-                immersiveExitView = null
-                immersiveExitParams = null
-                showAdjustmentSwitch(checkNotNull(windowManager))
-            }
-            // Keep the same caption views, reading position and compact anchor.
-            windowManager?.updateViewLayout(root, params)
-        }
-        updateOverlayFontSize()
-        val compact = compactView
-        val panel = expandedView
-        if (compact != null && panel != null) applyOverlaySurface(compact, panel)
-        translationView?.setTextColor(SettingsStore.translationColor(this))
-        expandedTranslationView?.setTextColor(SettingsStore.translationColor(this))
-        overlayPlacement.setPreferredOffsetDp(SettingsStore.overlayYOffset(this))
-        overlayPlacement.setExpandedOffsetDp(SettingsStore.expandedYOffset(this))
-        updateOverlayGeometry()
-        expandedView?.requestLayout()
-        applyAdjustment(SettingsStore.overlayAdjustable(this))
-        renderBus()
-    }
-
-    /** Initial paint and live updates share the same renderer as the preview. */
-    private fun applyOverlaySurface(compact: View, panel: View) {
-        val style = CaptionFrameStyle.saved(this, sessionOriginalOnly)
-        CaptionSurface.apply(compact, style, immersiveSession)
-        CaptionSurface.apply(panel, style, false)
-    }
-
-    private fun updateOverlayFontSize() {
-        val style = CaptionFrameStyle.saved(this, sessionOriginalOnly)
-        (compactView as? CompactCaptionView)?.applyStyle(style, immersiveSession)
-        (expandedView as? CaptionPanelView)?.applyStyle(style)
-    }
-
-    /** WindowManager applies these insets once; y is relative to its safe frame. */
-    private fun fitOverlayInsets(params: WindowManager.LayoutParams) {
-        if (Build.VERSION.SDK_INT >= 30) {
-            params.setFitInsetsTypes(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
-            params.setFitInsetsIgnoringVisibility(true)
-        }
-    }
-
-    private fun overlayAvailableSize(): Pair<Int, Int> {
-        val wm = windowManager
-        if (Build.VERSION.SDK_INT >= 30 && wm != null) {
-            val metrics = wm.currentWindowMetrics
-            val insets = metrics.windowInsets.getInsetsIgnoringVisibility(
-                WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout(),
-            )
-            return OverlayPlacement.availableExtent(metrics.bounds.width(), insets.left, insets.right) to
-                OverlayPlacement.availableExtent(metrics.bounds.height(), insets.top, insets.bottom)
-        }
-        // API 29 keeps the platform's fitted overlay frame. Do not subtract
-        // system bars again from the already-fitted visible display frame.
-        val frame = Rect()
-        overlayView?.getWindowVisibleDisplayFrame(frame)
-        return if (!frame.isEmpty) frame.width() to frame.height()
-            else resources.displayMetrics.widthPixels to resources.displayMetrics.heightPixels
-    }
-
-    private fun updateOverlayGeometry() {
-        val root = overlayView ?: return
-        val params = overlayParams ?: return
-        val (width, height) = overlayAvailableSize()
-        val padding = dp(if (immersiveSession) 3 else 14) * 2
-        val windowWidth = captionWindowWidth(expanded)
-        val textWidth = (windowWidth - padding).coerceAtLeast(1)
-        listOf(statusView, sourceView, translationView).forEach {
-            if (it != null && it.maxWidth != textWidth) it.maxWidth = textWidth
-        }
-        val desiredWidth = windowWidth
-        val frameHeight = if (expanded) expandedPanelHeight() else WindowManager.LayoutParams.WRAP_CONTENT
-        val desiredHeight = frameHeight
-        val captionHeight = compactView?.height ?: 0
-        val preferredY = when {
-            draggingOverlay -> OverlayPlacement.clampY(params.y, height, if (expanded) desiredHeight else captionHeight)
-            expanded -> overlayPlacement.expandedY(resources.displayMetrics.density, height, desiredHeight)
-            else -> overlayPlacement.compactY(resources.displayMetrics.density, height, captionHeight)
-        }
-        val desiredY = OverlayPlacement.clampY(preferredY, height,
-            if (expanded) desiredHeight else captionHeight)
-        val desiredX = OverlayPlacement.clampX(if (draggingOverlay) params.x else
-            (SettingsStore.overlayXOffset(this, expanded) * resources.displayMetrics.density).toInt(), width, desiredWidth)
-        if (params.width != desiredWidth || params.height != desiredHeight || params.y != desiredY || params.x != desiredX) {
-            params.x = desiredX
-            params.width = desiredWidth
-            params.height = desiredHeight
-            params.y = desiredY
-            windowManager?.updateViewLayout(root, params)
-        }
-        adjustmentParams?.let { controlParams ->
-            val controlWidth = dp(CaptionAdjustmentSwitch.TARGET_DP)
-            val controlHeight = dp(CaptionAdjustmentSwitch.TARGET_DP)
-            val x = OverlayPlacement.adjustmentX(width, desiredWidth, params.x, controlWidth,
-                dp(CaptionAdjustmentSwitch.RIGHT_INSET_DP))
-            val y = OverlayPlacement.adjustmentY(height, params.y, desiredHeight, controlHeight, 0)
-            if (controlParams.x != x || controlParams.y != y) {
-                controlParams.x = x; controlParams.y = y
-                adjustmentSwitch?.let { windowManager?.updateViewLayout(it, controlParams) }
-            }
-        }
-        immersiveExitParams?.let { exitParams ->
-            val y = exitControlY()
-            val x = maxOf(dp(4), (width - root.width) / 2 - params.x)
-            if (exitParams.y != y || exitParams.x != x) {
-                exitParams.y = y
-                exitParams.x = x
-                immersiveExitView?.let { windowManager?.updateViewLayout(it, exitParams) }
-            }
-        }
-    }
-
-    private fun captionWindowWidth(expanded: Boolean): Int = OverlayPlacement.windowWidth(
-        overlayAvailableSize().first, resizeWidthPercent ?: SettingsStore.overlayWidthPercent(this), dp(if (expanded) 176 else 160), dp(8))
-
-    private fun expandedPanelHeight(): Int {
-        val availableHeight = overlayAvailableSize().second
-        val panel = expandedView as? CaptionPanelView
-        val chrome = panel?.chromeHeight() ?: dp(CaptionPanelView.CHROME_HEIGHT_DP)
-        val reading = panel?.minimumReadingHeight() ?: dp(64)
-        return captionPanelHeight(availableHeight,
-            resizeHeightPercent ?: SettingsStore.overlayHeightPercent(this), chrome, reading)
-    }
-
-    private fun hideOverlay() {
-        adjustmentSwitch?.let { windowManager?.removeView(it) }
-        adjustmentSwitch = null; adjustmentParams = null
-        try {
-            immersiveExitView?.let { windowManager?.removeView(it) }
-        } catch (_: Exception) {
-        }
-        immersiveExitView = null
-        immersiveExitParams = null
-        try {
-            overlayView?.let { windowManager?.removeView(it) }
-        } catch (_: Exception) {
-        }
-        overlayView = null
-        overlayParams = null
-        compactView = null
-        expandedView = null
-        overlayPlacement.reset(overlayPlacement.preferredOffsetDp, false)
-        draggingOverlay = false
-        statusView = null
-        historyView = null
-        sourceView = null
-        translationView = null
-        expandedStatusView = null
-        expandedSourceView = null
-        expandedTranslationView = null
-        transcriptScrollView = null
-    }
-
-    private fun renderBus() {
-        val maxHistory = if (previewMode) (if (previewHistoryEnabled) 3 else 0)
-            else SettingsStore.historyLines(this)
-        val mode = if (sessionOriginalOnly) CaptionDisplayMode.ORIGINAL else SettingsStore.displayMode(this)
-        val content = CaptionFrameContent.live(this, mode, maxHistory,
-            captureObservation?.state, isRunning, isStopping)
-        val statusLine = content.status
-        (compactView as? CompactCaptionView)?.let {
-            it.showContent(content, mode)
-            it.source.setTextColor(if (mode == CaptionDisplayMode.ORIGINAL) SettingsStore.translationColor(this) else 0xFFE7E7E7.toInt())
-        }
-        (expandedView as? CaptionPanelView)?.let {
-            it.showContent(content, mode, expanded)
-            it.source.setTextColor(if (mode == CaptionDisplayMode.ORIGINAL) SettingsStore.translationColor(this) else 0xFFD5D5D5.toInt())
-        }
-        updateOverlayGeometry()
-        val hasCaption = listOf(sourceView, translationView).any {
-            it?.visibility == View.VISIBLE && !it.text.isNullOrBlank()
-        }
-        val coveredByOwnUi = ownUiVisible && !previewOverOwnUi
-        overlayView?.visibility = if (!coveredByOwnUi && (expanded || hasCaption || statusLine.isNotBlank()))
-            View.VISIBLE else View.GONE
-        immersiveExitView?.visibility = if (coveredByOwnUi) View.GONE else View.VISIBLE
-        adjustmentSwitch?.visibility = if (coveredByOwnUi) View.GONE else View.VISIBLE
-    }
-
-    private fun interfaceString(@androidx.annotation.StringRes id: Int): String =
-        InterfaceLanguage.context(this).getString(id)
-
-    private fun dp(value: Int): Int =
-        (value * resources.displayMetrics.density).toInt()
-
-    private fun createChannel() {
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            interfaceString(R.string.notification_channel),
-            NotificationManager.IMPORTANCE_LOW,
-        )
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        overlayWindow.refreshInterfaceLanguage()
+        if (isRunning) CaptureServiceNotification.refresh(this, captureInput)
     }
 
     companion object {
@@ -1257,34 +547,10 @@ class MimiService : Service() {
             captureEnginesForTests = value?.toMap()
         }
 
-        private val historyStatusGeneration = AtomicLong()
-        /** A terminal runtime can release its journal after its service is destroyed. */
-        private fun observeHistoryFinalization(handle: Long) {
-            val owner = historyStatusGeneration.get()
-            val timeout = NativeRuntimeConfiguration.policy.getLong("sessionFinishTimeoutMs")
-            thread(name = "mimi-history-finalize", isDaemon = true) {
-                var failed = false
-                var limited = false
-                try {
-                    val deadline = SystemClock.elapsedRealtime() + timeout
-                    while (historyStatusGeneration.get() == owner) {
-                        val result = NativeRuntimeConfiguration.exchange(JSONObject()
-                            .put("operation", "history_state").put("historyHandle", handle))
-                        failed = result.getJSONObject("state").getBoolean("saveError")
-                        limited = result.getJSONObject("state").getBoolean("limited")
-                        if (!result.getBoolean("pending")) break
-                        if (SystemClock.elapsedRealtime() >= deadline) { failed = true; break }
-                        Thread.sleep(100)
-                    }
-                } catch (_: Exception) { failed = true }
-                Handler(Looper.getMainLooper()).post {
-                    if (historyStatusGeneration.get() == owner) {
-                        historySaveError = historySaveError || failed
-                        historyLimited = historyLimited || limited
-                        stateListeners.forEach { it() }
-                    }
-                }
-            }
+        private fun applyFinalizedHistoryStatus(failed: Boolean, limited: Boolean) {
+            historySaveError = historySaveError || failed
+            historyLimited = historyLimited || limited
+            stateListeners.forEach { it() }
         }
 
         @Volatile var historySaveError: Boolean = false
@@ -1297,8 +563,6 @@ class MimiService : Service() {
             private set
         val firstRunEvidence = FirstRunEvidence()
         private const val TAG = "MimiService"
-        private const val CHANNEL_ID = "capture"
-        private const val NOTIFICATION_ID = 41
         private const val AUTO_HIDE_MS = 600L
         private const val WATCHDOG_MS = 3_000L
         @Volatile var isStopping: Boolean = false
