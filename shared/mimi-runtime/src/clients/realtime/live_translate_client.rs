@@ -11,7 +11,7 @@ use crate::core::services::provider::AlibabaRealtimeMode;
 use crate::pipeline_log;
 use futures_util::{SinkExt, StreamExt};
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use thiserror::Error;
@@ -91,8 +91,11 @@ struct Inner {
     sink: Mutex<Option<Sink>>,
     finish_requested: AtomicBool,
     received_session_finished: AtomicBool,
+    receive_ended: AtomicBool,
+    finish_notify: Notify,
     pong_notify: Notify,
     receive_task: Mutex<Option<JoinHandle<()>>>,
+    generation: AtomicU64,
     translation_latency: Arc<std::sync::Mutex<StreamTranslationLatency>>,
 }
 
@@ -264,8 +267,11 @@ impl LiveTranslateClient {
                 sink: Mutex::new(None),
                 finish_requested: AtomicBool::new(false),
                 received_session_finished: AtomicBool::new(false),
+                receive_ended: AtomicBool::new(false),
+                finish_notify: Notify::new(),
                 pong_notify: Notify::new(),
                 receive_task: Mutex::new(None),
+                generation: AtomicU64::new(0),
                 translation_latency: Default::default(),
             }),
             endpoint,
@@ -310,10 +316,12 @@ impl LiveTranslateClient {
             }
         })?;
         let (sink, stream) = socket.split();
+        let generation = self.inner.generation.load(Ordering::SeqCst);
         *self.inner.sink.lock().await = Some(sink);
         self.inner
             .received_session_finished
             .store(false, Ordering::SeqCst);
+        self.inner.receive_ended.store(false, Ordering::SeqCst);
 
         let (setup_tx, setup_rx) = watch::channel(SetupState::Awaiting);
         let task = tokio::spawn(receive_loop(
@@ -322,6 +330,7 @@ impl LiveTranslateClient {
             self.events.clone(),
             setup_tx,
             latency_generation,
+            generation,
             self.target_language,
         ));
         *self.inner.receive_task.lock().await = Some(task);
@@ -408,16 +417,26 @@ impl LiveTranslateClient {
         if let Ok(message) = LiveTranslateRequestEncoder::finish(None) {
             let _ = self.send_text(message.to_string()).await;
         }
-        let deadline = tokio::time::Instant::now() + timeout;
-        while !self.inner.received_session_finished.load(Ordering::SeqCst)
-            && tokio::time::Instant::now() < deadline
-        {
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
+        let _ = tokio::time::timeout(timeout, async {
+            loop {
+                let finished = self.inner.finish_notify.notified();
+                tokio::pin!(finished);
+                finished.as_mut().enable();
+                if self.inner.received_session_finished.load(Ordering::SeqCst)
+                    || self.inner.receive_ended.load(Ordering::SeqCst)
+                {
+                    break;
+                }
+                finished.await;
+            }
+        })
+        .await;
         self.disconnect().await;
     }
 
     pub async fn disconnect(&self) {
+        self.inner.generation.fetch_add(1, Ordering::SeqCst);
+        self.inner.receive_ended.store(true, Ordering::SeqCst);
         {
             let mut latency = self.inner.translation_latency.lock().unwrap();
             latency.generation = latency.generation.wrapping_add(1);
@@ -434,6 +453,7 @@ impl LiveTranslateClient {
             .received_session_finished
             .store(false, Ordering::SeqCst);
         self.inner.finish_requested.store(false, Ordering::SeqCst);
+        self.inner.finish_notify.notify_waiters();
     }
 
     async fn send_text(&self, text: String) -> Result<(), LiveTranslateClientError> {
@@ -624,14 +644,33 @@ impl LiveTranslatePairAligner {
     }
 }
 
+struct ReceiveEndedGuard {
+    inner: Arc<Inner>,
+    generation: u64,
+}
+
+impl Drop for ReceiveEndedGuard {
+    fn drop(&mut self) {
+        if self.inner.generation.load(Ordering::SeqCst) == self.generation {
+            self.inner.receive_ended.store(true, Ordering::SeqCst);
+            self.inner.finish_notify.notify_waiters();
+        }
+    }
+}
+
 async fn receive_loop(
     mut stream: Stream,
     inner: Arc<Inner>,
     events: ProviderEventSender,
     setup: watch::Sender<SetupState>,
     latency_generation: u64,
+    generation: u64,
     target_language: TargetLanguage,
 ) {
+    let _receive_ended = ReceiveEndedGuard {
+        inner: Arc::clone(&inner),
+        generation,
+    };
     {
         let _content = inner.content_lock.lock().await;
         *inner.aligner.lock().await = LiveTranslatePairAligner {
@@ -642,6 +681,9 @@ async fn receive_loop(
         inner.decoder.lock().await.clear_content();
     }
     while let Some(message) = stream.next().await {
+        if inner.generation.load(Ordering::SeqCst) != generation {
+            return;
+        }
         let wire = match message {
             Ok(Message::Text(text)) => Ok(text.to_string()),
             Ok(Message::Binary(data)) => std::str::from_utf8(&data).map(str::to_owned),
@@ -787,6 +829,7 @@ fn emit_server_event_with_source_order(
         inner
             .received_session_finished
             .store(true, Ordering::SeqCst);
+        inner.finish_notify.notify_waiters();
     }
     if *setup.borrow() == SetupState::Awaiting {
         if let LiveTranslateServerEvent::Error { code, .. } = &event {

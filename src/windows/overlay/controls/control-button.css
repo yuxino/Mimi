@@ -57,6 +57,6 @@
   .overlay-control-button__busy { animation: none; }
 }
 .overlay-control-button:focus-visible {
-  outline: 2px solid #ffffff;
+  outline: 2px solid var(--overlay-control-focus, #ffffff);
   outline-offset: 2px;
 }

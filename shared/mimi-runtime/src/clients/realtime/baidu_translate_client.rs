@@ -122,6 +122,7 @@ struct Inner {
     ready: AtomicBool,
     is_closing: AtomicBool,
     received_session_finished: AtomicBool,
+    receive_ended: AtomicBool,
     finish_notify: Notify,
     pong_notify: Notify,
     generation: AtomicU64,
@@ -207,6 +208,7 @@ impl BaiduTranslateClient {
                 ready: AtomicBool::new(false),
                 is_closing: AtomicBool::new(false),
                 received_session_finished: AtomicBool::new(false),
+                receive_ended: AtomicBool::new(false),
                 finish_notify: Notify::new(),
                 pong_notify: Notify::new(),
                 generation: AtomicU64::new(0),
@@ -273,6 +275,7 @@ impl BaiduTranslateClient {
         self.inner
             .received_session_finished
             .store(false, Ordering::SeqCst);
+        self.inner.receive_ended.store(false, Ordering::SeqCst);
         self.inner.pending_audio.lock().await.clear();
         *self.inner.audio_send_lock.lock().await = None;
 
@@ -408,21 +411,35 @@ impl BaiduTranslateClient {
             let finished = self.inner.finish_notify.notified();
             tokio::pin!(finished);
             finished.as_mut().enable();
-            if !self.inner.received_session_finished.load(Ordering::SeqCst) {
+            if !self.inner.received_session_finished.load(Ordering::SeqCst)
+                && !self.inner.receive_ended.load(Ordering::SeqCst)
+            {
                 finished.await;
+            }
+            if !self.inner.received_session_finished.load(Ordering::SeqCst) {
+                return Err(BaiduTranslateClientError::TransportFailure);
             }
             Ok::<(), BaiduTranslateClientError>(())
         };
         match tokio::time::timeout(timeout, operation).await {
             Ok(Ok(())) => {}
-            Ok(Err(_)) => {
+            Ok(Err(_))
+                if self.inner.generation.load(Ordering::SeqCst) == generation
+                    && !self.inner.receive_ended.load(Ordering::SeqCst) =>
+            {
                 self.emit_error("baidu_finish_failed", GENERIC_TRANSPORT_ERROR, generation)
             }
-            Err(_) => self.emit_error(
-                "baidu_finish_timeout",
-                "Baidu realtime translation did not finish in time.",
-                generation,
-            ),
+            Err(_)
+                if self.inner.generation.load(Ordering::SeqCst) == generation
+                    && !self.inner.receive_ended.load(Ordering::SeqCst) =>
+            {
+                self.emit_error(
+                    "baidu_finish_timeout",
+                    "Baidu realtime translation did not finish in time.",
+                    generation,
+                )
+            }
+            _ => {}
         }
         self.disconnect_if_current(generation).await;
     }
@@ -430,6 +447,7 @@ impl BaiduTranslateClient {
     pub async fn disconnect(&self) {
         self.inner.generation.fetch_add(1, Ordering::SeqCst);
         self.inner.ready.store(false, Ordering::SeqCst);
+        self.inner.receive_ended.store(true, Ordering::SeqCst);
         self.inner.is_closing.store(false, Ordering::SeqCst);
         self.inner
             .received_session_finished
@@ -571,7 +589,25 @@ struct ReceiveContext {
     normalized_source_language: String,
 }
 
+struct ReceiveEndedGuard {
+    inner: Arc<Inner>,
+    generation: u64,
+}
+
+impl Drop for ReceiveEndedGuard {
+    fn drop(&mut self) {
+        if self.inner.generation.load(Ordering::SeqCst) == self.generation {
+            self.inner.receive_ended.store(true, Ordering::SeqCst);
+            self.inner.finish_notify.notify_waiters();
+        }
+    }
+}
+
 async fn receive_loop(mut context: ReceiveContext) {
+    let _receive_ended = ReceiveEndedGuard {
+        inner: Arc::clone(&context.inner),
+        generation: context.generation,
+    };
     while let Some(message) = context.stream.next().await {
         if context.inner.generation.load(Ordering::SeqCst) != context.generation {
             return;

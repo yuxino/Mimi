@@ -15,7 +15,7 @@ export function startOverlayContentDrag(event: PointerEvent<HTMLElement>, disabl
   if (disabled || event.button !== 0 || event.pointerType !== "mouse" || event.isPrimary === false) return;
   const target = event.target;
   if (!(target instanceof Element) || !event.currentTarget.contains(target)) return;
-  if (target.closest('button, a[href], input, select, textarea, label, summary, [role="button"], [role="combobox"], [role="switch"], [role="slider"], [role="menuitem"], [role="listbox"], [role="tooltip"], [contenteditable]:not([contenteditable="false"])')) return;
+  if (target.closest('button, a[href], input, select, textarea, label, summary, [role="button"], [role="combobox"], [role="switch"], [role="slider"], [role="menuitem"], [role="listbox"], [role="tooltip"], [contenteditable]:not([contenteditable="false"]), .overlay-opacity-slider')) return;
 
   const scrollArea = target.closest<HTMLElement>(".overlay-timeline, .overlay-control-panel");
   if (scrollArea === target && hitsVerticalScrollbar(scrollArea, event.clientX)) return;

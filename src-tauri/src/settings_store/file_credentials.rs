@@ -209,10 +209,12 @@ impl FileCredentialStore {
         #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt;
-            #[cfg(target_os = "macos")]
-            options.custom_flags(0x100); // O_NOFOLLOW
-            #[cfg(not(target_os = "macos"))]
-            options.custom_flags(0x20000);
+            options.custom_flags(libc::O_NOFOLLOW);
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            options.custom_flags(0x00200000); // FILE_FLAG_OPEN_REPARSE_POINT
         }
         let file = options
             .open(&self.path)

@@ -145,6 +145,7 @@ struct Inner {
     ready: AtomicBool,
     is_closing: AtomicBool,
     received_session_closed: AtomicBool,
+    receive_ended: AtomicBool,
     close_notify: Notify,
     pong_notify: Notify,
     generation: AtomicU64,
@@ -241,6 +242,7 @@ impl AzureOpenAIRealtimeClient {
                 ready: AtomicBool::new(false),
                 is_closing: AtomicBool::new(false),
                 received_session_closed: AtomicBool::new(false),
+                receive_ended: AtomicBool::new(false),
                 close_notify: Notify::new(),
                 pong_notify: Notify::new(),
                 generation: AtomicU64::new(0),
@@ -296,6 +298,7 @@ impl AzureOpenAIRealtimeClient {
         self.inner
             .received_session_closed
             .store(false, Ordering::SeqCst);
+        self.inner.receive_ended.store(false, Ordering::SeqCst);
         self.inner.pending_audio.lock().await.clear();
         self.inner.committer.lock().await.reset();
         self.inner.translation_stream.lock().await.reset();
@@ -367,13 +370,26 @@ impl AzureOpenAIRealtimeClient {
         {
             return Err(AzureOpenAIRealtimeClientError::NotConnected);
         }
+        let generation = self.inner.generation.load(Ordering::SeqCst);
         let _guard = self.inner.audio_send_lock.lock().await;
+        if !self.is_current_generation(generation)
+            || !self.inner.ready.load(Ordering::SeqCst)
+            || self.inner.is_closing.load(Ordering::SeqCst)
+        {
+            return Err(AzureOpenAIRealtimeClientError::NotConnected);
+        }
         let messages = {
             let mut pending = self.inner.pending_audio.lock().await;
             pending.extend_from_slice(pcm_data);
             take_complete_audio_messages(&mut pending)?
         };
         for message in messages {
+            if !self.is_current_generation(generation)
+                || !self.inner.ready.load(Ordering::SeqCst)
+                || self.inner.is_closing.load(Ordering::SeqCst)
+            {
+                return Err(AzureOpenAIRealtimeClientError::NotConnected);
+            }
             self.send_text(message).await?;
         }
         Ok(())
@@ -414,21 +430,32 @@ impl AzureOpenAIRealtimeClient {
         let generation = self.inner.generation.load(Ordering::SeqCst);
         match tokio::time::timeout(timeout, self.finish_operation(generation)).await {
             Ok(Ok(())) => {}
-            Ok(Err(_)) if self.is_current_generation(generation) => self.emit(
-                LiveTranslateServerEvent::Error {
-                    code: "azure_openai_session_close_failed".into(),
-                    message: GENERIC_TRANSPORT_ERROR.into(),
-                },
-                generation,
-            ),
-            Err(_) if self.is_current_generation(generation) => self.emit(
-                LiveTranslateServerEvent::Error {
-                    code: "azure_openai_close_timeout".into(),
-                    message: "Azure OpenAI Realtime Translation did not finish closing in time."
-                        .into(),
-                },
-                generation,
-            ),
+            Ok(Err(_))
+                if self.is_current_generation(generation)
+                    && !self.inner.receive_ended.load(Ordering::SeqCst) =>
+            {
+                self.emit(
+                    LiveTranslateServerEvent::Error {
+                        code: "azure_openai_session_close_failed".into(),
+                        message: GENERIC_TRANSPORT_ERROR.into(),
+                    },
+                    generation,
+                )
+            }
+            Err(_)
+                if self.is_current_generation(generation)
+                    && !self.inner.receive_ended.load(Ordering::SeqCst) =>
+            {
+                self.emit(
+                    LiveTranslateServerEvent::Error {
+                        code: "azure_openai_close_timeout".into(),
+                        message:
+                            "Azure OpenAI Realtime Translation did not finish closing in time."
+                                .into(),
+                    },
+                    generation,
+                )
+            }
             _ => {}
         }
         self.disconnect_if_current(generation).await;
@@ -455,10 +482,15 @@ impl AzureOpenAIRealtimeClient {
             let closed = self.inner.close_notify.notified();
             tokio::pin!(closed);
             closed.as_mut().enable();
-            if self.inner.received_session_closed.load(Ordering::SeqCst) {
+            if self.inner.received_session_closed.load(Ordering::SeqCst)
+                || self.inner.receive_ended.load(Ordering::SeqCst)
+            {
                 break;
             }
             closed.await;
+        }
+        if !self.inner.received_session_closed.load(Ordering::SeqCst) {
+            return Err(AzureOpenAIRealtimeClientError::NotConnected);
         }
         Ok(())
     }
@@ -466,6 +498,7 @@ impl AzureOpenAIRealtimeClient {
     pub async fn disconnect(&self) {
         self.inner.generation.fetch_add(1, Ordering::SeqCst);
         self.inner.ready.store(false, Ordering::SeqCst);
+        self.inner.receive_ended.store(true, Ordering::SeqCst);
         self.inner.is_closing.store(false, Ordering::SeqCst);
         self.inner
             .received_session_closed
@@ -559,7 +592,25 @@ struct ReceiveContext {
     generation: u64,
 }
 
+struct ReceiveEndedGuard {
+    inner: Arc<Inner>,
+    generation: u64,
+}
+
+impl Drop for ReceiveEndedGuard {
+    fn drop(&mut self) {
+        if self.inner.generation.load(Ordering::SeqCst) == self.generation {
+            self.inner.receive_ended.store(true, Ordering::SeqCst);
+            self.inner.close_notify.notify_waiters();
+        }
+    }
+}
+
 async fn receive_loop(mut context: ReceiveContext) {
+    let _receive_ended = ReceiveEndedGuard {
+        inner: Arc::clone(&context.inner),
+        generation: context.generation,
+    };
     while let Some(message) = context.stream.next().await {
         if context.inner.generation.load(Ordering::SeqCst) != context.generation {
             return;
@@ -642,7 +693,17 @@ async fn handle_server_event(
         }
         AzureOpenAIRealtimeServerEvent::SessionUpdated { target_language } => {
             if target_language != context.target_language.raw_value() {
-                let _ = context.setup.send(SetupState::Rejected);
+                if *context.setup.borrow() == SetupState::Awaiting {
+                    let _ = context.setup.send(SetupState::Rejected);
+                } else {
+                    emit_if_current(
+                        context,
+                        LiveTranslateServerEvent::Error {
+                            code: "azure_openai_session_configuration_mismatch".into(),
+                            message: GENERIC_PROVIDER_ERROR.into(),
+                        },
+                    );
+                }
                 return true;
             }
             if *context.setup.borrow() == SetupState::Awaiting {

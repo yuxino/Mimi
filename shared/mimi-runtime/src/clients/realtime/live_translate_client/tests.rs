@@ -582,8 +582,11 @@ fn test_inner() -> Inner {
         sink: Mutex::new(None),
         finish_requested: AtomicBool::new(false),
         received_session_finished: AtomicBool::new(false),
+        receive_ended: AtomicBool::new(false),
+        finish_notify: Notify::new(),
         pong_notify: Notify::new(),
         receive_task: Mutex::new(None),
+        generation: std::sync::atomic::AtomicU64::new(0),
         translation_latency: Default::default(),
     }
 }

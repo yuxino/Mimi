@@ -13,7 +13,36 @@ pub(super) fn frame_layout_is_current(version: u64) -> bool {
     version == OVERLAY_FRAME_LAYOUT_VERSION
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+fn f64_bits_eq(left: f64, right: f64) -> bool {
+    left.to_bits() == right.to_bits()
+}
+
+fn point_bits_eq(left: (f64, f64), right: (f64, f64)) -> bool {
+    f64_bits_eq(left.0, right.0) && f64_bits_eq(left.1, right.1)
+}
+
+fn frame_bits_eq(left: OverlayFrame, right: OverlayFrame) -> bool {
+    f64_bits_eq(left.x, right.x)
+        && f64_bits_eq(left.y, right.y)
+        && f64_bits_eq(left.width, right.width)
+        && f64_bits_eq(left.height, right.height)
+}
+
+fn work_area_bits_eq(left: LogicalWorkArea, right: LogicalWorkArea) -> bool {
+    f64_bits_eq(left.x, right.x)
+        && f64_bits_eq(left.y, right.y)
+        && f64_bits_eq(left.width, right.width)
+        && f64_bits_eq(left.height, right.height)
+        && f64_bits_eq(left.coordinate_scale, right.coordinate_scale)
+}
+
+fn resize_gesture_bits_eq(left: ResizeGesture, right: ResizeGesture) -> bool {
+    point_bits_eq(left.pointer, right.pointer)
+        && frame_bits_eq(left.frame, right.frame)
+        && work_area_bits_eq(left.work_area, right.work_area)
+}
+
+#[derive(Debug, Clone, Copy)]
 pub(super) struct OverlayApplySnapshot {
     pub(super) mode: OverlayMode,
     pub(super) mode_revision: u64,
@@ -24,6 +53,29 @@ pub(super) struct OverlayApplySnapshot {
     pub(super) resize_drag: Option<ResizeRegion>,
     pub(super) resize_start: Option<ResizeGesture>,
 }
+
+impl PartialEq for OverlayApplySnapshot {
+    fn eq(&self, other: &Self) -> bool {
+        self.mode == other.mode
+            && self.mode_revision == other.mode_revision
+            && self.session_error == other.session_error
+            && f64_bits_eq(self.minimum_height, other.minimum_height)
+            && frame_bits_eq(self.user_frame, other.user_frame)
+            && match (self.presentation_frame, other.presentation_frame) {
+                (Some(left), Some(right)) => frame_bits_eq(left, right),
+                (None, None) => true,
+                _ => false,
+            }
+            && self.resize_drag == other.resize_drag
+            && match (self.resize_start, other.resize_start) {
+                (Some(left), Some(right)) => resize_gesture_bits_eq(left, right),
+                (None, None) => true,
+                _ => false,
+            }
+    }
+}
+
+impl Eq for OverlayApplySnapshot {}
 
 impl From<&OverlayState> for OverlayApplySnapshot {
     fn from(state: &OverlayState) -> Self {
@@ -42,11 +94,24 @@ impl From<&OverlayState> for OverlayApplySnapshot {
 
 /// Native reads also include the drag marker so an origin observed before a
 /// programmatic transition can never be attached to the state after it.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub(super) struct OverlayGeometrySnapshot {
     pub(super) apply: OverlayApplySnapshot,
     pub(super) native_drag_start: Option<(f64, f64)>,
 }
+
+impl PartialEq for OverlayGeometrySnapshot {
+    fn eq(&self, other: &Self) -> bool {
+        self.apply == other.apply
+            && match (self.native_drag_start, other.native_drag_start) {
+                (Some(left), Some(right)) => point_bits_eq(left, right),
+                (None, None) => true,
+                _ => false,
+            }
+    }
+}
+
+impl Eq for OverlayGeometrySnapshot {}
 
 impl From<&OverlayState> for OverlayGeometrySnapshot {
     fn from(state: &OverlayState) -> Self {

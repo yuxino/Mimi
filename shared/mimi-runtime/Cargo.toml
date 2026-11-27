@@ -35,6 +35,9 @@ time = "0.3"
 
 tempfile = "3"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util"] }
 

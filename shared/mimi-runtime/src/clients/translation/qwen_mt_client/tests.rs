@@ -727,3 +727,24 @@ fn non_data_lines_are_ignored() {
     assert!(!handled);
     assert!(translation.text().is_empty());
 }
+
+#[tokio::test]
+async fn rejected_http_error_sanitizes_upstream_error_message() {
+    let body = r#"{"error":{"code":"InvalidParameter","message":"sensitive-prompt-echo-or-key"}}"#;
+    let (client, server) = fixture_client(format!(
+        "HTTP/1.1 400 Bad Request\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len(),
+    ))
+    .await;
+    let error = client.translate("hello", None, &[]).await.unwrap_err();
+    assert_eq!(
+        error,
+        QwenMTClientError::RequestFailed {
+            status_code: 400,
+            message: String::new(),
+        }
+    );
+    assert!(!error.to_string().contains("sensitive-prompt-echo-or-key"));
+    assert_eq!(error.to_string(), "Qwen-MT request failed with HTTP 400.");
+    server.await.unwrap();
+}

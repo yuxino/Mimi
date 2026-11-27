@@ -51,7 +51,8 @@
   line-height: 14px;
 }
 .overlay-status-row:not([data-placement="feedback"]) .overlay-latency strong { font-weight: 400; }
-.overlay-expanded-canvas[data-low-opacity] .overlay-status-row .overlay-latency {
+.overlay-expanded-canvas[data-low-opacity] .overlay-status-row .overlay-latency,
+.overlay-expanded-canvas[data-low-opacity]:not([data-light-surface]) .overlay-action-feedback {
   color: #f5f5f5;
   text-shadow: 0 0 2px #222, 0 1px 1px #222;
 }

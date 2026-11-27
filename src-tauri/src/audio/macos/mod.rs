@@ -35,7 +35,6 @@ use screen_capture_kit::stream::{
     SCStreamOutputType,
 };
 use std::cell::{Cell, RefCell};
-use std::ffi::c_void;
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -53,11 +52,12 @@ struct AudioHandlerState {
     last_audio_buffer_at: Mutex<Option<Instant>>,
     /// Decoded-buffer counter used to throttle diagnostics.
     decoded_buffers: Mutex<u64>,
-    /// Provider-rate resampler; rebuilt for every capture session.
+    /// Provider-rate resampler paired with the input sample rate it was built
+    /// for; rebuilt whenever the session starts or the stream sample rate changes.
     /// SCStream delivers the device rate (typically 48 kHz) regardless of the
     /// requested configuration, so the samples must be resampled before the
     /// selected provider's input rate (16 or 24 kHz PCM).
-    resampler: Mutex<Option<rubato::Fft<f32>>>,
+    resampler: Mutex<Option<(u32, rubato::Fft<f32>)>>,
     pending_frames: Mutex<Vec<f32>>,
     target_sample_rate_hz: u32,
 }
@@ -78,13 +78,15 @@ impl MainThreadPtr {
 }
 
 pub struct MimiAudioStreamHandlerIvars {
-    state_ptr: *mut c_void,
+    state: AudioHandlerState,
 }
 
 define_class!(
     // SAFETY:
     // - The superclass NSObject has no subclassing requirements.
-    // - MimiAudioStreamHandler does not implement Drop.
+    // - MimiAudioStreamHandler does not implement Drop; objc2 synthesizes
+    //   `dealloc` to drop the owned Send + Sync ivars when the last Objective-C
+    //   reference is released.
     #[unsafe(super(NSObject))]
     #[name = "MimiAudioStreamHandler"]
     #[ivars = MimiAudioStreamHandlerIvars]
@@ -103,7 +105,7 @@ define_class!(
             if of_type != SCStreamOutputType::Audio {
                 return;
             }
-            let state = unsafe { &*(self.ivars().state_ptr as *const AudioHandlerState) };
+            let state = &self.ivars().state;
             if !state.generation.is_current(state.generation_token)
                 || state.failure_tx.has_reported()
             {
@@ -163,7 +165,7 @@ define_class!(
             _stream: &SCStream,
             error: &objc2_foundation::NSError,
         ) {
-            let state = unsafe { &*(self.ivars().state_ptr as *const AudioHandlerState) };
+            let state = &self.ivars().state;
             if state.generation.is_current(state.generation_token) {
                 state.failure_tx.report(classify_native_stop_error(error));
             }
@@ -177,7 +179,6 @@ thread_local! {
     static MAIN_STREAM: RefCell<Option<Retained<SCStream>>> = const { RefCell::new(None) };
     static MAIN_HANDLER: RefCell<Option<Retained<MimiAudioStreamHandler>>> =
         const { RefCell::new(None) };
-    static MAIN_STATE: RefCell<Option<Box<AudioHandlerState>>> = const { RefCell::new(None) };
     static MAIN_GENERATION: Cell<Option<u64>> = const { Cell::new(None) };
     static MAIN_TARGET_APPS: RefCell<Vec<Retained<objc2_app_kit::NSRunningApplication>>> = const { RefCell::new(Vec::new()) };
 }
@@ -642,24 +643,20 @@ impl MacSystemAudioCapture {
             MAIN_GENERATION.set(None);
             MAIN_TARGET_APPS.with(|apps| apps.borrow_mut().clear());
             let stream = MAIN_STREAM.take();
-            let state = MAIN_STATE.take();
             let handler = MAIN_HANDLER.take();
             let Some(stream) = stream else {
-                drop(state);
                 drop(handler);
                 let _ = done_tx.send(());
                 return;
             };
             // ScreenCaptureKit requires the stream and its output to stay
-            // retained until the stop completion fires. Releasing them right
-            // after calling stop_capture can leave the capture session
-            // running while the handler reads freed state (use-after-free);
-            // the stop completion is the only safe point to release them.
+            // retained until the stop completion fires. `handler` owns its
+            // `AudioHandlerState` directly, so any in-flight Objective-C
+            // callback retains valid state until the final reference drops.
             // (The completion is typed `Fn`, so the values are released
             // through `Cell::take`, which is callable on a shared reference.)
             pipeline_log!("capture stop: stop_capture called");
             let completion_stream = std::cell::Cell::new(Some(stream.clone()));
-            let completion_state = std::cell::Cell::new(state);
             let completion_handler = std::cell::Cell::new(handler);
             let completion_teardown = std::cell::Cell::new(Some(teardown_guard));
             let completion_done = std::cell::Cell::new(Some(done_tx));
@@ -670,7 +667,6 @@ impl MacSystemAudioCapture {
                     pipeline_log!("capture stop completed");
                 }
                 drop(completion_stream.take());
-                drop(completion_state.take());
                 drop(completion_handler.take());
                 drop(completion_teardown.take());
                 if let Some(done_tx) = completion_done.take() {
@@ -837,7 +833,7 @@ fn start_capture_on_main(
     // `setShowsCursor:`.
     let _: () = unsafe { msg_send![&*configuration, setShowsCursor: false] };
 
-    let state = Box::new(AudioHandlerState {
+    let state = AudioHandlerState {
         audio_ingress,
         failure_tx,
         generation: generation.clone(),
@@ -847,9 +843,8 @@ fn start_capture_on_main(
         resampler: Mutex::new(None),
         pending_frames: Mutex::new(Vec::new()),
         target_sample_rate_hz: format.sample_rate_hz,
-    });
-    let state_ptr: *mut c_void = (&*state as *const AudioHandlerState) as *mut c_void;
-    let this = MimiAudioStreamHandler::alloc().set_ivars(MimiAudioStreamHandlerIvars { state_ptr });
+    };
+    let this = MimiAudioStreamHandler::alloc().set_ivars(MimiAudioStreamHandlerIvars { state });
     let handler: Retained<MimiAudioStreamHandler> = unsafe { msg_send![super(this), init] };
     let output = ProtocolObject::from_ref(&*handler);
     let delegate = ProtocolObject::from_ref(&*handler);
@@ -887,14 +882,13 @@ fn start_capture_on_main(
     });
     pipeline_log!("system audio capture start requested (async)");
     if !generation.is_current(generation_token) {
-        stop_uninstalled_capture(stream, Some(handler), Some(state), pending_teardown.clone());
+        stop_uninstalled_capture(stream, Some(handler), pending_teardown.clone());
         return Err(SystemAudioCaptureError::StartCancelled);
     }
     MAIN_GENERATION.set(Some(generation_token));
     MAIN_TARGET_APPS.with(|apps| *apps.borrow_mut() = target_apps);
     MAIN_STREAM.set(Some(stream));
     MAIN_HANDLER.set(Some(handler));
-    MAIN_STATE.set(Some(state));
     if !generation.is_current(generation_token) {
         MAIN_GENERATION.set(None);
         MAIN_TARGET_APPS.with(|apps| apps.borrow_mut().clear());
@@ -902,8 +896,7 @@ fn start_capture_on_main(
             .take()
             .expect("capture stream was just installed");
         let handler = MAIN_HANDLER.take();
-        let state = MAIN_STATE.take();
-        stop_uninstalled_capture(stream, handler, state, pending_teardown);
+        stop_uninstalled_capture(stream, handler, pending_teardown);
         return Err(SystemAudioCaptureError::StartCancelled);
     }
     start_barrier.did_install();
@@ -918,16 +911,15 @@ fn set_capture_sample_rate(configuration: &SCStreamConfiguration, sample_rate_hz
 
 /// Stops a stream that lost its generation race before it could become the
 /// installed capture. Resources stay alive until ScreenCaptureKit confirms
-/// the stop, preventing the callback handler from observing freed state.
+/// the stop, and `handler` owns `AudioHandlerState` directly until its last
+/// Objective-C reference is released.
 fn stop_uninstalled_capture(
     stream: Retained<SCStream>,
     handler: Option<Retained<MimiAudioStreamHandler>>,
-    state: Option<Box<AudioHandlerState>>,
     pending_teardown: PendingTeardown,
 ) {
     let teardown_guard = pending_teardown.begin();
     let completion_stream = Cell::new(Some(stream.clone()));
-    let completion_state = Cell::new(state);
     let completion_handler = Cell::new(handler);
     let completion_teardown = Cell::new(Some(teardown_guard));
     stream.stop_capture(move |error| {
@@ -935,7 +927,6 @@ fn stop_uninstalled_capture(
             pipeline_log!("capture cleanup stop failed label=capture.native_stop_failed");
         }
         drop(completion_stream.take());
-        drop(completion_state.take());
         drop(completion_handler.take());
         drop(completion_teardown.take());
     });

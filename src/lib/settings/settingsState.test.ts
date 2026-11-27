@@ -207,6 +207,83 @@ describe("SettingsSaveCoordinator", () => {
     },
   );
 
+  it.each([
+    ["subtitleColor", ["#112233", "#445566", "#778899", "#AABBCC"] as const],
+    ["microphoneSubtitleColor", ["#223344", "#556677", "#8899AA", "#CCDDEE"] as const],
+    ["subtitleBackgroundColor", ["#101010", "#202020", "#303030", "#FFFFFF"] as const],
+  ] as const)(
+    "coalesces rapid %s edits into one queued write and protects the latest preview from stale snapshots",
+    async (field, colors) => {
+      const coordinator = new SettingsSaveCoordinator();
+      let current: SettingsSnapshot = {
+        ...SETTINGS,
+        subtitleColor: "white",
+        microphoneSubtitleColor: "yellow",
+        subtitleBackgroundColor: "#000000",
+      };
+      let persisted = current;
+      const requests: SettingsDraft[] = [];
+      const resolvers: Array<() => void> = [];
+      const persist = (draft: SettingsDraft) => {
+        requests.push(draft);
+        return new Promise<SettingsSnapshot>((resolve) => {
+          resolvers.push(() => {
+            persisted = mergeSettingsSnapshot(persisted, draft);
+            current = coordinator.receiveSnapshot(persisted);
+            resolve(persisted);
+          });
+        });
+      };
+      const save = (draft: SettingsDraft) =>
+        coordinator.save(current, draft, persist, (snapshot) => { current = snapshot; });
+
+      const operations = colors.map((color) => save({ [field]: color }));
+      await Promise.resolve();
+      expect(requests).toEqual([{ [field]: colors[0] }]);
+      expect(current[field]).toBe(colors[3]);
+
+      // Completing the first write emits an older snapshot; preview must not jump back.
+      resolvers[0]();
+      await operations[0];
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(current[field]).toBe(colors[3]);
+      expect(requests).toEqual([
+        { [field]: colors[0] },
+        { [field]: colors[3] },
+      ]);
+
+      resolvers[1]();
+      await Promise.all(operations);
+      expect(persisted[field]).toBe(colors[3]);
+      expect(current[field]).toBe(colors[3]);
+    },
+  );
+
+  it("lets external color changes override a pending color preview and rolls back failed color saves", async () => {
+    const coordinator = new SettingsSaveCoordinator();
+    let current: SettingsSnapshot = {
+      ...SETTINGS,
+      subtitleColor: "white",
+      subtitleBackgroundColor: "#000000",
+    };
+    let rejectFirst!: (error: Error) => void;
+    const failed = coordinator.save(
+      current,
+      { subtitleColor: "#112233", subtitleBackgroundColor: "#1E293B" },
+      () => new Promise<SettingsSnapshot>((_resolve, reject) => { rejectFirst = reject; }),
+      (snapshot) => { current = snapshot; },
+    );
+    await Promise.resolve();
+    // External snapshot overrides subtitleColor while subtitleBackgroundColor stays pending.
+    current = coordinator.receiveSnapshot({ ...SETTINGS, subtitleColor: "#FF00AA", subtitleBackgroundColor: "#000000" });
+    expect(current).toMatchObject({ subtitleColor: "#FF00AA", subtitleBackgroundColor: "#1E293B" });
+
+    rejectFirst(new Error("synthetic color save failure"));
+    await expect(failed).rejects.toThrow("synthetic color save failure");
+    expect(current).toMatchObject({ subtitleColor: "#FF00AA", subtitleBackgroundColor: "#000000" });
+  });
+
   it("previews a font choice immediately, preserves it across another edit and rolls back a failed reset", async () => {
     const coordinator = new SettingsSaveCoordinator();
     const original = { ...SETTINGS, subtitleFontFamily: "Original Font" };

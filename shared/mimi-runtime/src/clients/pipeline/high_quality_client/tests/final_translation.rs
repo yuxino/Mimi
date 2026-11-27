@@ -673,3 +673,37 @@ async fn final_queue_has_a_hard_limit_and_reports_overload_once() {
     assert!(events.try_recv().is_err());
     client.cancel_final_translations().await;
 }
+
+#[tokio::test]
+async fn apple_translation_and_http_rejection_codes_preserve_classification_without_raw_upstream_text(
+) {
+    let (client, mut events) = test_client(TargetLanguage::SimplifiedChinese, 20);
+    client.handle_translation_failure(&QwenMTClientError::Apple(
+        "apple_translation_assets_missing",
+    ));
+    assert_eq!(
+        events.recv().await,
+        Some(LiveTranslateServerEvent::Error {
+            code: "apple_translation_assets_missing".into(),
+            message: "apple_translation_assets_missing".into(),
+        })
+    );
+    assert_eq!(
+        crate::core::lifecycle::recovery::normalize_provider_error_code(
+            "apple_translation_assets_missing"
+        ),
+        "invalid_configuration"
+    );
+
+    client.handle_translation_failure(&QwenMTClientError::RequestFailed {
+        status_code: 400,
+        message: "sensitive-raw-body".into(),
+    });
+    assert_eq!(
+        events.recv().await,
+        Some(LiveTranslateServerEvent::Error {
+            code: "translation_failed".into(),
+            message: "Qwen-MT request failed with HTTP 400.".into(),
+        })
+    );
+}

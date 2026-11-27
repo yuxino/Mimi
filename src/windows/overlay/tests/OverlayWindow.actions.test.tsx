@@ -83,6 +83,41 @@ it("keeps the error surface actionable and restores saved presentation after rec
   expect(host.querySelector(".overlay-action-strip")).toBeNull();
 });
 
+it("clears opacity save failure automatically after timeout or external opacity updates", async () => {
+  vi.useFakeTimers();
+  try {
+    const saveSettings = vi.fn().mockRejectedValue(new Error("disk_full"));
+    useStore.setState({ saveSettings });
+    await act(async () => root.render(<OverlayWindow />));
+
+    const control = host.querySelector<HTMLElement>(".overlay-opacity-slider__control")!;
+    act(() => {
+      control.dispatchEvent(new WheelEvent("wheel", { deltaY: -10, bubbles: true, cancelable: true }));
+    });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain(
+      I18N.settings.settingSaveFailed(I18N.overlay.backgroundOpacity),
+    );
+
+    // External opacity update clears the stale error immediately.
+    await act(async () => {
+      useStore.setState(state => ({ settings: { ...state.settings, subtitleBackgroundOpacity: 60 } }));
+    });
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+
+    // Subsequent failure clears automatically after 8s.
+    act(() => {
+      control.dispatchEvent(new WheelEvent("wheel", { deltaY: -10, bubbles: true, cancelable: true }));
+    });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(host.querySelector('[role="alert"]')).not.toBeNull();
+    await act(async () => { vi.advanceTimersByTime(8000); });
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 it.each(["system", "microphone", "both"] as const)("keeps %s sources identifiable in the collapsed and paused surface", async audioInput => {
   vi.stubGlobal("innerHeight", 54);
   vi.stubGlobal("innerWidth", 280);

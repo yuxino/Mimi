@@ -296,13 +296,26 @@ impl XAIRealtimeClient {
         {
             return Err(XAIRealtimeClientError::NotConnected);
         }
+        let generation = self.inner.generation.load(Ordering::SeqCst);
         let _guard = self.inner.audio_send_lock.lock().await;
+        if !self.is_current_generation(generation)
+            || !self.inner.ready.load(Ordering::SeqCst)
+            || self.inner.is_closing.load(Ordering::SeqCst)
+        {
+            return Err(XAIRealtimeClientError::NotConnected);
+        }
         let messages = {
             let mut pending = self.inner.pending_audio.lock().await;
             pending.extend_from_slice(pcm_data);
             take_complete_audio_messages(&mut pending)?
         };
         for message in messages {
+            if !self.is_current_generation(generation)
+                || !self.inner.ready.load(Ordering::SeqCst)
+                || self.inner.is_closing.load(Ordering::SeqCst)
+            {
+                return Err(XAIRealtimeClientError::NotConnected);
+            }
             self.send_text(message).await?;
         }
         Ok(())

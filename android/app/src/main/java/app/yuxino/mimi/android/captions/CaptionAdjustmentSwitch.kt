@@ -1,6 +1,7 @@
 package app.yuxino.mimi.android.captions
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -35,6 +36,17 @@ internal class CaptionAdjustmentSwitch(context: Context, private val paintsContr
         trackTintList = ContextCompat.getColorStateList(this.context, R.color.mimi_switch_track)
         thumbTintList = ContextCompat.getColorStateList(this.context, R.color.mimi_switch_thumb)
         contentDescription = this.context.getString(R.string.overlay_adjust)
+    }
+
+    fun applySurfaceContrast(lightSurface: Boolean) {
+        val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
+        if (lightSurface) {
+            trackTintList = ColorStateList(states, intArrayOf(0xFF1C1C1E.toInt(), 0x40000000))
+            thumbTintList = ColorStateList(states, intArrayOf(Color.WHITE, 0xFF525252.toInt()))
+        } else {
+            trackTintList = ColorStateList(states, intArrayOf(0xFFF4F4F4.toInt(), 0x4DFFFFFF))
+            thumbTintList = ColorStateList(states, intArrayOf(0xFF171717.toInt(), 0xFFB9B9B9.toInt()))
+        }
     }
 
     override fun onDraw(canvas: Canvas) {

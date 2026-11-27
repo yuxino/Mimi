@@ -77,7 +77,7 @@ internal object ServiceSettingsUi {
         }
         header.addView(heading, LinearLayout.LayoutParams(0, -2, 1f))
         container.addView(header, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(activity, 16) })
-        if ((MimiService.isRunning || MimiService.isStopping)) {
+        if (MimiService.isSessionBusy) {
             container.addView(LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
                 tag = "service-session-guard"
@@ -113,7 +113,7 @@ internal object ServiceSettingsUi {
             if (count == null) Toast.makeText(activity, R.string.guide_storage_unavailable, Toast.LENGTH_LONG).show()
             else if (count >= SettingsStore.MAX_SERVICE_PROFILES) Toast.makeText(activity, R.string.profiles_limit, Toast.LENGTH_SHORT).show()
             else showProviderPicker(activity)
-        }.apply { isEnabled = !(MimiService.isRunning || MimiService.isStopping) && profiles.size < SettingsStore.MAX_SERVICE_PROFILES },
+        }.apply { isEnabled = !MimiService.isSessionBusy && profiles.size < SettingsStore.MAX_SERVICE_PROFILES },
             LinearLayout.LayoutParams(-2, -2))
         val activeId = SettingsStore.activeProfileId(activity)
         val stacked = activity.resources.configuration.fontScale >= 1.5f
@@ -130,13 +130,13 @@ internal object ServiceSettingsUi {
             val select = LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 minimumHeight = dp(activity, 72); tag = "select-${profile.id}"
-                isClickable = true; isFocusable = true; isEnabled = !(MimiService.isRunning || MimiService.isStopping)
+                isClickable = true; isFocusable = true; isEnabled = !MimiService.isSessionBusy
                 contentDescription = activity.getString(if (!configured) R.string.service_edit_named else R.string.profiles_use_named, profile.name)
                 val typed = android.util.TypedValue()
                 activity.theme.resolveAttribute(android.R.attr.selectableItemBackground, typed, true)
                 setBackgroundResource(typed.resourceId)
                 setOnClickListener {
-                    if (MimiService.isRunning || MimiService.isStopping) return@setOnClickListener
+                    if (MimiService.isSessionBusy) return@setOnClickListener
                     if (!configured) edit()
                     else if (!active) mutate(activity, container) { SettingsStore.activateProfile(activity, profile.id) }
                 }
@@ -170,7 +170,7 @@ internal object ServiceSettingsUi {
             select.addView(copy, LinearLayout.LayoutParams(0, -2, 1f))
             row.addView(select, if (stacked) LinearLayout.LayoutParams(-1, -2) else LinearLayout.LayoutParams(0, -2, 1f))
             row.addView(action(activity, R.string.service_edit, "configure-${profile.id}") { edit() }.apply {
-                isEnabled = !(MimiService.isRunning || MimiService.isStopping)
+                isEnabled = !MimiService.isSessionBusy
                 minWidth = dp(activity, 72); minimumWidth = dp(activity, 72)
                 contentDescription = activity.getString(R.string.service_edit_named, profile.name)
             }, LinearLayout.LayoutParams(-2, -2).apply { if (stacked) gravity = Gravity.END })
@@ -185,7 +185,7 @@ internal object ServiceSettingsUi {
             minimumHeight = dp(activity, 48); minWidth = 0; minimumWidth = 0
             setTextColor(ContextCompat.getColor(activity, R.color.mimi_text))
             setOnClickListener {
-                if ((MimiService.isRunning || MimiService.isStopping) && tag != "profiles-retry") Toast.makeText(activity, R.string.service_stop_first, Toast.LENGTH_SHORT).show()
+                if (MimiService.isSessionBusy && tag != "profiles-retry") Toast.makeText(activity, R.string.service_stop_first, Toast.LENGTH_SHORT).show()
                 else click()
             }
         }
@@ -199,7 +199,7 @@ internal object ServiceSettingsUi {
         for (provider in ServiceProvider.entries) {
             val choice = LinearLayout(activity).apply {
                 tag = "add-${provider.id}"; gravity = Gravity.CENTER_VERTICAL; minimumHeight = dp(activity, 72)
-                isClickable = true; isFocusable = true; isEnabled = !(MimiService.isRunning || MimiService.isStopping)
+                isClickable = true; isFocusable = true; isEnabled = !MimiService.isSessionBusy
                 val typed = android.util.TypedValue()
                 activity.theme.resolveAttribute(android.R.attr.selectableItemBackground, typed, true)
                 setBackgroundResource(typed.resourceId)
@@ -213,7 +213,7 @@ internal object ServiceSettingsUi {
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }, LinearLayout.LayoutParams(dp(activity, 20), dp(activity, 20)))
             choice.setOnClickListener {
-                if ((MimiService.isRunning || MimiService.isStopping)) return@setOnClickListener
+                if (MimiService.isSessionBusy) return@setOnClickListener
                 onChoose?.invoke()
                 activity.startActivity(Intent(activity, ServiceSettingsActivity::class.java).putExtra("provider", provider.id))
             }
@@ -238,7 +238,7 @@ internal object ServiceSettingsUi {
         }
         com.google.android.material.dialog.MaterialAlertDialogBuilder(activity).setTitle(profile.name)
             .setItems(arrayOf<CharSequence>(activity.getString(R.string.profiles_duplicate), deleteLabel)) { _, index ->
-                if ((MimiService.isRunning || MimiService.isStopping)) return@setItems
+                if (MimiService.isSessionBusy) return@setItems
                 if (index == 0) {
                     val count = runCatching { SettingsStore.profiles(activity).size }.getOrNull()
                     if (count == null) Toast.makeText(activity, R.string.guide_storage_unavailable, Toast.LENGTH_LONG).show()
@@ -250,7 +250,7 @@ internal object ServiceSettingsUi {
                         .setTitle(activity.getString(R.string.profiles_delete_title, profile.name))
                         .setMessage(R.string.profiles_delete_message).setNegativeButton(android.R.string.cancel, null)
                         .setPositiveButton(R.string.profiles_delete) { _, _ ->
-                            if (MimiService.isRunning || MimiService.isStopping) Toast.makeText(activity, R.string.service_stop_first, Toast.LENGTH_SHORT).show()
+                            if (MimiService.isSessionBusy) Toast.makeText(activity, R.string.service_stop_first, Toast.LENGTH_SHORT).show()
                             else if (runCatching { SettingsStore.deleteProfile(activity, profile.id) }.getOrDefault(false)) onChanged(true)
                             else Toast.makeText(activity, R.string.service_save_failed, Toast.LENGTH_LONG).show()
                         }.show()
@@ -268,7 +268,7 @@ internal object ServiceSettingsUi {
     }
 
     private fun mutate(activity: AppCompatActivity, container: LinearLayout, operation: () -> Boolean) {
-        if ((MimiService.isRunning || MimiService.isStopping)) { Toast.makeText(activity, R.string.service_stop_first, Toast.LENGTH_SHORT).show(); return }
+        if (MimiService.isSessionBusy) { Toast.makeText(activity, R.string.service_stop_first, Toast.LENGTH_SHORT).show(); return }
         if (runCatching(operation).getOrDefault(false)) renderList(activity, container)
         else Toast.makeText(activity, R.string.service_save_failed, Toast.LENGTH_LONG).show()
     }

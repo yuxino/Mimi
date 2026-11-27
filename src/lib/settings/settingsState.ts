@@ -1,4 +1,9 @@
-import type { SettingsDraft, SettingsSnapshot } from "../types";
+import type {
+  SettingsDraft,
+  SettingsSnapshot,
+  SubtitleBackgroundColor,
+  SubtitleColor,
+} from "../types";
 import { DEFAULT_NETWORK_PROXY, validateNetworkProxy } from "../providers/networkProxy";
 import { clampVisibleSubtitleCount } from "../subtitles/subtitleDisplay";
 
@@ -235,28 +240,35 @@ export function mergeSettingsSnapshot(
 
 /**
  * Applies settings drafts immediately and keeps the last confirmed snapshot
- * for rollback. Consecutive slider edits share the latest queued write; other
- * drafts remain ordered barriers. External snapshots invalidate pending UI
- * responses without allowing their older results to overwrite the store.
+ * for rollback. Consecutive continuous edits (sliders and color pickers) share
+ * the latest queued write; other drafts remain ordered barriers. External
+ * snapshots invalidate pending UI responses without allowing their older
+ * results to overwrite the store.
  */
 export class SettingsSaveCoordinator {
   private generation = 0;
   private epoch = 0;
   private persistenceQueue: Promise<void> = Promise.resolve();
-  private queuedSlider: SettingsSaveOperation | null = null;
+  private queuedCoalesced: SettingsSaveOperation | null = null;
   private confirmedSnapshot: SettingsSnapshot | null = null;
   private activeSaves = 0;
-  private sliderPreviews = new Map<SliderField, { value: number; generation: number }>();
-  private submittedSlider: { draft: SettingsDraft; generations: Partial<Record<SliderField, number>> } | null = null;
-  private sliderRevisions: Record<SliderField, number> = { fontSize: 0, subtitleBackgroundOpacity: 0 };
+  private coalescedPreviews = new Map<CoalescedField, { value: CoalescedValue; generation: number }>();
+  private submittedCoalesced: { draft: SettingsDraft; generations: Partial<Record<CoalescedField, number>> } | null = null;
+  private coalescedRevisions: Record<CoalescedField, number> = {
+    fontSize: 0,
+    subtitleBackgroundOpacity: 0,
+    subtitleColor: 0,
+    microphoneSubtitleColor: 0,
+    subtitleBackgroundColor: 0,
+  };
   private receivedSnapshot: SettingsSnapshot | null = null;
   private displayedSnapshot: SettingsSnapshot | null = null;
 
   invalidate(): void {
-    this.sliderPreviews.clear();
+    this.coalescedPreviews.clear();
     this.receivedSnapshot = null;
     this.displayedSnapshot = null;
-    for (const field of SLIDER_FIELDS) this.sliderRevisions[field] += 1;
+    for (const field of COALESCED_FIELDS) this.coalescedRevisions[field] += 1;
     this.invalidateResponses();
   }
 
@@ -266,21 +278,21 @@ export class SettingsSaveCoordinator {
     this.confirmedSnapshot = null;
   }
 
-  /** Native events can acknowledge an earlier slider save while a newer
+  /** Native events can acknowledge an earlier continuous edit while a newer
    * local value is still queued. Other fields always belong to the event. */
   receiveSnapshot(snapshot: SettingsSnapshot): SettingsSnapshot {
-    for (const field of SLIDER_FIELDS) {
-      const value = sliderValue(snapshot, field);
-      const unchanged = this.receivedSnapshot !== null && value === sliderValue(this.receivedSnapshot, field);
-      const submitted = value === this.submittedSlider?.draft[field];
-      if (this.receivedSnapshot !== null && !unchanged && !submitted) this.sliderRevisions[field] += 1;
-      const preview = this.sliderPreviews.get(field);
+    for (const field of COALESCED_FIELDS) {
+      const value = coalescedValue(snapshot, field);
+      const unchanged = this.receivedSnapshot !== null && value === coalescedValue(this.receivedSnapshot, field);
+      const submitted = value === this.submittedCoalesced?.draft[field];
+      if (this.receivedSnapshot !== null && !unchanged && !submitted) this.coalescedRevisions[field] += 1;
+      const preview = this.coalescedPreviews.get(field);
       if (!preview) continue;
       // A different native value supersedes the local preview. A matching
       // value confirms only the latest operation: the user may drag back to
       // an earlier value while an intermediate value is still queued.
-      const acknowledged = value === preview.value && this.submittedSlider?.generations[field] === preview.generation;
-      if (acknowledged || (value !== preview.value && !unchanged && !submitted)) this.sliderPreviews.delete(field);
+      const acknowledged = value === preview.value && this.submittedCoalesced?.generations[field] === preview.generation;
+      if (acknowledged || (value !== preview.value && !unchanged && !submitted)) this.coalescedPreviews.delete(field);
     }
     this.invalidateResponses();
     this.receivedSnapshot = snapshot;
@@ -289,8 +301,8 @@ export class SettingsSaveCoordinator {
 
   private preview(snapshot: SettingsSnapshot): SettingsSnapshot {
     const draft: SettingsDraft = {};
-    for (const [field, preview] of this.sliderPreviews) draft[field] = preview.value;
-    this.displayedSnapshot = this.sliderPreviews.size ? mergeSettingsSnapshot(snapshot, draft) : snapshot;
+    for (const [field, preview] of this.coalescedPreviews) setCoalescedDraftField(draft, field, preview.value);
+    this.displayedSnapshot = this.coalescedPreviews.size ? mergeSettingsSnapshot(snapshot, draft) : snapshot;
     return this.displayedSnapshot;
   }
 
@@ -302,33 +314,34 @@ export class SettingsSaveCoordinator {
   ): Promise<void> {
     const generation = ++this.generation;
     const epoch = this.epoch;
-    const sliderFields = sliderDraftFields(draft);
+    const coalescedFields = coalescedDraftFields(draft);
     this.receivedSnapshot ??= previous;
     // A mixed draft keeps the ordinary transaction and opt-out semantics.
-    // Its explicit fields supersede a prior standalone slider preview.
-    if (!sliderFields.length) {
-      if (draft.fontSize !== undefined) this.sliderPreviews.delete("fontSize");
-      if (draft.subtitleBackgroundOpacity !== undefined) this.sliderPreviews.delete("subtitleBackgroundOpacity");
+    // Its explicit fields supersede a prior standalone continuous preview.
+    if (!coalescedFields.length) {
+      for (const field of COALESCED_FIELDS) {
+        if (draft[field] !== undefined) this.coalescedPreviews.delete(field);
+      }
     }
-    for (const field of sliderFields) this.sliderPreviews.set(field, { value: draft[field]!, generation });
+    for (const field of coalescedFields) this.coalescedPreviews.set(field, { value: draft[field]!, generation });
     if (this.confirmedSnapshot === null) {
       this.confirmedSnapshot = previous;
     }
-    const generations = Object.fromEntries(sliderFields.map(field => [field, generation]));
-    let queued = sliderFields.length ? this.queuedSlider : null;
+    const generations = Object.fromEntries(coalescedFields.map(field => [field, generation]));
+    let queued = coalescedFields.length ? this.queuedCoalesced : null;
     if (queued) {
       // Keep only the latest value for each field, and let every caller observe
       // the shared write's completion or failure. Never merge an active write.
       Object.assign(queued.draft, draft);
-      Object.assign(queued.sliderGenerations, generations);
+      Object.assign(queued.coalescedGenerations, generations);
       Object.assign(queued, { generation, epoch, persist, apply });
     } else {
       queued = { previous, draft: { ...draft }, generation, epoch, persist, apply,
-        sliderGenerations: generations, completion: Promise.resolve() };
+        coalescedGenerations: generations, completion: Promise.resolve() };
       const pending = queued;
       // Reserve the first write immediately, before its microtask starts. All
-      // later slider edits can share one queued successor until a barrier.
-      this.queuedSlider = sliderFields.length && this.activeSaves > 0 ? pending : null;
+      // later continuous edits can share one queued successor until a barrier.
+      this.queuedCoalesced = coalescedFields.length && this.activeSaves > 0 ? pending : null;
       this.activeSaves += 1;
       const operation = this.persistenceQueue.then(() => this.persist(pending));
       pending.completion = operation;
@@ -340,32 +353,33 @@ export class SettingsSaveCoordinator {
   }
 
   private async persist(operation: SettingsSaveOperation): Promise<void> {
-    if (this.queuedSlider === operation) this.queuedSlider = null;
-    const { previous, draft, generation, epoch, persist, apply, sliderGenerations } = operation;
-    const sliderFields = sliderDraftFields(draft);
+    if (this.queuedCoalesced === operation) this.queuedCoalesced = null;
+    const { previous, draft, generation, epoch, persist, apply, coalescedGenerations } = operation;
+    const coalescedFields = coalescedDraftFields(draft);
     const publish = (snapshot: SettingsSnapshot) => apply(this.preview(snapshot));
-    this.submittedSlider = sliderFields.length ? { draft, generations: sliderGenerations } : null;
-    const revisions = { ...this.sliderRevisions };
+    this.submittedCoalesced = coalescedFields.length ? { draft, generations: coalescedGenerations } : null;
+    const revisions = { ...this.coalescedRevisions };
     try {
       const snapshot = await persist(draft);
       if (epoch === this.epoch) {
         this.confirmedSnapshot = snapshot;
         this.receivedSnapshot = snapshot;
       }
-      if (sliderFields.length) {
+      if (coalescedFields.length) {
         const acknowledged: SettingsDraft = {};
         const confirmed: SettingsDraft = {};
-        for (const field of sliderFields) {
-          const preview = this.sliderPreviews.get(field);
+        for (const field of coalescedFields) {
+          const preview = this.coalescedPreviews.get(field);
           if (!preview) continue;
           // A late acknowledgement from before an external edit cannot
           // become the rollback baseline for a subsequent local intent,
-          // even when external edits returned to the same numeric value.
-          if (revisions[field] !== this.sliderRevisions[field]) continue;
-          confirmed[field] = sliderValue(snapshot, field);
-          if (preview.generation === sliderGenerations[field]) {
-            this.sliderPreviews.delete(field);
-            acknowledged[field] = confirmed[field];
+          // even when external edits returned to the same value.
+          if (revisions[field] !== this.coalescedRevisions[field]) continue;
+          const resolved = coalescedValue(snapshot, field);
+          setCoalescedDraftField(confirmed, field, resolved);
+          if (preview.generation === coalescedGenerations[field]) {
+            this.coalescedPreviews.delete(field);
+            setCoalescedDraftField(acknowledged, field, resolved);
           }
         }
         if (Object.keys(confirmed).length) {
@@ -380,12 +394,12 @@ export class SettingsSaveCoordinator {
         publish(snapshot);
       }
     } catch (error) {
-      if (sliderFields.length) {
+      if (coalescedFields.length) {
         const rollback: SettingsDraft = {};
-        for (const field of sliderFields) {
-          if (this.sliderPreviews.get(field)?.generation !== sliderGenerations[field]) continue;
-          this.sliderPreviews.delete(field);
-          rollback[field] = sliderValue(this.receivedSnapshot ?? previous, field);
+        for (const field of coalescedFields) {
+          if (this.coalescedPreviews.get(field)?.generation !== coalescedGenerations[field]) continue;
+          this.coalescedPreviews.delete(field);
+          setCoalescedDraftField(rollback, field, coalescedValue(this.receivedSnapshot ?? previous, field));
         }
         if (Object.keys(rollback).length) {
           if (this.confirmedSnapshot !== null) this.confirmedSnapshot = mergeSettingsSnapshot(this.confirmedSnapshot, rollback);
@@ -398,14 +412,20 @@ export class SettingsSaveCoordinator {
       }
       throw error;
     } finally {
-      this.submittedSlider = null;
+      this.submittedCoalesced = null;
       this.activeSaves -= 1;
       if (this.activeSaves === 0) this.confirmedSnapshot = null;
     }
   }
 }
 
-type SliderField = "fontSize" | "subtitleBackgroundOpacity";
+type CoalescedField =
+  | "fontSize"
+  | "subtitleBackgroundOpacity"
+  | "subtitleColor"
+  | "microphoneSubtitleColor"
+  | "subtitleBackgroundColor";
+type CoalescedValue = number | string;
 interface SettingsSaveOperation {
   previous: SettingsSnapshot;
   draft: SettingsDraft;
@@ -413,18 +433,58 @@ interface SettingsSaveOperation {
   epoch: number;
   persist: (draft: SettingsDraft) => Promise<SettingsSnapshot>;
   apply: (settings: SettingsSnapshot) => void;
-  sliderGenerations: Partial<Record<SliderField, number>>;
+  coalescedGenerations: Partial<Record<CoalescedField, number>>;
   completion: Promise<void>;
 }
-const SLIDER_FIELDS: SliderField[] = ["fontSize", "subtitleBackgroundOpacity"];
-function sliderDraftFields(draft: SettingsDraft): SliderField[] {
+const COALESCED_FIELDS: readonly CoalescedField[] = [
+  "fontSize",
+  "subtitleBackgroundOpacity",
+  "subtitleColor",
+  "microphoneSubtitleColor",
+  "subtitleBackgroundColor",
+];
+function isCoalescedField(field: string): field is CoalescedField {
+  return (COALESCED_FIELDS as readonly string[]).includes(field);
+}
+function coalescedDraftFields(draft: SettingsDraft): CoalescedField[] {
   const fields = Object.keys(draft);
-  return fields.length && fields.every((field): field is SliderField =>
-    (field === "fontSize" || field === "subtitleBackgroundOpacity") && typeof draft[field] === "number")
+  return fields.length && fields.every((field): field is CoalescedField => {
+    if (!isCoalescedField(field)) return false;
+    const value = draft[field];
+    return field === "fontSize" || field === "subtitleBackgroundOpacity"
+      ? typeof value === "number"
+      : typeof value === "string";
+  })
     ? fields : [];
 }
-function sliderValue(snapshot: SettingsSnapshot, field: SliderField): number {
-  return field === "fontSize" ? snapshot.fontSize : snapshot.subtitleBackgroundOpacity ?? 80;
+function coalescedValue(snapshot: SettingsSnapshot, field: CoalescedField): CoalescedValue {
+  switch (field) {
+    case "fontSize":
+      return snapshot.fontSize;
+    case "subtitleBackgroundOpacity":
+      return snapshot.subtitleBackgroundOpacity ?? 80;
+    case "subtitleColor":
+      return snapshot.subtitleColor;
+    case "microphoneSubtitleColor":
+      return snapshot.microphoneSubtitleColor ?? "yellow";
+    case "subtitleBackgroundColor":
+      return snapshot.subtitleBackgroundColor ?? "#000000";
+  }
+}
+function setCoalescedDraftField(draft: SettingsDraft, field: CoalescedField, value: CoalescedValue): void {
+  switch (field) {
+    case "fontSize":
+    case "subtitleBackgroundOpacity":
+      if (typeof value === "number") draft[field] = value;
+      break;
+    case "subtitleColor":
+    case "microphoneSubtitleColor":
+      if (typeof value === "string") draft[field] = value as SubtitleColor;
+      break;
+    case "subtitleBackgroundColor":
+      if (typeof value === "string") draft[field] = value as SubtitleBackgroundColor;
+      break;
+  }
 }
 
 /** Prevents an older command response from overwriting a newer event or save. */

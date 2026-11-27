@@ -440,7 +440,16 @@ impl SessionHistory {
             for source in audio_sources {
                 let pcm_path = self.audio_path(id, source, "pcm")?;
                 let audio_path = self.audio_path(id, source, "wav")?;
-                let mut input = fs::File::open(pcm_path)?;
+                let mut input = match fs::File::open(pcm_path) {
+                    Ok(file) => file,
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                        if verified_existing_standalone_wav(&audio_path)? {
+                            continue;
+                        }
+                        return Err(error);
+                    }
+                    Err(error) => return Err(error),
+                };
                 let length = input.metadata()?.len().saturating_sub(4);
                 if length > AUDIO_BYTE_LIMIT as u64 || !length.is_multiple_of(2) {
                     return Err(io::Error::new(
@@ -955,22 +964,14 @@ fn write_final_transcript(
     writer.flush()
 }
 
-/// Reuse only a completed conversion of this pending PCM track. Existing
-/// outputs are compared with bounded buffers before the journal is consumed.
-fn verified_existing_wav(
-    path: &Path,
-    rate: u32,
-    pcm_length: u64,
-    pcm: &mut fs::File,
-) -> io::Result<bool> {
+fn open_regular_nofollow(path: &Path) -> io::Result<Option<(fs::File, fs::Metadata)>> {
     let invalid = || io::Error::new(io::ErrorKind::InvalidData, "invalid existing audio");
     let metadata = match fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error),
     };
-    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() != pcm_length + 44
-    {
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
         return Err(invalid());
     }
     let mut options = fs::OpenOptions::new();
@@ -978,17 +979,14 @@ fn verified_existing_wav(
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        #[cfg(target_os = "macos")]
-        options.custom_flags(0x100); // O_NOFOLLOW
-        #[cfg(not(target_os = "macos"))]
-        options.custom_flags(0x20000);
+        options.custom_flags(libc::O_NOFOLLOW);
     }
     #[cfg(windows)]
     {
         use std::os::windows::fs::OpenOptionsExt;
         options.custom_flags(0x00200000); // FILE_FLAG_OPEN_REPARSE_POINT
     }
-    let mut file = options.open(path)?;
+    let file = options.open(path)?;
     let opened = file.metadata()?;
     if !opened.is_file() || opened.file_type().is_symlink() || opened.len() != metadata.len() {
         return Err(invalid());
@@ -999,6 +997,48 @@ fn verified_existing_wav(
         if metadata.dev() != opened.dev() || metadata.ino() != opened.ino() {
             return Err(invalid());
         }
+    }
+    Ok(Some((file, opened)))
+}
+
+/// Reuse a previously finalized WAV when the PCM journal is already absent
+/// (for example after a crash between deleting `.pcm` and finishing finalization).
+fn verified_existing_standalone_wav(path: &Path) -> io::Result<bool> {
+    let invalid = || io::Error::new(io::ErrorKind::InvalidData, "invalid existing audio");
+    let Some((mut file, opened)) = open_regular_nofollow(path)? else {
+        return Ok(false);
+    };
+    let total_len = opened.len();
+    if total_len <= 44 || total_len > AUDIO_BYTE_LIMIT as u64 + 44 {
+        return Err(invalid());
+    }
+    let pcm_length = total_len - 44;
+    if !pcm_length.is_multiple_of(2) {
+        return Err(invalid());
+    }
+    let mut header = [0_u8; 44];
+    file.read_exact(&mut header)?;
+    let rate = u32::from_le_bytes(header[24..28].try_into().unwrap());
+    if !matches!(rate, 16_000 | 24_000) || header != wav_header(rate, pcm_length as u32) {
+        return Err(invalid());
+    }
+    Ok(true)
+}
+
+/// Reuse only a completed conversion of this pending PCM track. Existing
+/// outputs are compared with bounded buffers before the journal is consumed.
+fn verified_existing_wav(
+    path: &Path,
+    rate: u32,
+    pcm_length: u64,
+    pcm: &mut fs::File,
+) -> io::Result<bool> {
+    let invalid = || io::Error::new(io::ErrorKind::InvalidData, "invalid existing audio");
+    let Some((mut file, opened)) = open_regular_nofollow(path)? else {
+        return Ok(false);
+    };
+    if opened.len() != pcm_length + 44 {
+        return Err(invalid());
     }
     let mut header = [0_u8; 44];
     file.read_exact(&mut header)?;

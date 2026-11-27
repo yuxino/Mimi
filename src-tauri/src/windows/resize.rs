@@ -51,6 +51,13 @@ impl ResizeRegion {
     }
 }
 
+fn frame_is_finite(frame: &OverlayFrame) -> bool {
+    frame.x.is_finite()
+        && frame.y.is_finite()
+        && frame.width.is_finite()
+        && frame.height.is_finite()
+}
+
 /// Computes the new overlay frame for a resize drag.
 ///
 /// All coordinates are logical (CSS) pixels. `screen` is the visible screen
@@ -66,8 +73,29 @@ pub fn apply_drag(
     screen: (f64, f64),
     min_visible: f64,
 ) -> OverlayFrame {
+    if !start_mouse.0.is_finite()
+        || !start_mouse.1.is_finite()
+        || !current_mouse.0.is_finite()
+        || !current_mouse.1.is_finite()
+        || !frame_is_finite(start_frame)
+        || !min_size.0.is_finite()
+        || !min_size.1.is_finite()
+        || !max_size.0.is_finite()
+        || !max_size.1.is_finite()
+        || min_size.0 > max_size.0
+        || min_size.1 > max_size.1
+        || !screen.0.is_finite()
+        || !screen.1.is_finite()
+        || !min_visible.is_finite()
+    {
+        return *start_frame;
+    }
+
     let dx = current_mouse.0 - start_mouse.0;
     let dy = current_mouse.1 - start_mouse.1;
+    if !dx.is_finite() || !dy.is_finite() {
+        return *start_frame;
+    }
 
     let mut width = start_frame.width;
     let mut height = start_frame.height;
@@ -86,6 +114,9 @@ pub fn apply_drag(
     } else if region.moves_bottom() {
         height = start_frame.height + dy;
     }
+    if !width.is_finite() || !height.is_finite() || !x.is_finite() || !y.is_finite() {
+        return *start_frame;
+    }
 
     let clamped_w = width.round().clamp(min_size.0, max_size.0);
     let clamped_h = height.round().clamp(min_size.1, max_size.1);
@@ -98,19 +129,27 @@ pub fn apply_drag(
     if region.moves_top() {
         y += height - clamped_h;
     }
+    if !x.is_finite() || !y.is_finite() {
+        return *start_frame;
+    }
 
     // Keep at least `min_visible` px of the window on screen.
-    x = x
-        .round()
-        .clamp(-clamped_w + min_visible, screen.0 - min_visible);
+    let x_min = -clamped_w + min_visible;
+    let x_max = (screen.0 - min_visible).max(x_min);
+    x = x.round().clamp(x_min, x_max);
     let y_max = (screen.1 - min_visible).max(0.0);
     y = y.round().clamp(0.0, y_max);
 
-    OverlayFrame {
+    let next = OverlayFrame {
         x,
         y,
         width: clamped_w,
         height: clamped_h,
+    };
+    if frame_is_finite(&next) {
+        next
+    } else {
+        *start_frame
     }
 }
 
@@ -315,5 +354,32 @@ mod tests {
             Some(ResizeRegion::BottomRight)
         );
         assert_eq!(ResizeRegion::from_name("nope"), None);
+    }
+
+    #[test]
+    fn non_finite_or_overflowing_coordinates_preserve_start_frame() {
+        let start = frame(100.0, 200.0, 400.0, 136.0);
+        for (start_mouse, current_mouse) in [
+            ((0.0, 0.0), (f64::NAN, 10.0)),
+            ((0.0, 0.0), (10.0, f64::INFINITY)),
+            ((f64::NEG_INFINITY, 0.0), (10.0, 10.0)),
+            ((-f64::MAX, 0.0), (f64::MAX, 0.0)),
+        ] {
+            let result = apply_drag(
+                ResizeRegion::TopLeft,
+                start_mouse,
+                &start,
+                current_mouse,
+                MIN,
+                MAX,
+                SCREEN,
+                48.0,
+            );
+            assert_eq!(result, start);
+            assert!(result.x.is_finite());
+            assert!(result.y.is_finite());
+            assert!(result.width.is_finite());
+            assert!(result.height.is_finite());
+        }
     }
 }

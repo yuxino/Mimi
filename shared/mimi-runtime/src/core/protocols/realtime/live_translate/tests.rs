@@ -581,16 +581,27 @@ fn translation_preview_and_completion_decode() {
 fn session_and_error_events_decode() {
     let updated = decode(r#"{"type":"session.updated"}"#);
     let finished = decode(r#"{"type":"session.finished"}"#);
-    let failure =
-        decode(r#"{"type":"error","error":{"code":"invalid_value","message":"Bad language"}}"#);
+    let failure = decode(
+        r#"{"type":"error","error":{"code":"invalid_value","message":"Bad language secret-key"}}"#,
+    );
+    let auth_failure = decode(
+        r#"{"type":"error","error":{"code":"InvalidApiKey","message":"secret-key-rejected"}}"#,
+    );
 
     assert_eq!(updated, LiveTranslateServerEvent::SessionUpdated);
     assert_eq!(finished, LiveTranslateServerEvent::SessionFinished);
     assert_eq!(
         failure,
         LiveTranslateServerEvent::Error {
-            code: "invalid_value".into(),
-            message: "Bad language".into()
+            code: "alibaba_realtime_provider_error".into(),
+            message: "The Alibaba realtime service rejected the request.".into(),
+        }
+    );
+    assert_eq!(
+        auth_failure,
+        LiveTranslateServerEvent::Error {
+            code: "credential_authentication_failed".into(),
+            message: "credential_authentication_failed".into(),
         }
     );
 }

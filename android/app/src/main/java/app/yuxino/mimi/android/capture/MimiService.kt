@@ -493,6 +493,7 @@ class MimiService : Service() {
         }
         private const val START_DELIVERY_TIMEOUT_MS = 10_000L
         val isStarting: Boolean get() = startGate.isPending
+        val isSessionBusy: Boolean get() = isStarting || isRunning || isStopping
         internal fun startPending(request: Long): Boolean = startGate.waiting(request)
         internal fun prepareStart(context: Context): Long {
             check(!isRunning && !isStopping) { "capture_session_active" }

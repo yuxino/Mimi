@@ -473,3 +473,180 @@ fn fft_resampler_streams_multiple_chunks_without_silence() {
         peak(&out2)
     );
 }
+
+fn sine_samples(sample_rate_hz: f64, frames: usize) -> Vec<f32> {
+    (0..frames)
+        .map(|i| {
+            (i as f64 * 2.0 * std::f64::consts::PI * 1000.0 / sample_rate_hz).sin() as f32 * 0.5
+        })
+        .collect()
+}
+
+fn pcm16_peak(pcm: &[u8]) -> i16 {
+    pcm.as_chunks::<2>()
+        .0
+        .iter()
+        .map(|chunk| i16::from_le_bytes(*chunk).saturating_abs())
+        .max()
+        .unwrap_or(0)
+}
+
+#[test]
+fn resample_to_pcm16_rebuilds_and_clears_pending_across_sample_rate_changes() {
+    let resampler = Mutex::new(None);
+    let pending_frames = Mutex::new(Vec::new());
+    let target_rate = 16_000;
+
+    // 1. Start at 48 kHz with a partial chunk (< 1024 frames) left in pending_frames.
+    let partial_48k = sine_samples(48_000.0, 512);
+    assert_eq!(
+        decode::resample_to_pcm16(
+            &resampler,
+            &pending_frames,
+            target_rate,
+            &partial_48k,
+            48_000.0,
+        )
+        .unwrap(),
+        None
+    );
+    assert_eq!(pending_frames.lock().unwrap().len(), 512);
+    assert_eq!(
+        resampler.lock().unwrap().as_ref().map(|(rate, _)| *rate),
+        Some(48_000)
+    );
+
+    // 2. Switch to 44.1 kHz: old 48 kHz pending samples must be discarded and resampler rebuilt.
+    // Feed two full chunks so output clears any initial FFT warmup delay.
+    let chunk_44k = sine_samples(44_100.0, 2048);
+    let out_44k = decode::resample_to_pcm16(
+        &resampler,
+        &pending_frames,
+        target_rate,
+        &chunk_44k,
+        44_100.0,
+    )
+    .unwrap()
+    .expect("44.1 kHz chunks should emit resampled PCM");
+    assert_eq!(pending_frames.lock().unwrap().len(), 0);
+    assert_eq!(
+        resampler.lock().unwrap().as_ref().map(|(rate, _)| *rate),
+        Some(44_100)
+    );
+    let frames_44k = out_44k.len() / 2;
+    assert!(pcm16_peak(&out_44k) > 100);
+
+    // Leave partial 44.1 kHz frames buffered before switching to pass-through 16 kHz.
+    let partial_44k = sine_samples(44_100.0, 300);
+    assert_eq!(
+        decode::resample_to_pcm16(
+            &resampler,
+            &pending_frames,
+            target_rate,
+            &partial_44k,
+            44_100.0,
+        )
+        .unwrap(),
+        None
+    );
+    assert_eq!(pending_frames.lock().unwrap().len(), 300);
+
+    // 3. Switch to 16 kHz pass-through: pending_frames cleared and resampler reset to None.
+    let direct_16k = sine_samples(16_000.0, 320);
+    let out_16k = decode::resample_to_pcm16(
+        &resampler,
+        &pending_frames,
+        target_rate,
+        &direct_16k,
+        16_000.0,
+    )
+    .unwrap()
+    .expect("16 kHz pass-through should emit PCM directly");
+    assert_eq!(out_16k.len(), 320 * 2);
+    assert!(pending_frames.lock().unwrap().is_empty());
+    assert!(resampler.lock().unwrap().is_none());
+    assert!(pcm16_peak(&out_16k) > 100);
+
+    // 4. Switch back to 48 kHz: resampler must be created fresh for 48 kHz.
+    let chunk_48k = sine_samples(48_000.0, 2048);
+    let out_48k = decode::resample_to_pcm16(
+        &resampler,
+        &pending_frames,
+        target_rate,
+        &chunk_48k,
+        48_000.0,
+    )
+    .unwrap()
+    .expect("48 kHz chunks should emit resampled PCM");
+    assert_eq!(pending_frames.lock().unwrap().len(), 0);
+    assert_eq!(
+        resampler.lock().unwrap().as_ref().map(|(rate, _)| *rate),
+        Some(48_000)
+    );
+    let frames_48k = out_48k.len() / 2;
+    assert!(pcm16_peak(&out_48k) > 100);
+    // For the same 2048 input frames, 44.1 kHz -> 16 kHz must yield more output
+    // frames than 48 kHz -> 16 kHz, confirming the resampler tracked the rate change.
+    assert!(
+        frames_44k > frames_48k,
+        "expected 44.1kHz->16kHz ({frames_44k}) > 48kHz->16kHz ({frames_48k})"
+    );
+
+    // Invalid sample rate is rejected cleanly.
+    assert_eq!(
+        decode::resample_to_pcm16(
+            &resampler,
+            &pending_frames,
+            target_rate,
+            &chunk_48k,
+            f64::NAN
+        ),
+        Err(SystemAudioCaptureError::UnsupportedAudioFormat)
+    );
+}
+
+#[tokio::test]
+async fn stream_handler_owns_audio_state_until_last_objc_reference_drops() {
+    use crate::audio::send_pipeline::AudioSendPipeline;
+
+    let pipeline = AudioSendPipeline::spawn(|_| async { Ok::<(), ()>(()) }, |_| {});
+    let ingress = pipeline.ingress().expect("ingress available");
+    let (failure_tx, mut failure_rx) = CaptureFailureSender::channel();
+    let generation = CaptureGeneration::default();
+    let generation_token = generation.begin();
+
+    let state = AudioHandlerState {
+        audio_ingress: ingress,
+        failure_tx,
+        generation: generation.clone(),
+        generation_token,
+        last_audio_buffer_at: Mutex::new(None),
+        decoded_buffers: Mutex::new(0),
+        resampler: Mutex::new(None),
+        pending_frames: Mutex::new(Vec::new()),
+        target_sample_rate_hz: 16_000,
+    };
+    let this = MimiAudioStreamHandler::alloc().set_ivars(MimiAudioStreamHandlerIvars { state });
+    let primary: Retained<MimiAudioStreamHandler> = unsafe { msg_send![super(this), init] };
+    // Simulate ScreenCaptureKit retaining an extra Objective-C reference on a callback queue.
+    let retained_by_callback = primary.clone();
+
+    drop(primary);
+    // Dropping the primary owner must not drop AudioHandlerState while another ObjC reference exists.
+    assert!(matches!(
+        failure_rx.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+    ));
+    assert!(retained_by_callback
+        .ivars()
+        .state
+        .generation
+        .is_current(generation_token));
+
+    // Releasing the final Objective-C reference invokes objc2's synthesized dealloc and drops state.
+    drop(retained_by_callback);
+    assert!(matches!(
+        failure_rx.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Disconnected)
+    ));
+}

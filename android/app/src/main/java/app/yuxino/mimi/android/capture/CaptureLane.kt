@@ -83,7 +83,7 @@ internal class CaptureLane(val source: CaptureSource, val engine: ProviderEngine
         check(record.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "capture_not_started" }
         capturing.set(true)
         worker = thread(name = "mimi-capture-${source.id}") {
-            try {
+            runCaptureWorker(capturing, onFailure, release = { record.release() }) {
                 Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
                 while (capturing.get()) {
                     val read = if (floatBuffer != null) {
@@ -103,10 +103,6 @@ internal class CaptureLane(val source: CaptureSource, val engine: ProviderEngine
                         onAudioSubmitted(pcm)
                     }
                 }
-            } catch (_: Exception) {
-                onFailure()
-            } finally {
-                record.release()
             }
         }
     }
@@ -137,5 +133,20 @@ internal class CaptureLane(val source: CaptureSource, val engine: ProviderEngine
 
     private companion object {
         const val CAPTURE_RATE_HZ = 48_000
+    }
+}
+
+internal fun runCaptureWorker(
+    capturing: AtomicBoolean,
+    onFailure: () -> Unit,
+    release: () -> Unit,
+    body: () -> Unit,
+) {
+    try {
+        body()
+    } catch (_: Exception) {
+        if (capturing.get()) onFailure()
+    } finally {
+        release()
     }
 }

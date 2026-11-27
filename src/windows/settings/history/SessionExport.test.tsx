@@ -488,6 +488,7 @@ describe("history operation state", () => {
       expect(host.textContent).not.toContain("Synthetic A");
       expect(host.querySelector("audio")).toBeNull();
       expect(objectUrl).not.toHaveBeenCalled();
+      expect(host.querySelector(".settings-toast")?.textContent).toContain(copy().deletedSessions(1));
       await select(0);
       await act(async () => currentRead.resolve(page("current")));
       expect(host.textContent).toContain("Synthetic current");

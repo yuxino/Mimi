@@ -400,26 +400,11 @@ fn rejected_error(status_code: u16, data: &[u8]) -> QwenMTClientError {
         status_code,
         QwenMTRejectionCategory::from_response(data).diagnostic_label()
     );
+    // Keep upstream error bodies out of diagnostics and UI-facing messages.
     QwenMTClientError::RequestFailed {
         status_code,
-        message: error_message(data),
+        message: String::new(),
     }
-}
-
-fn error_message(data: &[u8]) -> String {
-    #[derive(serde::Deserialize)]
-    struct ErrorBody {
-        error: Option<ErrorInner>,
-    }
-    #[derive(serde::Deserialize)]
-    struct ErrorInner {
-        message: Option<String>,
-    }
-    serde_json::from_slice::<ErrorBody>(data)
-        .ok()
-        .and_then(|body| body.error)
-        .and_then(|error| error.message)
-        .unwrap_or_default()
 }
 
 #[cfg(test)]

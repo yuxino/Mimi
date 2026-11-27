@@ -1,5 +1,5 @@
 import { isSystemAudioPermissionDenied } from "../../lib/audio/systemAudioPermissions";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isLightSubtitleBackground, subtitleBackgroundColor } from "../../lib/subtitles/subtitleColor";
 import { effectiveUiLanguage, I18N } from "../../lib/i18n";
 import { isIndependentAsrProfile } from "../../lib/providers/providerCapabilities";
@@ -81,8 +81,13 @@ export function OverlayWindow() {
   const [pauseRequested, setPauseRequested] = useState(false);
   const controlAction = useSessionAction();
   const sessionFailureKey = `${session.status.kind}:${session.isActive}:${session.isPaused}`;
-  const [opacityFailureKey, setOpacityFailureKey] = useState<string | null>(null);
-  const opacitySaveFailed = opacityFailureKey === sessionFailureKey;
+  const [opacityFailure, setOpacityFailure] = useState<{
+    key: string;
+    settledOpacity: number | undefined;
+  } | null>(null);
+  const opacitySaveFailed = opacityFailure !== null
+    && opacityFailure.key === sessionFailureKey
+    && opacityFailure.settledOpacity === settings.subtitleBackgroundOpacity;
   const opacityRequestRef = useRef(0);
   const actionFailureMessage = sessionAction.failureMessage
     ?? controlAction.failureMessage
@@ -95,16 +100,29 @@ export function OverlayWindow() {
     clearControlFailure();
   }, [session.status.kind, session.isActive, session.isPaused, clearFailure, clearControlFailure]);
 
-  const handleOverlayOpacityChange = (nextOpacity: number) => {
+  useEffect(() => {
+    if (!opacitySaveFailed) return;
+    const timer = window.setTimeout(() => setOpacityFailure(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [opacitySaveFailed, opacityFailure]);
+
+  const handleOverlayOpacityChange = useCallback((nextOpacity: number) => {
     const requestId = ++opacityRequestRef.current;
-    const failureKey = sessionFailureKey;
-    setOpacityFailureKey(null);
+    const currentSession = useStore.getState().session;
+    const failureKey = `${currentSession.status.kind}:${currentSession.isActive}:${currentSession.isPaused}`;
+    setOpacityFailure(null);
     void saveSettings({ subtitleBackgroundOpacity: nextOpacity }).catch(() => {
-      if (opacityRequestRef.current === requestId) setOpacityFailureKey(failureKey);
+      if (opacityRequestRef.current === requestId) {
+        setOpacityFailure({
+          key: failureKey,
+          settledOpacity: useStore.getState().settings.subtitleBackgroundOpacity,
+        });
+      }
     });
-  };
+  }, [saveSettings]);
 
   const runControlAction = (action: ControlAction, operation: () => Promise<void>) => {
+    setOpacityFailure(null);
     void runGuardedControl(async () => {
       setPendingControl(action);
       try {
@@ -384,7 +402,7 @@ export function OverlayWindow() {
         data-overlay-locked={presentationLocked ? "" : undefined}
         data-overlay-draggable={!presentationLocked && !controlAction.pending ? "" : undefined}
         data-overlay-has-captions={blocks.length > 0 ? "" : undefined}
-        data-low-opacity={settings.subtitleBackgroundOpacity < 70 ? "" : undefined}
+        data-low-opacity={(settings.subtitleBackgroundOpacity ?? 80) < 70 ? "" : undefined}
         data-light-surface={lightSurface ? "" : undefined}
         onPointerDownCapture={event => startOverlayContentDrag(event, presentationLocked || controlAction.pending)}
         style={{

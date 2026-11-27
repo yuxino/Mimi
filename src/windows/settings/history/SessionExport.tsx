@@ -437,7 +437,10 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
       historyRequest.current += 1;
       setHistory((items) => items.filter((item) => item.id !== id));
       setHistoryRefresh(value => value + 1);
-      if (selectedHistoryId.current === id) { selectHistory(null); setReaderOpen(false); }
+      if (selectedHistoryId.current === id) clearSelectedSessionState();
+      if (interaction.current === currentInteraction) {
+        notify(sessionWorkspaceCopy[effectiveUiLanguage()].deletedSessions(1));
+      }
     } catch (error) {
       if (lifetime.current === currentLifetime && interaction.current === currentInteraction) {
         notify(formatHistoryDeleteFailure(error), true);
