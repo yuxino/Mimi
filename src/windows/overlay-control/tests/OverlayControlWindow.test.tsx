@@ -335,12 +335,15 @@ it.each([false, true])("marks light opaque island surfaces for dark ink contrast
     await act(() => native.onMode?.("island"));
     const surface = host.querySelector<HTMLElement>(".overlay-control-embedded, .overlay-control-detached")!;
     expect(surface.hasAttribute("data-light-surface")).toBe(true);
+    expect(surface.hasAttribute("data-low-opacity")).toBe(false);
 
     await act(() => useStore.setState(state => ({ settings: { ...state.settings, subtitleBackgroundOpacity: 20 } })));
     expect(surface.hasAttribute("data-light-surface")).toBe(false);
+    expect(surface.hasAttribute("data-low-opacity")).toBe(true);
 
     await act(() => useStore.setState(state => ({ settings: { ...state.settings, subtitleBackgroundOpacity: 85, subtitleBlendsWithBackground: true } })));
     expect(surface.hasAttribute("data-light-surface")).toBe(false);
+    expect(surface.hasAttribute("data-low-opacity")).toBe(false);
 
     await act(() => useStore.setState(state => ({ settings: { ...state.settings, subtitleBlendsWithBackground: false } })));
     await act(() => native.onMode?.("panel"));

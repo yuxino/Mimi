@@ -80,5 +80,28 @@ describe("SubtitleColorControl", () => {
     act(() => { hexInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
     expect(hexInput.value).toBe("#000000");
     expect(host.querySelector('[role="alert"]')).toBeNull();
+
+    // Disabling the control (e.g. enabling Immersive Mode) clears any transient invalid draft.
+    act(() => { setNativeValue(hexInput, "#BAD"); });
+    act(() => { hexInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    expect(host.querySelector('[role="alert"]')).not.toBeNull();
+    act(() => {
+      root!.render(
+        <SubtitleColorControl
+          label="Background color"
+          value="#000000"
+          disabled
+          options={SUBTITLE_BACKGROUND_COLOR_OPTIONS.map((option) => ({
+            value: option.value,
+            hex: option.value,
+            label: option.label,
+          }))}
+          resolveHex={subtitleBackgroundHex}
+          onChange={onChange}
+        />,
+      );
+    });
+    expect(hexInput.value).toBe("#000000");
+    expect(host.querySelector('[role="alert"]')).toBeNull();
   });
 });

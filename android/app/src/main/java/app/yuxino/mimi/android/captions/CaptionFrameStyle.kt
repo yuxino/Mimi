@@ -32,12 +32,20 @@ internal data class CaptionFrameStyle(
 internal object CaptionSurface {
     fun apply(view: View, style: CaptionFrameStyle, immersive: Boolean) {
         view.alpha = if (immersive) 1f else style.opacity / 100f
-        (view.background as GradientDrawable).setColor(Color.argb(
+        val drawable = view.background as GradientDrawable
+        drawable.setColor(Color.argb(
             if (immersive) 0 else style.backgroundAlpha.coerceIn(0, 100) * 255 / 100,
             CaptionColorMath.red(style.backgroundColor),
             CaptionColorMath.green(style.backgroundColor),
             CaptionColorMath.blue(style.backgroundColor),
         ))
+        val lightSurface = !immersive && CaptionColorMath.isLightSurface(style.backgroundColor, style.backgroundAlpha)
+        if (lightSurface) {
+            val strokePx = (1f * view.resources.displayMetrics.density + 0.5f).toInt().coerceAtLeast(1)
+            drawable.setStroke(strokePx, 0x29000000)
+        } else {
+            drawable.setStroke(0, Color.TRANSPARENT)
+        }
     }
 }
 

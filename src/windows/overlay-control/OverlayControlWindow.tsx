@@ -102,6 +102,8 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
     (!audioRecording || audioRecording === "off");
   const lightIslandSurface = visibleMode === "island" && !settings.subtitleBlendsWithBackground &&
     isLightSubtitleBackground(settings.subtitleBackgroundColor, settings.subtitleBackgroundOpacity);
+  const lowOpacityIslandSurface = visibleMode === "island" && !settings.subtitleBlendsWithBackground &&
+    !lightIslandSurface && (settings.subtitleBackgroundOpacity ?? 80) < 70;
 
   const toggle = useCallback(() => {
     if (mode !== "island") return;
@@ -251,7 +253,8 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
       aria-hidden={visibleMode === "hidden" ? true : undefined}
       inert={visibleMode === "hidden" ? true : undefined}
       data-mode={embedded ? visibleMode : undefined} data-quiet-island={quietIsland ? "" : undefined}
-      data-light-surface={lightIslandSurface ? "" : undefined}>
+      data-light-surface={lightIslandSurface ? "" : undefined}
+      data-low-opacity={lowOpacityIslandSurface ? "" : undefined}>
       {mode === "panel" && !lockedPresentation && (
         <OverlayControlPanel
           phase={phase}

@@ -42,8 +42,8 @@ export function SubtitleColorControl<T extends string = SubtitleColor>({
   const hex = resolveHex(value);
   const isCustom = !options.some((option) => hex === option.hex);
   const [edit, setEdit] = useState({ baseHex: hex, draft: hex, error: false });
-  const hexDraft = edit.baseHex === hex ? edit.draft : hex;
-  const hexError = edit.baseHex === hex && edit.error;
+  const hexDraft = !disabled && edit.baseHex === hex ? edit.draft : hex;
+  const hexError = !disabled && edit.baseHex === hex && edit.error;
 
   const commitHex = () => {
     if (disabled) return;

@@ -502,6 +502,7 @@ export function OverlayWindow() {
                 </div>
               )}
               <div
+                className="overlay-empty-status"
                 style={{
                   width: "100%",
                   minWidth: 0,
