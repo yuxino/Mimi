@@ -919,3 +919,42 @@ async fn independent_review_fin_retains_its_next_draft() {
     publish.send(String::new()).unwrap();
     client.disconnect().await;
 }
+
+#[tokio::test]
+async fn finish_returns_promptly_when_server_closes_without_session_finished() {
+    let (client, mut events) = test_client(|mut socket| {
+        Box::pin(async move {
+            let _ = socket.next().await;
+            socket
+                .send(Message::Text(
+                    r#"{"code":0,"msg":"Success","data":{"status":"STA"}}"#.into(),
+                ))
+                .await
+                .unwrap();
+            while let Some(Ok(message)) = socket.next().await {
+                if matches!(&message, Message::Text(text) if text.contains(r#""type":"FINISH""#)) {
+                    let _ = socket.close(None).await;
+                    break;
+                }
+            }
+        })
+    })
+    .await;
+    client
+        .connect_with_timeout(Duration::from_secs(2))
+        .await
+        .unwrap();
+    let started = tokio::time::Instant::now();
+    client.finish(Duration::from_secs(5)).await;
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "finish should wake immediately when the receive loop terminates"
+    );
+    let mut error_codes = Vec::new();
+    while let Ok(event) = events.try_recv() {
+        if let LiveTranslateServerEvent::Error { code, .. } = event {
+            error_codes.push(code);
+        }
+    }
+    assert_eq!(error_codes, vec!["transport_error"]);
+}

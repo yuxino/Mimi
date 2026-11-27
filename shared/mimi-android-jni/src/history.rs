@@ -11,7 +11,7 @@ use std::{
     collections::HashMap,
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicU64, Ordering},
         Arc, Mutex, OnceLock,
     },
 };
@@ -20,44 +20,52 @@ const ERROR: &str = "session_history_unavailable";
 const MAX_JOURNALS: usize = 2;
 const MAX_RECENT_HANDLES: usize = 8;
 
-struct Entry {
-    directory: PathBuf,
-    journal: Mutex<SessionJournal>,
-    owners: AtomicUsize,
-    finish_requested: AtomicBool,
-    finish_settled: AtomicBool,
+struct EntryState {
+    journal: SessionJournal,
+    owners: usize,
+    finish_requested: bool,
+    finish_settled: bool,
+    disabled: bool,
 }
 
-impl Entry {
+impl EntryState {
     fn active_id(&self) -> Option<String> {
-        if self.finish_settled.load(Ordering::SeqCst) && self.owners.load(Ordering::SeqCst) == 0 {
+        if self.finish_settled && self.owners == 0 {
             return None;
         }
-        self.journal.lock().ok()?.id().map(str::to_owned)
+        self.journal.id().map(str::to_owned)
     }
 
-    fn finish_if_released(&self) -> Result<(), &'static str> {
-        if self.finish_requested.load(Ordering::SeqCst) && self.owners.load(Ordering::SeqCst) == 0 {
-            self.finish_settled.store(false, Ordering::SeqCst);
-            let result = self
-                .journal
-                .lock()
-                .map_err(|_| ERROR)?
-                .finish(now_epoch_ms())
-                .map_err(|_| ERROR);
-            self.finish_settled.store(true, Ordering::SeqCst);
+    fn finish_if_released(&mut self) -> Result<(), &'static str> {
+        if self.finish_requested && self.owners == 0 && !self.disabled {
+            let result = self.journal.finish(now_epoch_ms()).map_err(|_| ERROR);
+            self.finish_settled = true;
             result?;
         }
         Ok(())
     }
 
+    fn status(&self) -> Value {
+        json!({
+            "pending": self.finish_requested && !self.finish_settled,
+            "finalized": self.journal.id().is_none(),
+            "state": self.journal.state(),
+        })
+    }
+}
+
+struct Entry {
+    directory: PathBuf,
+    state: Mutex<EntryState>,
+}
+
+impl Entry {
+    fn active_id(&self) -> Option<String> {
+        self.state.lock().ok()?.active_id()
+    }
+
     fn status(&self) -> Result<Value, &'static str> {
-        let journal = self.journal.lock().map_err(|_| ERROR)?;
-        Ok(json!({
-            "pending": self.finish_requested.load(Ordering::SeqCst) && !self.finish_settled.load(Ordering::SeqCst),
-            "finalized": journal.id().is_none(),
-            "state": journal.state(),
-        }))
+        Ok(self.state.lock().map_err(|_| ERROR)?.status())
     }
 }
 
@@ -71,36 +79,40 @@ impl Lease {
     pub fn append(&self, pair: &SubtitlePair) {
         // Save failures stay on the journal state; never put caption content
         // or a private filesystem path into provider diagnostics.
-        let _ = self.0.journal.lock().unwrap().append(pair);
+        let _ = self.0.state.lock().unwrap().journal.append(pair);
     }
     pub fn state(&self) -> JournalState {
-        self.0.journal.lock().unwrap().state()
+        self.0.state.lock().unwrap().journal.state()
     }
 
     pub fn release(self) -> JournalState {
         let entry = Arc::clone(&self.0);
         drop(self);
-        let state = entry.journal.lock().unwrap().state();
+        let state = entry.state.lock().unwrap().journal.state();
         state
     }
 }
 impl Drop for Lease {
     fn drop(&mut self) {
-        if self.0.owners.fetch_sub(1, Ordering::SeqCst) == 1 {
-            let _ = self.0.finish_if_released();
-        }
+        let mut state = self
+            .0
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.owners = state.owners.saturating_sub(1);
+        let _ = state.finish_if_released();
     }
 }
 
 pub fn attach(handle: u64) -> Result<Lease, &'static str> {
     let registry = journals().lock().map_err(|_| ERROR)?;
     let entry = registry.get(&handle).ok_or(ERROR)?;
-    if entry.finish_requested.load(Ordering::SeqCst)
-        || entry.journal.lock().map_err(|_| ERROR)?.id().is_none()
-    {
+    let mut state = entry.state.lock().map_err(|_| ERROR)?;
+    if state.finish_requested || state.disabled || state.journal.id().is_none() {
         return Err(ERROR);
     }
-    entry.owners.fetch_add(1, Ordering::SeqCst);
+    state.owners += 1;
+    drop(state);
     Ok(Lease(Arc::clone(entry)))
 }
 
@@ -167,10 +179,13 @@ pub fn exchange(value: &Value) -> Result<Value, &'static str> {
                 handle,
                 Arc::new(Entry {
                     directory,
-                    journal: Mutex::new(journal),
-                    owners: AtomicUsize::new(0),
-                    finish_requested: AtomicBool::new(false),
-                    finish_settled: AtomicBool::new(false),
+                    state: Mutex::new(EntryState {
+                        journal,
+                        owners: 0,
+                        finish_requested: false,
+                        finish_settled: false,
+                        disabled: false,
+                    }),
                 }),
             );
             Ok(json!({"historyHandle":handle}))
@@ -182,20 +197,17 @@ pub fn exchange(value: &Value) -> Result<Value, &'static str> {
             if value["operation"] == "history_state" {
                 return entry.status();
             }
-            entry.finish_requested.store(true, Ordering::SeqCst);
+            let mut state = entry.state.lock().map_err(|_| ERROR)?;
+            state.finish_requested = true;
             if value["operation"] == "history_disable" {
-                let result = entry
-                    .journal
-                    .lock()
-                    .map_err(|_| ERROR)?
-                    .disable()
-                    .map_err(|_| ERROR);
-                entry.finish_settled.store(true, Ordering::SeqCst);
+                state.disabled = true;
+                let result = state.journal.disable().map_err(|_| ERROR);
+                state.finish_settled = true;
                 result?;
             } else {
-                entry.finish_if_released()?;
+                state.finish_if_released()?;
             }
-            entry.status()
+            Ok(state.status())
         }
         "history_list"
         | "history_page"
@@ -317,9 +329,10 @@ mod tests {
             self.handles.push(handle);
             let owner = attach(handle).unwrap();
             let id = journals().lock().unwrap()[&handle]
-                .journal
+                .state
                 .lock()
                 .unwrap()
+                .journal
                 .id()
                 .unwrap()
                 .to_owned();
@@ -441,9 +454,10 @@ mod tests {
         let status = json!({"operation":"history_state","historyHandle":handle});
         assert_eq!(exchange(&status).unwrap()["pending"], true);
         let id = journals().lock().unwrap()[&handle]
-            .journal
+            .state
             .lock()
             .unwrap()
+            .journal
             .id()
             .unwrap()
             .to_owned();
@@ -513,9 +527,10 @@ mod tests {
             now_epoch_ms(),
         ));
         let active_id = journals().lock().unwrap()[&active_handle]
-            .journal
+            .state
             .lock()
             .unwrap()
+            .journal
             .id()
             .unwrap()
             .to_owned();
@@ -543,5 +558,30 @@ mod tests {
             exchange(&json!({"operation":"history_list","directory":directory})).unwrap();
         assert_eq!(finalized["items"].as_array().unwrap().len(), 2);
         std::fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[test]
+    fn disabling_journal_before_lease_release_keeps_settled_state_and_skips_finalization() {
+        let _serial = registry_test_guard();
+        let mut fixture = HistoryFixture::new();
+        let (handle, owner, _id) = fixture.begin();
+        let disabled =
+            exchange(&json!({"operation":"history_disable","historyHandle":handle})).unwrap();
+        assert_eq!(disabled["pending"], false);
+        assert_eq!(disabled["finalized"], true);
+
+        let released = owner.release();
+        assert!(!released.save_error);
+        let status =
+            exchange(&json!({"operation":"history_state","historyHandle":handle})).unwrap();
+        assert_eq!(status["pending"], false);
+        assert_eq!(status["finalized"], true);
+
+        let listed = exchange(&json!({
+            "operation": "history_list",
+            "directory": fixture.directory,
+        }))
+        .unwrap();
+        assert_eq!(listed["items"], json!([]));
     }
 }

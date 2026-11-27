@@ -410,6 +410,8 @@ impl HighQualityTranslationClient {
             }
         } else if matches!(error, QwenMTClientError::UnsupportedSource) {
             "translation_source_unsupported"
+        } else if let QwenMTClientError::Apple(label) = error {
+            label
         } else if matches!(error, QwenMTClientError::DeepL(_)) {
             "deepl_translation_failed"
         } else if matches!(error, QwenMTClientError::DeepLX(_)) {
@@ -427,7 +429,12 @@ impl HighQualityTranslationClient {
                     "translation_temporarily_unavailable".into()
                 }
                 "translation_authentication_failed" => "credential_authentication_failed".into(),
-                _ => error.to_string(),
+                _ => match error {
+                    QwenMTClientError::RequestFailed { status_code, .. } if *status_code != 0 => {
+                        format!("Qwen-MT request failed with HTTP {status_code}.")
+                    }
+                    _ => error.to_string(),
+                },
             },
         });
     }

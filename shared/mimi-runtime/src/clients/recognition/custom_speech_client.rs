@@ -82,6 +82,7 @@ struct Inner {
     generation: AtomicU64,
     ready: AtomicBool,
     closing: AtomicBool,
+    receive_ended: AtomicBool,
     failed: AtomicBool,
     failure_reason: std::sync::Mutex<Option<CustomSpeechClientError>>,
     clearing: AtomicBool,
@@ -182,6 +183,7 @@ impl CustomSpeechClient {
                 generation: AtomicU64::new(0),
                 ready: AtomicBool::new(false),
                 closing: AtomicBool::new(false),
+                receive_ended: AtomicBool::new(false),
                 failed: AtomicBool::new(false),
                 failure_reason: Default::default(),
                 clearing: AtomicBool::new(false),
@@ -325,6 +327,7 @@ impl CustomSpeechClient {
         let (sink, stream) = socket.split();
         *self.inner.sink.lock().await = Some(sink);
         self.inner.closing.store(false, Ordering::SeqCst);
+        self.inner.receive_ended.store(false, Ordering::SeqCst);
         self.inner.failed.store(false, Ordering::SeqCst);
         let (setup, mut acknowledged) = watch::channel(SetupState::Awaiting);
         let client = self.clone();
@@ -532,6 +535,7 @@ impl CustomSpeechClient {
                 progress.as_mut().enable();
                 if self.inner.content.lock().unwrap().turns.is_empty()
                     || self.inner.failed.load(Ordering::SeqCst)
+                    || self.inner.receive_ended.load(Ordering::SeqCst)
                 {
                     break;
                 }
@@ -555,6 +559,7 @@ impl CustomSpeechClient {
         self.inner.generation.fetch_add(1, Ordering::SeqCst);
         self.inner.ready.store(false, Ordering::SeqCst);
         self.inner.closing.store(true, Ordering::SeqCst);
+        self.inner.receive_ended.store(true, Ordering::SeqCst);
         self.inner.clearing.store(false, Ordering::SeqCst);
         if let Some(task) = self.inner.receive_task.lock().unwrap().take() {
             task.abort();
@@ -599,6 +604,22 @@ impl CustomSpeechClient {
         setup: watch::Sender<SetupState>,
         generation: u64,
     ) {
+        struct ReceiveEndedGuard<'a> {
+            inner: &'a Inner,
+            generation: u64,
+        }
+        impl Drop for ReceiveEndedGuard<'_> {
+            fn drop(&mut self) {
+                if self.inner.generation.load(Ordering::SeqCst) == self.generation {
+                    self.inner.receive_ended.store(true, Ordering::SeqCst);
+                    self.inner.progress.notify_waiters();
+                }
+            }
+        }
+        let _receive_ended = ReceiveEndedGuard {
+            inner: &self.inner,
+            generation,
+        };
         let mut idle = tokio::time::interval(Duration::from_millis(100));
         idle.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {

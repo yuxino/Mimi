@@ -1293,3 +1293,70 @@ fn batch_delete_fails_when_history_is_disabled() {
         .unwrap_err();
     assert_eq!(error.kind(), io::ErrorKind::NotFound);
 }
+
+#[test]
+fn finalization_recovers_when_pcm_was_already_removed_and_valid_wav_exists() {
+    let directory = tempfile::tempdir().unwrap();
+    let history = SessionHistory::new(directory.path().join("history"), false);
+    let id = pending_audio(&history, AudioSource::System, 16_000);
+    history
+        .append_pcm_from(&id, AudioSource::Microphone, 24_000, &[3, 0, 4, 0])
+        .unwrap();
+
+    // Simulate a crash after converting and deleting the system PCM track
+    // while the microphone PCM and transcript journal are still pending.
+    let system_pcm = history.audio_path(&id, AudioSource::System, "pcm").unwrap();
+    let system_wav = history.audio_path(&id, AudioSource::System, "wav").unwrap();
+    let expected_system_wav = synthetic_wav(16_000);
+    fs::write(&system_wav, &expected_system_wav).unwrap();
+    fs::remove_file(&system_pcm).unwrap();
+
+    assert!(history.finalize(&id, 200, false).unwrap());
+    assert_eq!(
+        history.audio_from(&id, AudioSource::System).unwrap(),
+        expected_system_wav
+    );
+    let expected_mic_wav = {
+        let mut wav = wav_header(24_000, 4).to_vec();
+        wav.extend_from_slice(&[3, 0, 4, 0]);
+        wav
+    };
+    assert_eq!(
+        history.audio_from(&id, AudioSource::Microphone).unwrap(),
+        expected_mic_wav
+    );
+    assert!(history.path(&id, "json").unwrap().is_file());
+    assert!(!history.path(&id, "jsonl").unwrap().exists());
+    assert!(!history
+        .audio_path(&id, AudioSource::Microphone, "pcm")
+        .unwrap()
+        .exists());
+    assert_eq!(history.page(&id, "", 0).unwrap().total, 1);
+}
+
+#[test]
+fn finalization_rejects_corrupt_standalone_wav_when_pcm_is_missing() {
+    let directory = tempfile::tempdir().unwrap();
+    let history = SessionHistory::new(directory.path().join("history"), false);
+    let id = pending_audio(&history, AudioSource::System, 16_000);
+    let pcm_path = history.audio_path(&id, AudioSource::System, "pcm").unwrap();
+    let wav_path = history.audio_path(&id, AudioSource::System, "wav").unwrap();
+    fs::remove_file(&pcm_path).unwrap();
+
+    // Non-empty (>44 bytes) but invalid WAV header must fail instead of finalizing.
+    let mut bad_wav = synthetic_wav(16_000);
+    bad_wav[0] = b'X';
+    fs::write(&wav_path, &bad_wav).unwrap();
+    let error = history.finalize(&id, 200, false).unwrap_err();
+    assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    assert!(history.path(&id, "jsonl").unwrap().is_file());
+    assert!(!history.path(&id, "json").unwrap().exists());
+
+    // Valid standalone WAV succeeds.
+    fs::write(&wav_path, synthetic_wav(16_000)).unwrap();
+    assert!(history.finalize(&id, 200, false).unwrap());
+    assert_eq!(
+        history.audio_from(&id, AudioSource::System).unwrap(),
+        synthetic_wav(16_000)
+    );
+}

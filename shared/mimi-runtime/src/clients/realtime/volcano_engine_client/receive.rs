@@ -26,7 +26,25 @@ pub(super) struct ReceiveContext {
     pub(super) generation: u64,
 }
 
+struct ReceiveEndedGuard {
+    inner: Arc<Inner>,
+    generation: u64,
+}
+
+impl Drop for ReceiveEndedGuard {
+    fn drop(&mut self) {
+        if self.inner.generation.load(Ordering::SeqCst) == self.generation {
+            self.inner.receive_ended.store(true, Ordering::SeqCst);
+            self.inner.session_finished_notify.notify_waiters();
+        }
+    }
+}
+
 pub(super) async fn receive_loop(mut context: ReceiveContext) {
+    let _receive_ended = ReceiveEndedGuard {
+        inner: Arc::clone(&context.inner),
+        generation: context.generation,
+    };
     while let Some(message) = context.stream.next().await {
         if context.inner.generation.load(Ordering::SeqCst) != context.generation {
             return;

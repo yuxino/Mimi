@@ -97,21 +97,28 @@ struct ConnectAttempt {
 }
 impl Drop for ConnectAttempt {
     fn drop(&mut self) {
+        let retired = self.generation.wrapping_add(1);
         if !self.complete
             && self
                 .inner
                 .generation
-                .compare_exchange(
-                    self.generation,
-                    self.generation.wrapping_add(1),
-                    Ordering::SeqCst,
-                    Ordering::SeqCst,
-                )
+                .compare_exchange(self.generation, retired, Ordering::SeqCst, Ordering::SeqCst)
                 .is_ok()
         {
             self.inner.ready.store(false, Ordering::SeqCst);
             if let Some(receiver) = self.inner.receiver.lock().unwrap().take() {
                 receiver.abort();
+            }
+            if let Ok(mut sink) = self.inner.sink.try_lock() {
+                sink.take();
+            } else if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+                let inner = self.inner.clone();
+                runtime.spawn(async move {
+                    let mut sink = inner.sink.lock().await;
+                    if inner.generation.load(Ordering::SeqCst) == retired {
+                        sink.take();
+                    }
+                });
             }
         }
     }

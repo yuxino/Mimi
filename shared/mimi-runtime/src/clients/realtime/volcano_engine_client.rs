@@ -96,6 +96,7 @@ struct Inner {
     ready: AtomicBool,
     is_closing: AtomicBool,
     received_session_finished: AtomicBool,
+    receive_ended: AtomicBool,
     session_finished_notify: Notify,
     pong_notify: Notify,
     generation: AtomicU64,
@@ -176,6 +177,7 @@ impl VolcanoEngineClient {
                 ready: AtomicBool::new(false),
                 is_closing: AtomicBool::new(false),
                 received_session_finished: AtomicBool::new(false),
+                receive_ended: AtomicBool::new(false),
                 session_finished_notify: Notify::new(),
                 pong_notify: Notify::new(),
                 generation: AtomicU64::new(0),
@@ -234,6 +236,7 @@ impl VolcanoEngineClient {
         self.inner
             .received_session_finished
             .store(false, Ordering::SeqCst);
+        self.inner.receive_ended.store(false, Ordering::SeqCst);
         self.inner.pending_audio.lock().await.clear();
         self.inner.committer.lock().await.reset();
         let session_id = Uuid::new_v4().to_string();
@@ -293,7 +296,14 @@ impl VolcanoEngineClient {
         {
             return Err(VolcanoEngineClientError::NotConnected);
         }
+        let generation = self.inner.generation.load(Ordering::SeqCst);
         let _send_guard = self.inner.audio_send_lock.lock().await;
+        if !self.is_current_generation(generation)
+            || !self.inner.ready.load(Ordering::SeqCst)
+            || self.inner.is_closing.load(Ordering::SeqCst)
+        {
+            return Err(VolcanoEngineClientError::NotConnected);
+        }
         let session_id = self.current_session_id().await?;
         let frames = {
             let mut pending = self.inner.pending_audio.lock().await;
@@ -301,6 +311,12 @@ impl VolcanoEngineClient {
             take_complete_audio_messages(&session_id, &mut pending)?
         };
         for frame in frames {
+            if !self.is_current_generation(generation)
+                || !self.inner.ready.load(Ordering::SeqCst)
+                || self.inner.is_closing.load(Ordering::SeqCst)
+            {
+                return Err(VolcanoEngineClientError::NotConnected);
+            }
             self.send_binary(frame).await?;
         }
         Ok(())
@@ -347,7 +363,10 @@ impl VolcanoEngineClient {
         let generation = self.inner.generation.load(Ordering::SeqCst);
         match tokio::time::timeout(timeout, self.finish_operation(generation)).await {
             Ok(Ok(())) => {}
-            Ok(Err(_)) if self.is_current_generation(generation) => {
+            Ok(Err(_))
+                if self.is_current_generation(generation)
+                    && !self.inner.receive_ended.load(Ordering::SeqCst) =>
+            {
                 self.emit(
                     LiveTranslateServerEvent::Error {
                         code: "volcano_session_close_failed".into(),
@@ -356,7 +375,10 @@ impl VolcanoEngineClient {
                     generation,
                 );
             }
-            Err(_) if self.is_current_generation(generation) => {
+            Err(_)
+                if self.is_current_generation(generation)
+                    && !self.inner.receive_ended.load(Ordering::SeqCst) =>
+            {
                 self.emit(
                     LiveTranslateServerEvent::Error {
                         code: "volcano_close_timeout".into(),
@@ -398,6 +420,9 @@ impl VolcanoEngineClient {
             if self.inner.received_session_finished.load(Ordering::SeqCst) {
                 return Ok(());
             }
+            if self.inner.receive_ended.load(Ordering::SeqCst) {
+                return Err(VolcanoEngineClientError::NotConnected);
+            }
             finished.await;
         }
     }
@@ -405,6 +430,7 @@ impl VolcanoEngineClient {
     pub async fn disconnect(&self) {
         self.inner.generation.fetch_add(1, Ordering::SeqCst);
         self.inner.ready.store(false, Ordering::SeqCst);
+        self.inner.receive_ended.store(true, Ordering::SeqCst);
         self.inner.is_closing.store(false, Ordering::SeqCst);
         self.inner
             .received_session_finished

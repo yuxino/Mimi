@@ -657,6 +657,7 @@ dependencies = [
  "futures-util",
  "hyper-util",
  "idna",
+ "libc",
  "mimi-core",
  "percent-encoding",
  "reqwest",

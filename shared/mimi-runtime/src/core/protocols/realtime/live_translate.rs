@@ -382,6 +382,9 @@ impl LiveTranslateServerEvent {
                     && subtitle_text_within_limit(translation)
             }
             Self::UtteranceRegistered { utterance_id } => subtitle_text_within_limit(utterance_id),
+            Self::Error { code, message } => {
+                subtitle_text_within_limit(code) && subtitle_text_within_limit(message)
+            }
             _ => true,
         }
     }
@@ -483,21 +486,7 @@ impl LiveTranslateServerEvent {
                     .to_string(),
             )),
 
-            "error" => {
-                let error = json.get("error");
-                Ok(Self::Error {
-                    code: error
-                        .and_then(|e| e.get("code"))
-                        .and_then(Value::as_str)
-                        .unwrap_or("unknown_error")
-                        .to_string(),
-                    message: error
-                        .and_then(|e| e.get("message"))
-                        .and_then(Value::as_str)
-                        .unwrap_or("Alibaba Cloud returned an unknown error.")
-                        .to_string(),
-                })
-            }
+            "error" => Ok(safe_realtime_error(json.get("error"), false)),
 
             other => Ok(Self::Ignored {
                 kind: other.to_string(),
