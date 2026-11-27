@@ -74,7 +74,7 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
     }
     private fun captionCompositorPixels(): IntArray {
         val panel = root().findViewWithTag<CaptionPanelView>("expanded-subtitles")
-        val excluded = listOf("overlay-adjust-mark", "overlay-drag", "overlay-resize").map { tag ->
+        val excluded = listOf("overlay-adjust-mark", "overlay-drag", "overlay-resize", "overlay-opacity-slider").map { tag ->
             val view = panel.findViewWithTag<View>(tag)
             val origin = nativeOrigin(view)
             android.graphics.Rect(origin[0], origin[1], origin[0] + view.width, origin[1] + view.height)
@@ -246,7 +246,7 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
             val location = IntArray(2).also(view::getLocationInWindow)
             return listOf(location[0], location[1], view.width, view.height)
         }
-        val handles = listOf("overlay-drag-mark", "overlay-resize").map { panel.findViewWithTag<View>(it) }
+        val handles = listOf("overlay-drag-mark", "overlay-resize", "overlay-opacity-slider").map { panel.findViewWithTag<View>(it) }
         val handleBounds = handles.map(::geometry)
         val rows = listOf(panel.status, panel.source, panel.translation, panel.history, panel.timestamp)
         val rowBounds = rows.map(::geometry)

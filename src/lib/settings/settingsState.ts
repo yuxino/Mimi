@@ -197,6 +197,7 @@ export function mergeSettingsSnapshot(
     fontSize: draft.fontSize ?? current.fontSize,
     subtitleFontFamily: draft.subtitleFontFamily ?? current.subtitleFontFamily,
     subtitleBackgroundOpacity: draft.subtitleBackgroundOpacity ?? current.subtitleBackgroundOpacity ?? 80,
+    subtitleBackgroundColor: draft.subtitleBackgroundColor ?? current.subtitleBackgroundColor ?? "#000000",
     subtitleColor: draft.subtitleColor ?? current.subtitleColor,
     microphoneSubtitleColor: draft.microphoneSubtitleColor ?? current.microphoneSubtitleColor ?? "yellow",
     subtitleAlignment: draft.subtitleAlignment ?? current.subtitleAlignment,

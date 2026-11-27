@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { effectiveUiLanguage, I18N, subscribeUiLanguage } from "../../../lib/i18n";
 import { subtitleFontFamily } from "../../../lib/subtitles/subtitleFont";
-import { IMMERSIVE_TEXT_SHADOW, subtitleLineHeight, subtitleTextStyle } from "../../../lib/subtitles/subtitleTypography";
+import { IMMERSIVE_TEXT_SHADOW, LOW_OPACITY_DARK_TEXT_SHADOW, subtitleLineHeight, subtitleTextStyle } from "../../../lib/subtitles/subtitleTypography";
 import type { SettingsSnapshot, SubtitleAlignment, SubtitleColor } from "../../../lib/types";
 import { observeTimelineResize } from "./timelineResize";
 import { hitsVerticalScrollbar } from "../interaction/overlayContentDrag";
@@ -46,6 +46,10 @@ interface TimelineProps {
   /** Display-only sentence breaks belong to the Gemini live tail. */
   preserveLiveLineBreaks?: boolean;
   blendsWithBackground?: boolean;
+  /** Light opaque background switches neutral reference text and timestamps to dark ink. */
+  lightBackground?: boolean;
+  /** Very translucent backgrounds add contrasting shadows so text stays legible over bright windows. */
+  lowOpacityBackground?: boolean;
   /** Resolved motion setting: gates the roll-up glide. */
   motionEnabled?: boolean;
   /** A new request explicitly returns a history reader to the live tail. */
@@ -65,6 +69,8 @@ export const Timeline = memo(function Timeline({
   color,
   displayMode,
   blendsWithBackground = false,
+  lightBackground = false,
+  lowOpacityBackground = false,
   motionEnabled = true,
   showTimestamps = false,
   audioInput = "both",
@@ -296,14 +302,19 @@ export const Timeline = memo(function Timeline({
           && (!microphoneEnabled || blockViewportHeight !== null && blockViewportHeight < 80);
         const tintReference = mixedSources && (microphoneEnabled || block.audioSource === "microphone");
         const hasMetadata = (showSource && !inlineSource) || timestamp !== null;
-        const metadataColor = blendsWithBackground ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.6)";
+        const metadataColor = blendsWithBackground
+          ? "rgba(255,255,255,0.95)"
+          : lightBackground ? "rgba(0,0,0,0.6)" : lowOpacityBackground ? "rgba(255,255,255,0.88)" : "rgba(255,255,255,0.6)";
+        const metadataShadow = blendsWithBackground
+          ? IMMERSIVE_TEXT_SHADOW
+          : lowOpacityBackground ? LOW_OPACITY_DARK_TEXT_SHADOW : undefined;
         const sourceIndicator = showSource && <span className="subtitle-audio-source" role="img"
           aria-label={block.audioSource === "system" ? I18N.settings.audioInputSystem : I18N.settings.audioInputMicrophone}
           title={block.audioSource === "system" ? I18N.settings.audioInputSystem : I18N.settings.audioInputMicrophone}
           style={{ display: "inline-flex", alignItems: "center", fontSize: blendsWithBackground ? 16 : 14, flexShrink: 0,
             color: metadataColor }}>
           <Icon name={block.audioSource === "system" ? "speaker" : "microphone"}
-            style={{ filter: blendsWithBackground ? IMMERSIVE_ICON_FILTER : undefined }} />
+            style={{ filter: blendsWithBackground || lowOpacityBackground ? IMMERSIVE_ICON_FILTER : undefined }} />
         </span>;
         const metadataHeight = hasMetadata ? METADATA_HEIGHT : 0;
         const availableLaneHeight = blockViewportHeight === null ? null
@@ -341,7 +352,7 @@ export const Timeline = memo(function Timeline({
               display: "flex", alignItems: "center", gap: 7, height: 18, marginBottom: 4,
               justifyContent: alignment === "center" ? "center" : alignment === "right" ? "flex-end" : "flex-start",
               color: metadataColor,
-              textShadow: blendsWithBackground ? IMMERSIVE_TEXT_SHADOW : undefined,
+              textShadow: metadataShadow,
             }}>
               {sourceIndicator}
               {timestamp !== null && <time className="subtitle-timestamp" dateTime={new Date(timestamp).toISOString()}
@@ -365,6 +376,8 @@ export const Timeline = memo(function Timeline({
                   color={sourceColor}
                   tintReference={tintReference}
                   blendsWithBackground={blendsWithBackground}
+                  lightBackground={lightBackground}
+                  lowOpacityBackground={lowOpacityBackground}
                   motionEnabled={motionEnabled}
                   entering={entering}
                   keepTextOpaque={keepTextOpaque}
@@ -384,6 +397,8 @@ export const Timeline = memo(function Timeline({
                   color={sourceColor}
                   tintReference={tintReference}
                   blendsWithBackground={blendsWithBackground}
+                  lightBackground={lightBackground}
+                  lowOpacityBackground={lowOpacityBackground}
                   motionEnabled={motionEnabled}
                   entering={entering}
                   keepTextOpaque={keepTextOpaque}
@@ -425,6 +440,8 @@ interface LaneProps {
   displayMode: SettingsSnapshot["subtitleDisplayMode"];
   color: SubtitleColor;
   blendsWithBackground: boolean;
+  lightBackground: boolean;
+  lowOpacityBackground: boolean;
   motionEnabled: boolean;
   /** Runs the lane fade only for text that was not on screen before. */
   entering: boolean;
@@ -445,6 +462,8 @@ const Lane = memo(function Lane({
   displayMode,
   color,
   blendsWithBackground,
+  lightBackground,
+  lowOpacityBackground,
   motionEnabled,
   entering,
   hidden = false,
@@ -454,7 +473,7 @@ const Lane = memo(function Lane({
   preserveLineBreaks = false,
 }: LaneProps) {
   const textStyle = subtitleTextStyle({ fontSize, fontFamily, displayMode, kind, color,
-    blendsWithBackground, tintReference, keepTextOpaque, preserveLineBreaks });
+    blendsWithBackground, lightBackground, lowOpacityBackground, tintReference, keepTextOpaque, preserveLineBreaks });
   const lineHeightPx = subtitleLineHeight(textStyle.fontSize);
 
   if (lines === null) {

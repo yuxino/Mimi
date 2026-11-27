@@ -9,6 +9,7 @@
     <item name="immersive_subtitles" type="id" />
     <item name="overlay_bg_alpha" type="id" />
     <item name="overlay_bg_alpha_value" type="id" />
+    <item name="overlay_bg_color" type="id" />
     <item name="overlay_opacity" type="id" />
     <item name="overlay_opacity_value" type="id" />
     <item name="overlay_width" type="id" />

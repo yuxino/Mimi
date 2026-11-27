@@ -622,6 +622,7 @@ fn settings_payload_is_camel_case_and_write_only() {
         font_size: 18.0,
         subtitle_font_family: "Noto Sans CJK SC".into(),
         subtitle_background_opacity: 80,
+        subtitle_background_color: SubtitleBackgroundColor::default(),
         subtitle_color: SubtitleColor::White,
         microphone_subtitle_color: SubtitleColor::Yellow,
         subtitle_alignment: SubtitleAlignment::Center,
@@ -663,6 +664,7 @@ fn settings_payload_is_camel_case_and_write_only() {
     assert_eq!(json["subtitleAlignment"], "center");
     assert_eq!(json["subtitleFontFamily"], "Noto Sans CJK SC");
     assert_eq!(json["subtitleBackgroundOpacity"], 80);
+    assert_eq!(json["subtitleBackgroundColor"], "#000000");
     assert_eq!(json["subtitleColor"], "white");
     assert_eq!(json["subtitleDisplayMode"], "translation");
     assert_eq!(json["showIntermediateSubtitles"], true);
@@ -774,13 +776,23 @@ fn every_proxy_mode_is_camel_case_and_requires_a_stopped_session() {
 
 #[test]
 fn custom_color_draft_accepts_rgb_and_rejects_invalid_values() {
-    let draft: SettingsDraft = serde_json::from_str(r##"{"subtitleColor":"#a1b2c3"}"##).unwrap();
+    let draft: SettingsDraft = serde_json::from_str(
+        r##"{"subtitleColor":"#a1b2c3","subtitleBackgroundColor":"#1e293b"}"##,
+    )
+    .unwrap();
     assert_eq!(
         draft.subtitle_color,
         Some(SubtitleColor::Custom([0xa1, 0xb2, 0xc3]))
     );
+    assert_eq!(
+        draft.subtitle_background_color,
+        Some(SubtitleBackgroundColor([0x1e, 0x29, 0x3b]))
+    );
     assert!(ensure_settings_draft_allowed(&draft, true).is_ok());
     assert!(serde_json::from_str::<SettingsDraft>(r##"{"subtitleColor":"#abc"}"##).is_err());
+    assert!(
+        serde_json::from_str::<SettingsDraft>(r##"{"subtitleBackgroundColor":"black"}"##).is_err()
+    );
 }
 
 #[test]
@@ -795,6 +807,7 @@ fn active_session_rejects_pipeline_settings_but_allows_visual_settings() {
         font_size: Some(19.0),
         subtitle_font_family: Some("Noto Sans CJK SC".into()),
         subtitle_background_opacity: Some(65),
+        subtitle_background_color: Some(SubtitleBackgroundColor([0x1c, 0x1c, 0x1e])),
         subtitle_color: Some(SubtitleColor::Custom([0x12, 0x34, 0x56])),
         subtitle_alignment: Some(SubtitleAlignment::Right),
         subtitle_display_mode: Some(SubtitleDisplayMode::Bilingual),

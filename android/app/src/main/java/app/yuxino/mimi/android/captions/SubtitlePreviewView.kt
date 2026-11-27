@@ -44,7 +44,8 @@ class SubtitlePreviewView @JvmOverloads constructor(context: Context, attrs: Att
     fun configure(fontSize: Int, color: Int, opacity: Int, backgroundAlpha: Int, targetLang: String,
                   immersive: Boolean, originalOnly: Boolean = false, mode: CaptionDisplayMode = CaptionDisplayMode.BILINGUAL,
                   widthPercent: Int = 92, live: Boolean = false, alignment: CaptionAlignment = CaptionAlignment.CENTER,
-                  heightPercent: Int = SettingsStore.DEFAULT_OVERLAY_HEIGHT) {
+                  heightPercent: Int = SettingsStore.DEFAULT_OVERLAY_HEIGHT,
+                  backgroundColor: Int = CaptionColorMath.DEFAULT_BG_COLOR) {
         displayMode = if (originalOnly) CaptionDisplayMode.ORIGINAL else mode
         val localized = InterfaceLanguage.context(context.applicationContext)
         val nextIdentity = "$immersive|${localized.resources.configuration.locales}"
@@ -57,7 +58,7 @@ class SubtitlePreviewView @JvmOverloads constructor(context: Context, attrs: Att
                 is CompactCaptionView -> { source = current.source; translation = current.translation; status = current.status }
             }
         }
-        val style = CaptionFrameStyle(fontSize, color, opacity.coerceIn(20, 100), backgroundAlpha, displayMode, alignment, SettingsStore.subtitleDividers(context))
+        val style = CaptionFrameStyle(fontSize, color, opacity.coerceIn(20, 100), backgroundAlpha, displayMode, alignment, SettingsStore.subtitleDividers(context), backgroundColor)
         when (val current = frame) {
             is CaptionPanelView -> {
                 current.applyStyle(style)

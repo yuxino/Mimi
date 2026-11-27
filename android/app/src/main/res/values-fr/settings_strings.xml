@@ -25,6 +25,15 @@
     <string name="settings_color_yellow">Jaune</string>
     <string name="settings_color_green">Vert</string>
     <string name="settings_color_pink">Rose</string>
+    <string name="settings_color_custom">Couleur personnalisée</string>
+    <string name="settings_bg_color">Couleur d’arrière-plan</string>
+    <string name="settings_bg_color_black">Noir (par défaut)</string>
+    <string name="settings_bg_color_charcoal">Anthracite</string>
+    <string name="settings_bg_color_slate">Ardoise</string>
+    <string name="settings_bg_color_warm">Sombre chaud</string>
+    <string name="settings_bg_color_white">Blanc</string>
+    <string name="settings_hex_color">Couleur HEX</string>
+    <string name="settings_hex_invalid">Saisissez un code HEX à 6 chiffres, ex. #1E293B.</string>
     <string name="settings_display_mode">Affichage</string>
     <string name="display_translation">Traduction seule</string>
     <string name="display_original">Original seul</string>

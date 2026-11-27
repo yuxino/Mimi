@@ -93,3 +93,17 @@
   color: rgba(255, 255, 255, 0.9);
   text-align: left;
 }
+.overlay-expanded-canvas[data-light-surface] .overlay-status-row .overlay-latency,
+.overlay-expanded-canvas[data-light-surface][data-low-opacity] .overlay-status-row .overlay-latency {
+  color: rgba(0, 0, 0, 0.64);
+  text-shadow: none;
+}
+.overlay-expanded-canvas[data-light-surface] .overlay-latency strong[data-tone="warning"] {
+  color: #b45309;
+}
+.overlay-expanded-canvas[data-light-surface] .overlay-latency strong[data-tone="slow"] {
+  color: #b91c1c;
+}
+.overlay-expanded-canvas[data-light-surface] .overlay-action-feedback {
+  color: rgba(0, 0, 0, 0.85);
+}

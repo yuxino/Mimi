@@ -25,6 +25,15 @@
     <string name="settings_color_yellow">노란색</string>
     <string name="settings_color_green">초록색</string>
     <string name="settings_color_pink">분홍색</string>
+    <string name="settings_color_custom">사용자 지정 색상</string>
+    <string name="settings_bg_color">배경 색상</string>
+    <string name="settings_bg_color_black">검정(기본값)</string>
+    <string name="settings_bg_color_charcoal">차콜</string>
+    <string name="settings_bg_color_slate">슬레이트</string>
+    <string name="settings_bg_color_warm">웜 다크</string>
+    <string name="settings_bg_color_white">흰색</string>
+    <string name="settings_hex_color">HEX 색상</string>
+    <string name="settings_hex_invalid">6자리 HEX 색상을 입력하세요(예: #1E293B).</string>
     <string name="settings_display_mode">표시 내용</string>
     <string name="display_translation">번역만</string>
     <string name="display_original">원문만</string>

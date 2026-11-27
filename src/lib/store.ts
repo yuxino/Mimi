@@ -109,6 +109,7 @@ const INITIAL_SETTINGS: SettingsSnapshot = {
   fontSize: 16,
   subtitleFontFamily: "",
   subtitleBackgroundOpacity: 80,
+  subtitleBackgroundColor: "#000000",
   subtitleColor: "white",
   microphoneSubtitleColor: "yellow",
   subtitleAlignment: "center",

@@ -2,6 +2,20 @@
 
 use serde::{Deserialize, Serialize};
 
+fn parse_hex_rgb(value: &str) -> Result<[u8; 3], &'static str> {
+    let bytes = value.as_bytes();
+    if bytes.len() != 7 || bytes[0] != b'#' || !bytes[1..].iter().all(u8::is_ascii_hexdigit) {
+        return Err("Expected a #RRGGBB color");
+    }
+    let mut rgb = [0; 3];
+    for (index, channel) in rgb.iter_mut().enumerate() {
+        let start = 1 + index * 2;
+        *channel =
+            u8::from_str_radix(&value[start..start + 2], 16).map_err(|_| "Invalid RGB channel")?;
+    }
+    Ok(rgb)
+}
+
 /// Named presets or an opaque custom RGB color. Presentation only.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -25,22 +39,9 @@ impl TryFrom<String> for SubtitleColor {
             "yellow" => Ok(Self::Yellow),
             "green" => Ok(Self::Green),
             "pink" => Ok(Self::Pink),
-            _ => {
-                let bytes = value.as_bytes();
-                if bytes.len() != 7
-                    || bytes[0] != b'#'
-                    || !bytes[1..].iter().all(u8::is_ascii_hexdigit)
-                {
-                    return Err("Expected a subtitle preset or #RRGGBB color");
-                }
-                let mut rgb = [0; 3];
-                for (index, channel) in rgb.iter_mut().enumerate() {
-                    let start = 1 + index * 2;
-                    *channel = u8::from_str_radix(&value[start..start + 2], 16)
-                        .map_err(|_| "Invalid RGB channel")?;
-                }
-                Ok(Self::Custom(rgb))
-            }
+            _ => parse_hex_rgb(&value)
+                .map(Self::Custom)
+                .map_err(|_| "Expected a subtitle preset or #RRGGBB color"),
         }
     }
 }
@@ -55,6 +56,26 @@ impl From<SubtitleColor> for String {
             SubtitleColor::Pink => "pink".into(),
             SubtitleColor::Custom([red, green, blue]) => format!("#{red:02X}{green:02X}{blue:02X}"),
         }
+    }
+}
+
+/// Opaque RGB color for the subtitle overlay background. Presentation only.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct SubtitleBackgroundColor(pub [u8; 3]);
+
+impl TryFrom<String> for SubtitleBackgroundColor {
+    type Error = &'static str;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        parse_hex_rgb(&value).map(Self)
+    }
+}
+
+impl From<SubtitleBackgroundColor> for String {
+    fn from(value: SubtitleBackgroundColor) -> Self {
+        let [red, green, blue] = value.0;
+        format!("#{red:02X}{green:02X}{blue:02X}")
     }
 }
 

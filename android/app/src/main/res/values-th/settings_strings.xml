@@ -24,6 +24,15 @@
     <string name="settings_color_yellow">เหลือง</string>
     <string name="settings_color_green">เขียว</string>
     <string name="settings_color_pink">ชมพู</string>
+    <string name="settings_color_custom">สีที่กำหนดเอง</string>
+    <string name="settings_bg_color">สีพื้นหลัง</string>
+    <string name="settings_bg_color_black">ดำ (ค่าเริ่มต้น)</string>
+    <string name="settings_bg_color_charcoal">เทาเข้ม</string>
+    <string name="settings_bg_color_slate">เทาอมน้ำเงิน</string>
+    <string name="settings_bg_color_warm">ดำโทนอุ่น</string>
+    <string name="settings_bg_color_white">ขาว</string>
+    <string name="settings_hex_color">ค่าสี HEX</string>
+    <string name="settings_hex_invalid">กรอกค่าสี HEX 6 หลัก เช่น #1E293B</string>
     <string name="settings_display_mode">เนื้อหาที่แสดง</string>
     <string name="display_translation">คำแปลเท่านั้น</string>
     <string name="display_original">ต้นฉบับเท่านั้น</string>

@@ -416,6 +416,7 @@ class MainActivity : AppCompatActivity() {
             SettingsStore.immersiveSubtitles(this), SettingsStore.originalTextOnly(this),
             SettingsStore.displayMode(this), SettingsStore.overlayWidthPercent(this), live = running || app.yuxino.mimi.android.provider.SubtitleBus.hasRetainedContent,
             alignment = SettingsStore.captionAlignment(this), heightPercent = SettingsStore.overlayHeightPercent(this),
+            backgroundColor = SettingsStore.overlayBgColor(this),
         )
         if (running || app.yuxino.mimi.android.provider.SubtitleBus.hasRetainedContent) {
             refreshLivePreview()

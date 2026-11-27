@@ -2371,10 +2371,20 @@
   user-select: text;
 }
 
+.subtitle-color-control {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.subtitle-color-control.is-disabled {
+  opacity: 0.45;
+}
 .subtitle-color-presets {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
 }
 .subtitle-color-swatch {
@@ -2388,10 +2398,14 @@
   background: transparent;
   cursor: pointer;
 }
+.subtitle-color-swatch:disabled,
+.subtitle-color-picker:has(input:disabled) {
+  cursor: not-allowed;
+}
 .subtitle-color-swatch span {
   width: 22px;
   height: 22px;
-  border: 1px solid rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(128, 128, 128, 0.45);
   border-radius: 50%;
 }
 .subtitle-color-swatch.is-selected {
@@ -2420,6 +2434,38 @@
   height: 100%;
   opacity: 0;
   cursor: pointer;
+}
+.subtitle-color-picker input:disabled {
+  cursor: not-allowed;
+}
+.subtitle-color-hex {
+  width: 84px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--settings-border-strong);
+  border-radius: 6px;
+  background: var(--settings-control);
+  color: var(--settings-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.subtitle-color-hex:focus-visible {
+  outline: 2px solid var(--settings-text);
+  outline-offset: 1px;
+}
+.subtitle-color-hex.is-invalid {
+  border-color: var(--settings-danger, #dc2626);
+}
+.subtitle-color-hex:disabled {
+  cursor: not-allowed;
+}
+.subtitle-color-hex-error {
+  color: var(--settings-danger, #dc2626);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .settings-support-diagnostics {

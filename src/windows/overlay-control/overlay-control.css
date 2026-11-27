@@ -61,6 +61,27 @@
   padding-inline: 8px;
 }
 
+/* On light, opaque subtitle surfaces the transparent status island switches to dark ink. */
+[data-light-surface] > div > .overlay-control-island {
+  --control-text: rgba(0, 0, 0, 0.84);
+  --control-text-muted: rgba(0, 0, 0, 0.72);
+  --control-text-faint: rgba(0, 0, 0, 0.58);
+  --control-surface-hover: rgba(0, 0, 0, 0.08);
+  --control-surface-pressed: rgba(0, 0, 0, 0.14);
+  --control-border: rgba(0, 0, 0, 0.16);
+  --control-focus: #141414;
+  text-shadow: none;
+}
+
+/* On translucent/transparent dark surfaces strengthen island contrast over bright windows behind the overlay. */
+[data-low-opacity] > div > .overlay-control-island {
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.85);
+}
+
+[data-low-opacity] > div > .overlay-control-island svg {
+  filter: drop-shadow(0 0 1px #222) drop-shadow(0 1px 1px #222);
+}
+
 /* Native Wayland controls share the subtitle surface, so compositor movement
    is atomic and requires neither global coordinates nor a second toplevel. */
 .overlay-control-embedded {
@@ -131,7 +152,7 @@
 
 .overlay-control-island:hover,
 .overlay-control-island:focus-visible {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--control-surface-hover);
   opacity: 1;
 }
 

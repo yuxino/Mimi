@@ -37,6 +37,20 @@ fn custom_subtitle_colors_are_validated_and_normalized() {
 }
 
 #[test]
+fn subtitle_background_color_defaults_to_black_and_validates_hex() {
+    assert_eq!(
+        serde_json::to_value(SubtitleBackgroundColor::default()).unwrap(),
+        "#000000"
+    );
+    let color: SubtitleBackgroundColor = serde_json::from_str("\"#1e293b\"").unwrap();
+    assert_eq!(color, SubtitleBackgroundColor([0x1e, 0x29, 0x3b]));
+    assert_eq!(serde_json::to_value(color).unwrap(), "#1E293B");
+    for invalid in ["", "black", "#000", "#12345678", "#GG0011", "000000"] {
+        assert!(serde_json::from_value::<SubtitleBackgroundColor>(invalid.into()).is_err());
+    }
+}
+
+#[test]
 fn display_modes_round_trip_and_cycle_in_presentation_order() {
     let mut mode = SubtitleDisplayMode::default();
     for value in ["translation", "bilingual", "original"] {

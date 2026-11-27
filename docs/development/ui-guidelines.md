@@ -506,9 +506,11 @@ provider and Immersive-footer chrome. Decorative preview actions
 must not navigate or start capture. Width, height, font and streaming changes
 must not move the sliders under the user's finger. Verify native frame geometry
 and normalized pixels, both slider endpoints and the control's screen position.
-The desktop/Android subtitle background is pure black, with default background
-opacity 80% and Android saved frame opacity 100%. Preserve explicitly saved
-values; background opacity must reach solid black within the frame at 100%.
+The desktop/Android subtitle background defaults to pure black (`#000000`) with background
+opacity 80% and Android saved frame opacity 100%, and users can customize both text and
+background RGB colors via presets, picker, or `#RRGGBB` HEX input. Preserve explicitly saved
+values; background opacity must reach solid fill within the frame at 100%, and light opaque
+backgrounds adapt overlay chrome contrast.
 Android's application-overlay window alpha stays at or below the untrusted-overlay
 touch-through limit (0.8) in both normal interaction states; applying that cap only
 when OFF visibly dims captions. This system cap does not change saved appearance

@@ -8,7 +8,12 @@ import { selectSessionStatusKind, useStore } from "../../lib/store";
 import { credentialStateForTarget } from "../../lib/providers/providerCapabilities";
 import type { SettingsDraft, SubtitleAlignment } from "../../lib/types";
 import { SUBTITLE_DISPLAY_OPTIONS, VISIBLE_SUBTITLE_COUNT_OPTIONS, visibleSubtitleCountChoice, visibleSubtitleCountDraft, subtitleDisplayShortcut } from "../../lib/subtitles/subtitleDisplay";
-import { subtitleBackgroundColor } from "../../lib/subtitles/subtitleColor";
+import {
+  isLightSubtitleBackground,
+  SUBTITLE_BACKGROUND_COLOR_OPTIONS,
+  subtitleBackgroundColor,
+  subtitleBackgroundHex,
+} from "../../lib/subtitles/subtitleColor";
 import type { SubtitleDisplayMode } from "../../lib/types";
 import { MAX_SUBTITLE_FONT_SIZE, MIN_SUBTITLE_FONT_SIZE, subtitleTextStyle } from "../../lib/subtitles/subtitleTypography";
 import { subtitleFontFamily } from "../../lib/subtitles/subtitleFont";
@@ -82,6 +87,8 @@ export function SettingsView() {
     runWithToast(() => saveSettings(draft), I18N.settings.settingSaveFailed(label));
   const previewFontFamily = useMemo(() => subtitleFontFamily(subtitleFontPreview ?? settings.subtitleFontFamily),
     [subtitleFontPreview, settings.subtitleFontFamily]);
+  const previewLightSurface = !settings.subtitleBlendsWithBackground
+    && isLightSubtitleBackground(settings.subtitleBackgroundColor, settings.subtitleBackgroundOpacity);
   const previewTextStyle = (kind: "source" | "translation") => subtitleTextStyle({
     fontSize: settings.fontSize,
     fontFamily: previewFontFamily,
@@ -89,6 +96,8 @@ export function SettingsView() {
     kind,
     color: settings.audioInput === "microphone" ? settings.microphoneSubtitleColor ?? "yellow" : settings.subtitleColor,
     blendsWithBackground: settings.subtitleBlendsWithBackground,
+    lightBackground: previewLightSurface,
+    lowOpacityBackground: !settings.subtitleBlendsWithBackground && (settings.subtitleBackgroundOpacity ?? 80) < 35,
   });
 
   const activeProfile =
@@ -292,7 +301,11 @@ export function SettingsView() {
                       </div>
                       <div
                         className="subtitle-preview__text"
-                        style={{ background: settings.subtitleBlendsWithBackground ? "transparent" : subtitleBackgroundColor(settings.subtitleBackgroundOpacity) }}
+                        style={{
+                          background: settings.subtitleBlendsWithBackground
+                            ? "transparent"
+                            : subtitleBackgroundColor(settings.subtitleBackgroundOpacity, settings.subtitleBackgroundColor),
+                        }}
                       >
                         {settings.subtitleDisplayMode !== "translation" && (
                           <span style={previewTextStyle("source")}>{I18N.settings.previewOriginal}</span>
@@ -413,6 +426,24 @@ export function SettingsView() {
                           />
                           <output aria-live="polite">{Math.round(settings.fontSize)}</output>
                         </div>
+                      </SettingsRow>
+
+                      <SettingsRow label={I18N.settings.backgroundColor}>
+                        <SubtitleColorControl
+                          label={I18N.settings.backgroundColor}
+                          value={subtitleBackgroundHex(settings.subtitleBackgroundColor)}
+                          options={SUBTITLE_BACKGROUND_COLOR_OPTIONS.map((option) => ({
+                            value: option.value,
+                            hex: option.value,
+                            get label() { return option.label; },
+                          }))}
+                          resolveHex={subtitleBackgroundHex}
+                          disabled={settings.subtitleBlendsWithBackground}
+                          onChange={(subtitleBackgroundColor) => void savePreference(
+                            { subtitleBackgroundColor },
+                            I18N.settings.backgroundColor,
+                          )}
+                        />
                       </SettingsRow>
 
                       <SettingsRow label={I18N.settings.backgroundTransparency}>

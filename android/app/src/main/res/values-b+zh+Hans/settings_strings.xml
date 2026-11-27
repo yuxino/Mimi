@@ -25,6 +25,15 @@
     <string name="settings_color_yellow">黄色</string>
     <string name="settings_color_green">绿色</string>
     <string name="settings_color_pink">粉色</string>
+    <string name="settings_color_custom">自定义颜色</string>
+    <string name="settings_bg_color">背景颜色</string>
+    <string name="settings_bg_color_black">黑色（默认）</string>
+    <string name="settings_bg_color_charcoal">炭灰</string>
+    <string name="settings_bg_color_slate">岩灰</string>
+    <string name="settings_bg_color_warm">暖暗</string>
+    <string name="settings_bg_color_white">白色</string>
+    <string name="settings_hex_color">HEX 色值</string>
+    <string name="settings_hex_invalid">请输入 6 位 HEX 色值，例如 #1E293B。</string>
     <string name="settings_display_mode">显示内容</string>
     <string name="display_translation">只看译文</string>
     <string name="display_original">只看原文</string>

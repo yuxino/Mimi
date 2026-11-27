@@ -91,7 +91,9 @@ it("moves from empty top chrome without focusing or folding on double-click", as
   expect(native.move).toHaveBeenCalledTimes(2);
 });
 
-it("does not turn toolbar controls or resize edges into drag targets", async () => {
+it("does not turn toolbar controls, opacity slider, or resize edges into drag targets", async () => {
+  const saveSettings = vi.fn().mockResolvedValue(undefined);
+  useStore.setState({ saveSettings });
   await mount();
   for (const selector of [
     `button[aria-label="${I18N.overlay.pause}"]`,
@@ -104,6 +106,15 @@ it("does not turn toolbar controls or resize edges into drag targets", async () 
     await press(target, 2);
     expect((await pointerPress(target)).defaultPrevented).toBe(false);
   }
+  const sliderInput = host.querySelector<HTMLInputElement>(".overlay-opacity-slider__input")!;
+  const track = host.querySelector<HTMLElement>(".overlay-opacity-slider__track")!;
+  vi.spyOn(track, "getBoundingClientRect").mockReturnValue({
+    top: 100, bottom: 200, left: 0, right: 4, width: 4, height: 100, x: 0, y: 100, toJSON() {},
+  });
+  const sliderPress = new MouseEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, clientY: 150 });
+  Object.defineProperties(sliderPress, { pointerType: { value: "mouse" }, isPrimary: { value: true }, pointerId: { value: 1 } });
+  await act(async () => sliderInput.dispatchEvent(sliderPress));
+  expect(saveSettings).toHaveBeenCalledWith({ subtitleBackgroundOpacity: 50 });
   expect(native.move).not.toHaveBeenCalled();
   expect(collapse).not.toHaveBeenCalled();
 });

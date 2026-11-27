@@ -30,6 +30,15 @@
     <string name="settings_color_yellow">Yellow</string>
     <string name="settings_color_green">Green</string>
     <string name="settings_color_pink">Pink</string>
+    <string name="settings_color_custom">Custom color</string>
+    <string name="settings_bg_color">Background color</string>
+    <string name="settings_bg_color_black">Black (default)</string>
+    <string name="settings_bg_color_charcoal">Charcoal</string>
+    <string name="settings_bg_color_slate">Slate</string>
+    <string name="settings_bg_color_warm">Warm dark</string>
+    <string name="settings_bg_color_white">White</string>
+    <string name="settings_hex_color">HEX color</string>
+    <string name="settings_hex_invalid">Enter a 6-digit HEX color, e.g. #1E293B.</string>
     <string name="settings_display_mode">Display</string>
     <string name="display_translation">Translation only</string>
     <string name="display_original">Original only</string>

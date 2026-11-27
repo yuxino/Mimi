@@ -24,6 +24,15 @@
     <string name="settings_color_yellow">黄</string>
     <string name="settings_color_green">緑</string>
     <string name="settings_color_pink">ピンク</string>
+    <string name="settings_color_custom">カスタムカラー</string>
+    <string name="settings_bg_color">背景色</string>
+    <string name="settings_bg_color_black">黒（デフォルト）</string>
+    <string name="settings_bg_color_charcoal">チャコール</string>
+    <string name="settings_bg_color_slate">スレート</string>
+    <string name="settings_bg_color_warm">ウォームダーク</string>
+    <string name="settings_bg_color_white">白</string>
+    <string name="settings_hex_color">HEX カラー</string>
+    <string name="settings_hex_invalid">6桁のHEXカラーを入力してください（例: #1E293B）。</string>
     <string name="settings_display_mode">表示内容</string>
     <string name="display_translation">訳文のみ</string>
     <string name="display_original">原文のみ</string>
