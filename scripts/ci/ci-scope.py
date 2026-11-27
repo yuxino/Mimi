@@ -11,6 +11,11 @@ NATIVE_DOCUMENT_INPUTS = {
     "docs/development/debugger-evidence.md",
     "docs/demos/english-film/response.json",
 }
+CROSS_PLATFORM_AUDIO_FILES = {
+    # Compiled on every desktop OS under #[cfg(any(target_os = "windows", test))]
+    # in src-tauri/src/audio/mod.rs.
+    "src-tauri/src/audio/windows/worker.rs",
+}
 
 
 def is_editorial_document(path):
@@ -30,11 +35,13 @@ def plan(paths, full=False, package="none", release=False):
         raise ValueError("Unknown package selection")
     affected = set(ALL_OS) if full or release or paths is None else set()
     for path in paths or []:
-        if path == "src-tauri/src/audio/windows/mod.rs" or path.startswith("scripts/windows/"):
+        if path in CROSS_PLATFORM_AUDIO_FILES:
+            affected.update(ALL_OS)
+        elif path.startswith(("src-tauri/src/audio/windows/", "scripts/windows/")):
             affected.add("windows-2025")
-        elif path == "src-tauri/src/audio/macos/mod.rs" or path.startswith("scripts/macos/"):
+        elif path.startswith(("src-tauri/src/audio/macos/", "scripts/macos/")):
             affected.add("macos-latest")
-        elif path == "src-tauri/src/audio/linux/mod.rs" or path.startswith("scripts/linux/"):
+        elif path.startswith(("src-tauri/src/audio/linux/", "scripts/linux/")):
             affected.add("ubuntu-22.04")
         elif path in NATIVE_DOCUMENT_INPUTS or path.startswith((
                 "src-tauri/", "scripts/", ".github/workflows/", "shared/",

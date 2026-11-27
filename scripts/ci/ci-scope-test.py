@@ -46,11 +46,49 @@ class ScopeTests(unittest.TestCase):
                 self.assertFalse(module.plan([path])["native"])
 
     def test_windows_capture_still_tests_both_architectures(self):
-        result = module.plan(["src-tauri/src/audio/windows/mod.rs"])
-        self.assertTrue(result["frontend"])
-        self.assertEqual(result["rust_os"], ["windows-2025"])
-        self.assertTrue(result["windows_arm"])
-        self.assertFalse(result["arm_bundle"])
+        for path in [
+            "src-tauri/src/audio/windows/mod.rs",
+            "src-tauri/src/audio/windows/applications.rs",
+            "src-tauri/src/audio/windows/application_icons.rs",
+            "src-tauri/src/audio/windows/census.rs",
+            "src-tauri/src/audio/windows/tests.rs",
+        ]:
+            with self.subTest(path=path):
+                result = module.plan([path])
+                self.assertTrue(result["frontend"])
+                self.assertEqual(result["rust_os"], ["windows-2025"])
+                self.assertTrue(result["windows_arm"])
+                self.assertFalse(result["arm_bundle"])
+
+    def test_platform_audio_directories_narrow_only_platform_exclusive_files(self):
+        cases = [
+            ("src-tauri/src/audio/macos/mod.rs", ["macos-latest"], False),
+            ("src-tauri/src/audio/macos/tap.rs", ["macos-latest"], False),
+            ("src-tauri/src/audio/macos/tap/tests.rs", ["macos-latest"], False),
+            ("src-tauri/src/audio/macos/output.rs", ["macos-latest"], False),
+            ("src-tauri/src/audio/linux/mod.rs", ["ubuntu-22.04"], False),
+            ("src-tauri/src/audio/linux/streams.rs", ["ubuntu-22.04"], False),
+            ("src-tauri/src/audio/linux/application_icons.rs", ["ubuntu-22.04"], False),
+        ]
+        for path, expected_os, expected_win_arm in cases:
+            with self.subTest(path=path):
+                result = module.plan([path])
+                self.assertTrue(result["frontend"])
+                self.assertTrue(result["native"])
+                self.assertEqual(result["rust_os"], expected_os)
+                self.assertEqual(result["windows_arm"], expected_win_arm)
+                self.assertFalse(result["bundle"])
+
+        # Cross-platform test-compiled file and similarly named sibling dirs expand to all OS.
+        for path in [
+            "src-tauri/src/audio/windows/worker.rs",
+            "src-tauri/src/audio/windows-other/helper.rs",
+            "src-tauri/src/audio/capture/resampler.rs",
+        ]:
+            with self.subTest(all_os_path=path):
+                result = module.plan([path])
+                self.assertEqual(result["rust_os"], module.ALL_OS)
+                self.assertTrue(result["windows_arm"])
 
     def test_platform_tool_directories_keep_their_native_scope(self):
         for platform, runner in module.PACKAGES.items():
