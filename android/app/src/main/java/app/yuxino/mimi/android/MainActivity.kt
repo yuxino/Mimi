@@ -67,7 +67,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var appUpdates: AppUpdateControls
     private val sectionScroll = SparseIntArray()
     private var currentSection = R.id.tab_caption
-    private var lastSessionState: Pair<Boolean, Boolean>? = null
+    private var lastSessionState: Triple<Boolean, Boolean, Boolean>? = null
     // Only a complete refresh publishes availability; null preserves its error across tabs.
     private var configuredService: Boolean? = null
     private val subtitleListener = object : app.yuxino.mimi.android.provider.SubtitleBus.Listener {
@@ -334,7 +334,7 @@ class MainActivity : AppCompatActivity() {
             val selected = SettingsStore.captureInput(this@MainActivity).ordinal
             if (selectedItemPosition != selected) setSelection(selected)
         }
-        val sessionState = running to MimiService.isStopping
+        val sessionState = Triple(MimiService.isStarting, running, MimiService.isStopping)
         if (lastSessionState != sessionState) {
             lastSessionState = sessionState
             ServiceSettingsUi.renderList(this, findViewById(R.id.service_panel))

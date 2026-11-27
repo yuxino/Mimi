@@ -310,6 +310,7 @@ internal class CaptionPanelView(
         (findViewWithTag<View>("overlay-drag-mark").background as? GradientDrawable)?.setColor(
             if (lightSurface) 0xFF525252.toInt() else if (lowOpacitySurface) 0xFF8E8E93.toInt() else 0xFFB9B9B9.toInt(),
         )
+        findViewWithTag<CaptionAdjustmentSwitch>("overlay-adjust-mark").applySurfaceContrast(lightSurface)
         findViewWithTag<ImageButton>("overlay-resize").imageTintList =
             android.content.res.ColorStateList.valueOf(
                 if (lightSurface) 0xFF1C1C1E.toInt() else if (lowOpacitySurface) 0xFF8E8E93.toInt() else Color.WHITE,

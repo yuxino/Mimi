@@ -255,7 +255,7 @@ object SettingsStore {
         get(context).getInt(KEY_OVERLAY_OPACITY, 100).coerceIn(20, 100)
 
     fun setOverlayOpacity(context: Context, value: Int) =
-        writeAppearance(get(context).edit().putInt(KEY_OVERLAY_OPACITY, value.coerceIn(20, 100)))
+        writeAppearance(context, KEY_OVERLAY_OPACITY) { it.putInt(KEY_OVERLAY_OPACITY, value.coerceIn(20, 100)) }
 
     /** New installs start with three confirmed captions; upgrades keep the old zero fallback. */
     fun historyLines(context: Context): Int =
@@ -263,7 +263,7 @@ object SettingsStore {
 
     fun setHistoryLines(context: Context, value: Int) {
         val limit = value.coerceIn(0, 6)
-        writeAppearance(get(context).edit().putInt(KEY_HISTORY_LINES, limit))
+        writeAppearance(context, KEY_HISTORY_LINES) { it.putInt(KEY_HISTORY_LINES, limit) }
         app.yuxino.mimi.android.provider.SubtitleBus.setHistoryLimit(limit)
     }
 
@@ -296,16 +296,18 @@ object SettingsStore {
     }
 
     fun subtitleDividers(context: Context): Boolean = get(context).getBoolean(KEY_SUBTITLE_DIVIDERS, false)
-    fun setSubtitleDividers(context: Context, value: Boolean) = writeAppearance(get(context).edit().putBoolean(KEY_SUBTITLE_DIVIDERS, value))
+    fun setSubtitleDividers(context: Context, value: Boolean) =
+        writeAppearance(context, KEY_SUBTITLE_DIVIDERS) { it.putBoolean(KEY_SUBTITLE_DIVIDERS, value) }
     fun subtitleTimestamps(context: Context): Boolean = get(context).getBoolean(KEY_SUBTITLE_TIMESTAMPS, false)
-    fun setSubtitleTimestamps(context: Context, value: Boolean) = writeAppearance(get(context).edit().putBoolean(KEY_SUBTITLE_TIMESTAMPS, value))
+    fun setSubtitleTimestamps(context: Context, value: Boolean) =
+        writeAppearance(context, KEY_SUBTITLE_TIMESTAMPS) { it.putBoolean(KEY_SUBTITLE_TIMESTAMPS, value) }
 
     /** Subtitle background opacity, matching desktop: 0 (clear) .. 100 (solid). */
     fun overlayBgAlpha(context: Context): Int =
         get(context).getInt(KEY_OVERLAY_BG_ALPHA, 80).coerceIn(0, 100)
 
     fun setOverlayBgAlpha(context: Context, value: Int) =
-        writeAppearance(get(context).edit().putInt(KEY_OVERLAY_BG_ALPHA, value.coerceIn(0, 100)))
+        writeAppearance(context, KEY_OVERLAY_BG_ALPHA) { it.putInt(KEY_OVERLAY_BG_ALPHA, value.coerceIn(0, 100)) }
 
     /** Subtitle background RGB color, defaulting to pure black (#000000). */
     fun overlayBgColor(context: Context): Int =
@@ -313,28 +315,22 @@ object SettingsStore {
             ?: CaptionColorMath.DEFAULT_BG_COLOR
 
     fun setOverlayBgColor(context: Context, argb: Int) =
-        writeAppearance(get(context).edit().putString(KEY_OVERLAY_BG_COLOR_HEX, CaptionColorMath.formatHexColor(argb)))
+        writeAppearance(context, KEY_OVERLAY_BG_COLOR_HEX) {
+            it.putString(KEY_OVERLAY_BG_COLOR_HEX, CaptionColorMath.formatHexColor(argb))
+        }
 
     /** Separate from immersive presentation: locking never changes caption geometry or style. */
     fun overlayAdjustable(context: Context): Boolean = get(context).getBoolean(KEY_OVERLAY_ADJUSTABLE, true)
 
-    fun setOverlayAdjustable(context: Context, enabled: Boolean) {
-        val preferences = get(context)
-        val previous = overlayAdjustable(context)
-        if (!preferences.edit().putBoolean(KEY_OVERLAY_ADJUSTABLE, enabled).commit()) {
-            // SharedPreferences changes memory even when its disk write fails.
-            // Restore that value too, so a later refresh cannot silently lock it.
-            preferences.edit().putBoolean(KEY_OVERLAY_ADJUSTABLE, previous).apply()
-            error("appearance_save_failed")
-        }
-    }
+    fun setOverlayAdjustable(context: Context, enabled: Boolean) =
+        writeAppearance(context, KEY_OVERLAY_ADJUSTABLE) { it.putBoolean(KEY_OVERLAY_ADJUSTABLE, enabled) }
 
     /** Plain, touch-through subtitles; appearance updates the active views immediately. */
     fun immersiveSubtitles(context: Context): Boolean =
         get(context).getBoolean(KEY_IMMERSIVE_SUBTITLES, false)
 
     fun setImmersiveSubtitles(context: Context, enabled: Boolean) =
-        writeAppearance(get(context).edit().putBoolean(KEY_IMMERSIVE_SUBTITLES, enabled))
+        writeAppearance(context, KEY_IMMERSIVE_SUBTITLES) { it.putBoolean(KEY_IMMERSIVE_SUBTITLES, enabled) }
 
     /** Last overlay vertical offset from the bottom edge, persisted. */
     fun overlayYOffset(context: Context): Int =
@@ -342,37 +338,84 @@ object SettingsStore {
 
     /** Clears a persisted drag position so the card returns to bottom-center. */
     fun clearOverlayPosition(context: Context) =
-        writeAppearance(get(context).edit().putInt(KEY_OVERLAY_Y, 48).putInt(KEY_OVERLAY_X, 0)
-            .putInt(KEY_EXPANDED_Y, 48).putInt(KEY_EXPANDED_X, 0))
+        writeAppearance(context, KEY_OVERLAY_Y, KEY_OVERLAY_X, KEY_EXPANDED_Y, KEY_EXPANDED_X) {
+            it.putInt(KEY_OVERLAY_Y, 48).putInt(KEY_OVERLAY_X, 0)
+                .putInt(KEY_EXPANDED_Y, 48).putInt(KEY_EXPANDED_X, 0)
+        }
 
-    private fun writeAppearance(editor: android.content.SharedPreferences.Editor) {
-        check(editor.commit()) { "Appearance preference write failed" }
+    private fun writeAppearance(
+        context: Context,
+        vararg keys: String,
+        update: (SharedPreferences.Editor) -> Unit,
+    ) {
+        writePreferenceWithRollback(get(context), keys.asList(), update)
+    }
+
+    internal fun writePreferenceWithRollback(
+        preferences: SharedPreferences,
+        keys: Iterable<String>,
+        update: (SharedPreferences.Editor) -> Unit,
+    ) {
+        val missing = Any()
+        val snapshot = preferences.all
+        val prior = keys.associateWith { key -> if (preferences.contains(key)) snapshot[key] else missing }
+        val editor = preferences.edit()
+        update(editor)
+        if (!editor.commit()) {
+            // SharedPreferences changes memory even when its disk write fails.
+            // Restore prior in-memory values so a refresh cannot surface failed edits.
+            val rollback = preferences.edit()
+            for ((key, value) in prior) {
+                when (value) {
+                    missing -> rollback.remove(key)
+                    null -> rollback.remove(key)
+                    is Boolean -> rollback.putBoolean(key, value)
+                    is Int -> rollback.putInt(key, value)
+                    is Long -> rollback.putLong(key, value)
+                    is Float -> rollback.putFloat(key, value)
+                    is String -> rollback.putString(key, value)
+                    is Set<*> -> {
+                        @Suppress("UNCHECKED_CAST")
+                        rollback.putStringSet(key, value as Set<String>)
+                    }
+                }
+            }
+            rollback.apply()
+            error("appearance_save_failed")
+        }
     }
 
     fun displayMode(context: Context): CaptionDisplayMode =
         CaptionDisplayMode.fromId(get(context).getString(KEY_DISPLAY_MODE, null))
     fun setDisplayMode(context: Context, mode: CaptionDisplayMode) =
-        writeAppearance(get(context).edit().putString(KEY_DISPLAY_MODE, mode.id))
+        writeAppearance(context, KEY_DISPLAY_MODE) { it.putString(KEY_DISPLAY_MODE, mode.id) }
     fun overlayWidthPercent(context: Context): Int = get(context).getInt(KEY_OVERLAY_WIDTH, 92).coerceIn(55, 100)
     fun setOverlayWidthPercent(context: Context, value: Int) =
-        writeAppearance(get(context).edit().putInt(KEY_OVERLAY_WIDTH, value.coerceIn(55, 100)))
+        writeAppearance(context, KEY_OVERLAY_WIDTH) { it.putInt(KEY_OVERLAY_WIDTH, value.coerceIn(55, 100)) }
     fun overlayHeightPercent(context: Context): Int = get(context).getInt(KEY_OVERLAY_HEIGHT, DEFAULT_OVERLAY_HEIGHT).coerceIn(10, 70)
     fun setOverlayHeightPercent(context: Context, value: Int) =
-        writeAppearance(get(context).edit().putInt(KEY_OVERLAY_HEIGHT, value.coerceIn(10, 70)))
+        writeAppearance(context, KEY_OVERLAY_HEIGHT) { it.putInt(KEY_OVERLAY_HEIGHT, value.coerceIn(10, 70)) }
     fun setOverlayBounds(context: Context, width: Int, height: Int, x: Int, y: Int) =
-        writeAppearance(get(context).edit().putInt(KEY_OVERLAY_WIDTH, width.coerceIn(55, 100))
-            .putInt(KEY_OVERLAY_HEIGHT, height.coerceIn(10, 70))
-            .putInt(KEY_EXPANDED_X, x.coerceIn(-2000, 2000)).putInt(KEY_EXPANDED_Y, y.coerceIn(0, 2000)))
+        writeAppearance(context, KEY_OVERLAY_WIDTH, KEY_OVERLAY_HEIGHT, KEY_EXPANDED_X, KEY_EXPANDED_Y) {
+            it.putInt(KEY_OVERLAY_WIDTH, width.coerceIn(55, 100))
+                .putInt(KEY_OVERLAY_HEIGHT, height.coerceIn(10, 70))
+                .putInt(KEY_EXPANDED_X, x.coerceIn(-2000, 2000))
+                .putInt(KEY_EXPANDED_Y, y.coerceIn(0, 2000))
+        }
     fun captionAlignment(context: Context): CaptionAlignment = CaptionAlignment.fromId(get(context).getString(KEY_CAPTION_ALIGNMENT, null))
     fun setCaptionAlignment(context: Context, alignment: CaptionAlignment) =
-        writeAppearance(get(context).edit().putString(KEY_CAPTION_ALIGNMENT, alignment.id))
+        writeAppearance(context, KEY_CAPTION_ALIGNMENT) { it.putString(KEY_CAPTION_ALIGNMENT, alignment.id) }
     fun expandedYOffset(context: Context): Int = get(context).getInt(KEY_EXPANDED_Y, 48).coerceIn(0, 2000)
     fun overlayXOffset(context: Context, expanded: Boolean): Int =
         get(context).getInt(if (expanded) KEY_EXPANDED_X else KEY_OVERLAY_X, 0).coerceIn(-2000, 2000)
-    fun setOverlayPosition(context: Context, expanded: Boolean, x: Int, y: Int) =
-        writeAppearance(get(context).edit()
-            .putInt(if (expanded) KEY_EXPANDED_X else KEY_OVERLAY_X, x.coerceIn(-2000, 2000))
-            .putInt(if (expanded) KEY_EXPANDED_Y else KEY_OVERLAY_Y, y.coerceIn(0, 2000)))
+    fun setOverlayPosition(context: Context, expanded: Boolean, x: Int, y: Int) {
+        val xKey = if (expanded) KEY_EXPANDED_X else KEY_OVERLAY_X
+        val yKey = if (expanded) KEY_EXPANDED_Y else KEY_OVERLAY_Y
+        writeAppearance(context, xKey, yKey) {
+            it.putInt(xKey, x.coerceIn(-2000, 2000))
+                .putInt(yKey, y.coerceIn(0, 2000))
+        }
+    }
 
     /** Preset translation colors, index-matched to the settings spinner. */
     val COLOR_PRESETS = listOf(0xFF4FD1C5, 0xFFFFFFFF, 0xFFFFD54F, 0xFF9AE66E, 0xFFF49AB5)
@@ -394,9 +437,10 @@ object SettingsStore {
             .coerceIn(0, COLOR_PRESETS.size - 1)
 
     fun setTranslationColorIndex(context: Context, index: Int) =
-        writeAppearance(get(context).edit()
-            .remove(KEY_TRANSLATION_COLOR_HEX)
-            .putInt(KEY_TRANSLATION_COLOR, index.coerceIn(0, COLOR_PRESETS.size - 1)))
+        writeAppearance(context, KEY_TRANSLATION_COLOR_HEX, KEY_TRANSLATION_COLOR) {
+            it.remove(KEY_TRANSLATION_COLOR_HEX)
+                .putInt(KEY_TRANSLATION_COLOR, index.coerceIn(0, COLOR_PRESETS.size - 1))
+        }
 
     fun setTranslationColorCustom(context: Context, argb: Int) {
         val opaque = argb or (0xFF shl 24)
@@ -404,8 +448,9 @@ object SettingsStore {
         if (presetIndex >= 0) {
             setTranslationColorIndex(context, presetIndex)
         } else {
-            writeAppearance(get(context).edit()
-                .putString(KEY_TRANSLATION_COLOR_HEX, CaptionColorMath.formatHexColor(opaque)))
+            writeAppearance(context, KEY_TRANSLATION_COLOR_HEX) {
+                it.putString(KEY_TRANSLATION_COLOR_HEX, CaptionColorMath.formatHexColor(opaque))
+            }
         }
     }
 
@@ -425,5 +470,5 @@ object SettingsStore {
         get(context).getInt(KEY_FONT_SIZE, 16).coerceIn(12, 24)
 
     fun setFontSize(context: Context, value: Int) =
-        writeAppearance(get(context).edit().putInt(KEY_FONT_SIZE, value.coerceIn(12, 24)))
+        writeAppearance(context, KEY_FONT_SIZE) { it.putInt(KEY_FONT_SIZE, value.coerceIn(12, 24)) }
 }

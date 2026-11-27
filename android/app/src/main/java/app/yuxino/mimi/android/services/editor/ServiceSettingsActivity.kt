@@ -103,7 +103,7 @@ class ServiceSettingsActivity : AppCompatActivity() {
                 theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, typed, true)
                 setBackgroundResource(typed.resourceId); setPadding(dp(12), dp(12), dp(12), dp(12))
                 setOnClickListener {
-                    if (MimiService.isRunning || MimiService.isStopping) return@setOnClickListener
+                    if (MimiService.isSessionBusy) return@setOnClickListener
                     ServiceSettingsUi.showProfileMenu(this@ServiceSettingsActivity, profile) { deleted ->
                         if (deleted) finish()
                         else Toast.makeText(this@ServiceSettingsActivity, R.string.profiles_duplicated, Toast.LENGTH_SHORT).show()
@@ -118,7 +118,7 @@ class ServiceSettingsActivity : AppCompatActivity() {
         status=ServiceSettingsUi.label(this,"",16f).apply {
             visibility=View.GONE; accessibilityLiveRegion=View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
-        if ((MimiService.isRunning || MimiService.isStopping)) { status.setText(R.string.service_stop_first); status.visibility=View.VISIBLE }
+        if (MimiService.isSessionBusy) { status.setText(R.string.service_stop_first); status.visibility=View.VISIBLE }
         if (storageUnavailable) { status.text=getString(R.string.guide_storage_unavailable); status.visibility=View.VISIBLE }
         content.addView(status,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(16) })
         nameInput = field(content, "profile-name", getString(R.string.profiles_name), false).second.apply {
@@ -247,7 +247,7 @@ class ServiceSettingsActivity : AppCompatActivity() {
         super.onStop()
     }
     private fun refreshSessionUi() {
-        val running = (MimiService.isRunning || MimiService.isStopping)
+        val running = MimiService.isSessionBusy
         nameInput.isEnabled = !running && !storageUnavailable
         moreButton?.isEnabled = !running
         alibabaMode?.isEnabled = !running && !storageUnavailable
@@ -303,7 +303,7 @@ class ServiceSettingsActivity : AppCompatActivity() {
         }
     }
     private fun speechProbeConfiguration(): org.json.JSONObject? {
-        if (storageUnavailable || MimiService.isRunning || MimiService.isStopping || speechSettings == null) return null
+        if (storageUnavailable || MimiService.isSessionBusy || speechSettings == null) return null
         val values = speechDraftValues(if (provider.supportsSpeechTranslationMode) speechSettings!!.speechMode else saved.speechTranslationMode) ?: return null
         val config = ServiceConfiguration(provider, values, saved.endpoint, saved.model,
             xaiSpeechMode = if (provider == ServiceProvider.XAI) speechSettings!!.speechMode else saved.xaiSpeechMode,
@@ -326,7 +326,7 @@ class ServiceSettingsActivity : AppCompatActivity() {
         val retainDraft = provider != ServiceProvider.XAI || !integrated
         val textTranslation = if (retainDraft) translationSettings?.draft(validate = !integrated) else null
         if(retainDraft && translationSettings != null && textTranslation == null) { status.visibility=View.GONE; return }
-        if((MimiService.isRunning || MimiService.isStopping)) { status.setText(R.string.service_stop_first); Toast.makeText(this,R.string.service_stop_first,Toast.LENGTH_SHORT).show(); return }
+        if (MimiService.isSessionBusy) { status.setText(R.string.service_stop_first); Toast.makeText(this,R.string.service_stop_first,Toast.LENGTH_SHORT).show(); return }
         var valid=true
         val profileName = nameInput.text.toString().trim()
         if (profileName.isBlank()) { nameInput.error = getString(R.string.service_required); nameInput.requestFocus(); status.visibility = View.GONE; return }

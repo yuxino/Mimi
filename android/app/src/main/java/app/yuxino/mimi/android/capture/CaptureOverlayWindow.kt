@@ -63,6 +63,8 @@ internal class CaptureOverlayWindow(
     private var resizeWidthPercent: Int? = null
     private var resizeHeightPercent: Int? = null
     private var overlayGeometryGeneration = 0
+    private val opacityGesture = OpacityGestureState()
+    private var opacityBaseStyle: CaptionFrameStyle? = null
     private var previewMode = false
     private var previewHistoryEnabled = false
     private var previewOverOwnUi = false
@@ -104,6 +106,7 @@ internal class CaptureOverlayWindow(
         resizeWidthPercent = null
         resizeHeightPercent = null
         overlayGeometryGeneration++
+        cancelOpacityGesture()
     }
 
     fun refreshInterfaceLanguage() {
@@ -386,85 +389,78 @@ internal class CaptureOverlayWindow(
         }
     }
 
-    private fun attachOpacityGesture(slider: CaptionOpacitySlider, panel: CaptionPanelView) {
-        var gestureGeneration = -1
-        var previewAlpha: Int? = null
-        var baseStyle: CaptionFrameStyle? = null
-        var moved = false
-
-        fun restoreSaved() {
-            previewAlpha = null
-            baseStyle = null
-            moved = false
-            slider.dragging = false
-            panel.applySurfaceChrome(CaptionFrameStyle.saved(service, sessionOriginalOnly))
+    private fun cancelOpacityGesture(restoreChrome: Boolean = true) {
+        val hadActiveGesture = opacityGesture.cancel() ||
+            opacityBaseStyle != null ||
+            expandedView?.opacitySlider?.dragging == true
+        opacityBaseStyle = null
+        expandedView?.opacitySlider?.dragging = false
+        if (restoreChrome && hadActiveGesture) {
+            expandedView?.applySurfaceChrome(CaptionFrameStyle.saved(service, sessionOriginalOnly))
         }
+    }
 
+    private fun attachOpacityGesture(slider: CaptionOpacitySlider, panel: CaptionPanelView) {
         slider.onAccessibilityStep = { next ->
             if (!immersiveSession && adjustable) {
+                cancelOpacityGesture(restoreChrome = false)
                 try {
                     SettingsStore.setOverlayBgAlpha(service, next)
                     panel.applySurfaceChrome(CaptionFrameStyle.saved(service, sessionOriginalOnly))
                 } catch (_: RuntimeException) {
-                    restoreSaved()
+                    panel.applySurfaceChrome(CaptionFrameStyle.saved(service, sessionOriginalOnly))
                     Toast.makeText(InterfaceLanguage.context(service), R.string.service_save_failed, Toast.LENGTH_LONG).show()
                 }
             }
         }
 
         slider.setOnTouchListener { _, event ->
-            if (immersiveSession || !adjustable) return@setOnTouchListener false
-            if (event.actionMasked != MotionEvent.ACTION_DOWN && gestureGeneration != overlayGeometryGeneration) {
-                if (previewAlpha != null || slider.dragging) restoreSaved()
-                return@setOnTouchListener true
-            }
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
+            val hadSliderDragging = slider.dragging
+            when (val outcome = opacityGesture.onTouch(
+                action = event.actionMasked,
+                interactive = !immersiveSession && adjustable,
+                generation = overlayGeometryGeneration,
+                readValue = { slider.valueFromY(event.y) },
+            )) {
+                is OpacityGestureOutcome.StartPreview -> {
                     slider.parent?.requestDisallowInterceptTouchEvent(true)
-                    gestureGeneration = overlayGeometryGeneration
-                    moved = false
                     slider.dragging = true
                     val style = CaptionFrameStyle.saved(service, sessionOriginalOnly)
-                    baseStyle = style
-                    val next = slider.valueFromY(event.y)
-                    previewAlpha = next
-                    panel.applySurfaceChrome(style.copy(backgroundAlpha = next))
+                    opacityBaseStyle = style
+                    panel.applySurfaceChrome(style.copy(backgroundAlpha = outcome.alpha))
                     true
                 }
-                MotionEvent.ACTION_MOVE -> {
-                    moved = true
-                    val style = baseStyle ?: CaptionFrameStyle.saved(service, sessionOriginalOnly)
-                    val next = slider.valueFromY(event.y)
-                    if (previewAlpha != next) {
-                        previewAlpha = next
-                        panel.applySurfaceChrome(style.copy(backgroundAlpha = next))
-                    }
+                is OpacityGestureOutcome.UpdatePreview -> {
+                    val style = opacityBaseStyle ?: CaptionFrameStyle.saved(service, sessionOriginalOnly)
+                    panel.applySurfaceChrome(style.copy(backgroundAlpha = outcome.alpha))
                     true
                 }
-                MotionEvent.ACTION_UP -> {
-                    val committed = previewAlpha
-                    val wasTap = !moved
-                    previewAlpha = null
-                    baseStyle = null
-                    moved = false
+                is OpacityGestureOutcome.Commit -> {
+                    opacityBaseStyle = null
                     slider.dragging = false
-                    if (committed != null) {
+                    if (outcome.alpha != null) {
                         try {
-                            SettingsStore.setOverlayBgAlpha(service, committed)
+                            SettingsStore.setOverlayBgAlpha(service, outcome.alpha)
                             panel.applySurfaceChrome(CaptionFrameStyle.saved(service, sessionOriginalOnly))
                         } catch (_: RuntimeException) {
-                            restoreSaved()
+                            panel.applySurfaceChrome(CaptionFrameStyle.saved(service, sessionOriginalOnly))
                             Toast.makeText(InterfaceLanguage.context(service), R.string.service_save_failed, Toast.LENGTH_LONG).show()
                         }
                     }
-                    if (wasTap) slider.performClick()
+                    if (outcome.wasTap) slider.performClick()
                     true
                 }
-                MotionEvent.ACTION_CANCEL -> {
-                    restoreSaved()
-                    true
+                is OpacityGestureOutcome.Cancel -> {
+                    val hadResidual = outcome.restoreSaved || opacityBaseStyle != null || hadSliderDragging
+                    opacityBaseStyle = null
+                    slider.dragging = false
+                    if (hadResidual) {
+                        panel.applySurfaceChrome(CaptionFrameStyle.saved(service, sessionOriginalOnly))
+                    }
+                    outcome.consumed || (event.actionMasked == MotionEvent.ACTION_CANCEL && hadSliderDragging)
                 }
-                else -> false
+                OpacityGestureOutcome.Consumed -> true
+                OpacityGestureOutcome.Ignored -> false
             }
         }
     }
@@ -621,6 +617,7 @@ internal class CaptureOverlayWindow(
             resizeWidthPercent = null
             resizeHeightPercent = null
             adjustable = enabled
+            cancelOpacityGesture(restoreChrome = false)
             expandedView?.applySurfaceChrome(CaptionFrameStyle.saved(service, sessionOriginalOnly))
         }
         syncingAdjustment = true
@@ -650,6 +647,7 @@ internal class CaptureOverlayWindow(
             resizeWidthPercent = null
             resizeHeightPercent = null
             overlayGeometryGeneration++
+            cancelOpacityGesture(restoreChrome = false)
             val params = checkNotNull(overlayParams)
             params.flags = if (immersiveSession || !adjustable) {
                 params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
@@ -662,12 +660,12 @@ internal class CaptureOverlayWindow(
             compactView?.visibility = if (expanded) View.GONE else View.VISIBLE
             expandedView?.visibility = if (expanded) View.VISIBLE else View.GONE
             if (immersiveSession) {
-                adjustmentSwitch?.let { windowManager?.removeView(it) }
+                removeWindowView(adjustmentSwitch)
                 adjustmentSwitch = null
                 adjustmentParams = null
                 showImmersiveExitControl(checkNotNull(windowManager))
             } else {
-                immersiveExitView?.let { windowManager?.removeView(it) }
+                removeWindowView(immersiveExitView)
                 immersiveExitView = null
                 immersiveExitParams = null
                 showAdjustmentSwitch(checkNotNull(windowManager))
@@ -811,26 +809,28 @@ internal class CaptureOverlayWindow(
         )
     }
 
+    private fun removeWindowView(view: View?) {
+        if (view != null) runCatching { windowManager?.removeView(view) }
+    }
+
     fun hide() {
-        adjustmentSwitch?.let { windowManager?.removeView(it) }
+        cancelOpacityGesture(restoreChrome = false)
+        removeWindowView(adjustmentSwitch)
         adjustmentSwitch = null
         adjustmentParams = null
-        try {
-            immersiveExitView?.let { windowManager?.removeView(it) }
-        } catch (_: Exception) {
-        }
+        removeWindowView(immersiveExitView)
         immersiveExitView = null
         immersiveExitParams = null
-        try {
-            overlayView?.let { windowManager?.removeView(it) }
-        } catch (_: Exception) {
-        }
+        removeWindowView(overlayView)
         overlayView = null
         overlayParams = null
         compactView = null
         expandedView = null
         overlayPlacement.reset(overlayPlacement.preferredOffsetDp, false)
         draggingOverlay = false
+        resizeWidthPercent = null
+        resizeHeightPercent = null
+        overlayGeometryGeneration++
         previewMode = false
         previewHistoryEnabled = false
         previewOverOwnUi = false
@@ -882,4 +882,92 @@ internal class CaptureOverlayWindow(
 
     private fun dp(value: Int): Int =
         (value * service.resources.displayMetrics.density).toInt()
+}
+
+internal sealed interface OpacityGestureOutcome {
+    data class StartPreview(val alpha: Int) : OpacityGestureOutcome
+    data class UpdatePreview(val alpha: Int) : OpacityGestureOutcome
+    data class Commit(val alpha: Int?, val wasTap: Boolean) : OpacityGestureOutcome
+    data class Cancel(val restoreSaved: Boolean, val consumed: Boolean) : OpacityGestureOutcome
+    data object Consumed : OpacityGestureOutcome
+    data object Ignored : OpacityGestureOutcome
+}
+
+internal class OpacityGestureState {
+    var gestureGeneration: Int = -1
+        private set
+    var previewAlpha: Int? = null
+        private set
+    var moved: Boolean = false
+        private set
+    var dragging: Boolean = false
+        private set
+
+    val isActive: Boolean
+        get() = previewAlpha != null || moved || dragging
+
+    fun cancel(): Boolean {
+        val hadActive = isActive
+        gestureGeneration = -1
+        previewAlpha = null
+        moved = false
+        dragging = false
+        return hadActive
+    }
+
+    fun onTouch(
+        action: Int,
+        interactive: Boolean,
+        generation: Int,
+        readValue: () -> Int,
+    ): OpacityGestureOutcome {
+        if (action == MotionEvent.ACTION_CANCEL) {
+            val hadActive = cancel()
+            return OpacityGestureOutcome.Cancel(
+                restoreSaved = hadActive,
+                consumed = hadActive || interactive,
+            )
+        }
+        if (!interactive) {
+            val hadActive = cancel()
+            return OpacityGestureOutcome.Cancel(
+                restoreSaved = hadActive,
+                consumed = false,
+            )
+        }
+        if (action != MotionEvent.ACTION_DOWN && gestureGeneration != generation) {
+            val hadActive = cancel()
+            return OpacityGestureOutcome.Cancel(
+                restoreSaved = hadActive,
+                consumed = true,
+            )
+        }
+        return when (action) {
+            MotionEvent.ACTION_DOWN -> {
+                gestureGeneration = generation
+                moved = false
+                dragging = true
+                val next = readValue()
+                previewAlpha = next
+                OpacityGestureOutcome.StartPreview(next)
+            }
+            MotionEvent.ACTION_MOVE -> {
+                moved = true
+                val next = readValue()
+                if (previewAlpha != next) {
+                    previewAlpha = next
+                    OpacityGestureOutcome.UpdatePreview(next)
+                } else {
+                    OpacityGestureOutcome.Consumed
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                val committed = previewAlpha
+                val wasTap = !moved
+                cancel()
+                OpacityGestureOutcome.Commit(committed, wasTap)
+            }
+            else -> OpacityGestureOutcome.Ignored
+        }
+    }
 }

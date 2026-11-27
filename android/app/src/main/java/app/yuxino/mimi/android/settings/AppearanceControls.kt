@@ -297,11 +297,23 @@ internal class AppearanceControls(
             thumbTintList = progressTintList
             progressBackgroundTintList = ContextCompat.getColorStateList(context, R.color.mimi_border)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                private var tracking = false
+
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    if (fromUser && !syncing) save { write(progress) }
+                    if (!fromUser || syncing) return
+                    value.text = if (id == R.id.history_lines && progress == 0) context.getString(R.string.settings_history_off)
+                        else context.getString(format, progress)
+                    if (!tracking) save { write(progress) }
                 }
-                override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
-                override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+
+                override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                    tracking = true
+                }
+
+                override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                    tracking = false
+                    if (!syncing && seekBar != null) save { write(seekBar.progress) }
+                }
             })
         }
         parent.addView(seek, LayoutParams(-1, dp(48)))
