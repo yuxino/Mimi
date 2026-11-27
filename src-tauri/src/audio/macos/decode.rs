@@ -78,41 +78,73 @@ pub(super) fn capture_to_pcm16(
         decoded?
     };
 
-    if samples.is_empty() {
-        return Ok(None);
-    }
     // Per-buffer diagnostics are intentionally absent here: this runs ~48x/s
     // and the throttled `capture decode buffers=` stats plus the send
     // pipeline's peakDbFS already cover silence/decode diagnosis.
+    resample_to_pcm16(
+        &state.resampler,
+        &state.pending_frames,
+        state.target_sample_rate_hz,
+        &samples,
+        sample_rate,
+    )
+}
 
-    let target_sample_rate = state.target_sample_rate_hz as f64;
+pub(super) fn resample_to_pcm16(
+    resampler: &std::sync::Mutex<Option<(u32, rubato::Fft<f32>)>>,
+    pending_frames: &std::sync::Mutex<Vec<f32>>,
+    target_sample_rate_hz: u32,
+    samples: &[f32],
+    sample_rate: f64,
+) -> Result<Option<Vec<u8>>, SystemAudioCaptureError> {
+    if samples.is_empty() {
+        return Ok(None);
+    }
+    let rounded_rate = sample_rate.round();
+    if !sample_rate.is_finite() || rounded_rate < 1.0 || rounded_rate > u32::MAX as f64 {
+        return Err(SystemAudioCaptureError::UnsupportedAudioFormat);
+    }
+    let input_sample_rate_hz = rounded_rate as u32;
+    let target_sample_rate = target_sample_rate_hz as f64;
     // Resample when the device rate differs from the selected provider.
     let pcm = if (sample_rate - target_sample_rate).abs() < 0.5 {
-        PCM16Encoder::encode(&samples)
+        {
+            let mut pending = pending_frames.lock().unwrap();
+            let mut resampler_guard = resampler.lock().unwrap();
+            pending.clear();
+            *resampler_guard = None;
+        }
+        PCM16Encoder::encode(samples)
     } else {
-        let mut pending = state.pending_frames.lock().unwrap();
-        pending.extend_from_slice(&samples);
-        let mut resampler_guard = state.resampler.lock().unwrap();
-        if resampler_guard.is_none() {
-            let resampler = rubato::Fft::<f32>::new(
-                sample_rate as usize,
-                state.target_sample_rate_hz as usize,
+        let mut pending = pending_frames.lock().unwrap();
+        let mut resampler_guard = resampler.lock().unwrap();
+        let needs_rebuild = match resampler_guard.as_ref() {
+            Some((rate, _)) => *rate != input_sample_rate_hz,
+            None => true,
+        };
+        if needs_rebuild {
+            pending.clear();
+            *resampler_guard = None;
+            let rebuilt = rubato::Fft::<f32>::new(
+                input_sample_rate_hz as usize,
+                target_sample_rate_hz as usize,
                 RESAMPLE_CHUNK_FRAMES,
                 1,
                 rubato::FixedSync::Input,
             )
             .map_err(|_| SystemAudioCaptureError::AudioProcessingFailed)?;
-            *resampler_guard = Some(resampler);
+            *resampler_guard = Some((input_sample_rate_hz, rebuilt));
         }
+        pending.extend_from_slice(samples);
         let mut out = Vec::new();
-        let resampler = resampler_guard.as_mut().unwrap();
+        let (_, active_resampler) = resampler_guard.as_mut().unwrap();
         while pending.len() >= RESAMPLE_CHUNK_FRAMES {
             let output = match SequentialSlice::new(
                 &pending[..RESAMPLE_CHUNK_FRAMES],
                 1,
                 RESAMPLE_CHUNK_FRAMES,
             ) {
-                Ok(input) => resampler
+                Ok(input) => active_resampler
                     .process(&input, None)
                     .map(|output| output.take_data())
                     .map_err(|_| SystemAudioCaptureError::AudioProcessingFailed),

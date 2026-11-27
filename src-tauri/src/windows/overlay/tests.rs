@@ -6,7 +6,9 @@ use super::geometry::{
     transition_overlay_mode, update_presentation_frame, OverlayApplySnapshot,
     OverlayGeometrySnapshot,
 };
-use super::resize_gesture::{finish_resize_drag, resized_frame_for_pointer, ResizeGesture};
+use super::resize_gesture::{
+    finish_resize_drag, is_valid_pointer, resized_frame_for_pointer, ResizeGesture,
+};
 use super::{OverlayMode, OverlayState, SubtitleOverlayMetrics, OVERLAY_FRAME_LAYOUT_VERSION};
 use crate::settings_store::OverlayFrame;
 use crate::settings_store::Preferences;
@@ -763,4 +765,49 @@ fn collapse_reconciles_a_manual_drag_without_overwriting_its_fitted_frame() {
     assert_eq!(state.user_frame, fitted);
     assert_eq!(state.mode, OverlayMode::Collapsed);
     assert_eq!(transition.frame_to_persist, Some(fitted));
+}
+
+#[test]
+fn resize_pointer_validation_and_math_reject_non_finite_or_out_of_bounds_coordinates() {
+    assert!(is_valid_pointer(0.0, -500.0));
+    assert!(!is_valid_pointer(f64::NAN, 100.0));
+    assert!(!is_valid_pointer(100.0, f64::INFINITY));
+    assert!(!is_valid_pointer(f64::NEG_INFINITY, 100.0));
+    assert!(!is_valid_pointer(1_000_001.0, 100.0));
+
+    let start = ResizeGesture {
+        pointer: (400.0, 300.0),
+        frame: frame(400.0, 300.0, 640.0, 482.0),
+        work_area: WORK_AREA,
+    };
+    for bad_pointer in [
+        (f64::NAN, 300.0),
+        (400.0, f64::INFINITY),
+        (400.0, f64::NEG_INFINITY),
+        (2_000_000.0, 300.0),
+    ] {
+        assert_eq!(
+            resized_frame_for_pointer(ResizeRegion::BottomRight, start, bad_pointer, 136.0),
+            start.frame
+        );
+    }
+}
+
+#[test]
+fn overlay_snapshots_remain_reflexive_even_with_nan_fields() {
+    let mut state = state_with_frame(frame(f64::NAN, 300.0, 640.0, 136.0));
+    state.presentation_frame = Some(frame(100.0, f64::NAN, 640.0, 136.0));
+    state.minimum_height = f64::NAN;
+    state.native_drag_start = Some((f64::NAN, 200.0));
+    state.resize_drag = Some(ResizeRegion::BottomRight);
+    state.resize_start = Some(ResizeGesture {
+        pointer: (f64::NAN, 100.0),
+        frame: frame(400.0, 300.0, f64::NAN, 136.0),
+        work_area: WORK_AREA,
+    });
+
+    let apply_snapshot = OverlayApplySnapshot::from(&state);
+    let geometry_snapshot = OverlayGeometrySnapshot::from(&state);
+    assert!(apply_snapshot_is_current(&state, apply_snapshot));
+    assert!(geometry_snapshot_is_current(&state, geometry_snapshot));
 }

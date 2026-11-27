@@ -2,8 +2,8 @@
 
 use crate::commands;
 use crate::session_manager::SessionManager;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 #[cfg(any(target_os = "linux", test))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -172,6 +172,30 @@ pub fn dispatch_linux_launch(app: &tauri::AppHandle, args: &[String]) {
 }
 
 /// Registers the global session, immersive, lock, and subtitle display shortcuts. Each action
+const SHORTCUT_DEBOUNCE: Duration = Duration::from_millis(500);
+
+struct ShortcutDebounce {
+    last_trigger: Mutex<Option<Instant>>,
+}
+
+impl ShortcutDebounce {
+    fn new() -> Self {
+        Self {
+            last_trigger: Mutex::new(None),
+        }
+    }
+
+    fn allow_at(&self, now: Instant) -> bool {
+        let mut last = self.last_trigger.lock().unwrap();
+        if last.is_some_and(|previous| now.saturating_duration_since(previous) < SHORTCUT_DEBOUNCE)
+        {
+            return false;
+        }
+        *last = Some(now);
+        true
+    }
+}
+
 /// owns an independent 500ms debounce so presentation switching never blocks
 /// a session lifecycle action (or vice versa).
 pub(crate) fn setup_global_shortcuts(
@@ -197,7 +221,7 @@ pub(crate) fn setup_global_shortcuts(
     let lock_shortcut = Shortcut::new(Some(modifiers), Code::KeyL);
     let display_shortcut = Shortcut::new(Some(modifiers), Code::KeyB);
 
-    let last_trigger = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let session_debounce = ShortcutDebounce::new();
     let session_for_handler = Arc::clone(&session);
 
     // Register the global shortcut. A failure must not abort startup: another
@@ -209,16 +233,9 @@ pub(crate) fn setup_global_shortcuts(
                 if event.state() != ShortcutState::Pressed {
                     return;
                 }
-                // Debounce repeated global-shortcut presses.
-                let now_ms = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_millis() as u64)
-                    .unwrap_or(0);
-                let previous = last_trigger.load(std::sync::atomic::Ordering::SeqCst);
-                if now_ms.saturating_sub(previous) < 500 {
+                if !session_debounce.allow_at(Instant::now()) {
                     return;
                 }
-                last_trigger.store(now_ms, std::sync::atomic::Ordering::SeqCst);
                 let session = Arc::clone(&session_for_handler);
                 tauri::async_runtime::spawn(async move {
                     let status = session.status_kind();
@@ -240,22 +257,16 @@ pub(crate) fn setup_global_shortcuts(
         ),
     }
 
-    let immersive_last_trigger = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let immersive_debounce = ShortcutDebounce::new();
     let immersive_register =
         app.global_shortcut()
             .on_shortcut(immersive_shortcut, move |app, _shortcut, event| {
                 if event.state() != ShortcutState::Pressed {
                     return;
                 }
-                let now_ms = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_millis() as u64)
-                    .unwrap_or(0);
-                let previous = immersive_last_trigger.load(std::sync::atomic::Ordering::SeqCst);
-                if now_ms.saturating_sub(previous) < 500 {
+                if !immersive_debounce.allow_at(Instant::now()) {
                     return;
                 }
-                immersive_last_trigger.store(now_ms, std::sync::atomic::Ordering::SeqCst);
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
                     if let Err(error) = commands::settings::toggle_immersive_mode(&app).await {
@@ -272,22 +283,16 @@ pub(crate) fn setup_global_shortcuts(
              (another app may already own the combination)"
         ),
     }
-    let lock_last_trigger = std::sync::atomic::AtomicU64::new(0);
+    let lock_debounce = ShortcutDebounce::new();
     let lock_register = app
         .global_shortcut()
         .on_shortcut(lock_shortcut, move |app, _, event| {
             if event.state() != ShortcutState::Pressed {
                 return;
             }
-            let now_ms = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis() as u64)
-                .unwrap_or(0);
-            let previous = lock_last_trigger.load(Ordering::SeqCst);
-            if now_ms.saturating_sub(previous) < 500 {
+            if !lock_debounce.allow_at(Instant::now()) {
                 return;
             }
-            lock_last_trigger.store(now_ms, Ordering::SeqCst);
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
                 if commands::overlay::toggle_overlay_lock(&app).await.is_err() {
@@ -302,22 +307,16 @@ pub(crate) fn setup_global_shortcuts(
              (another app may already own the combination)"
         ),
     }
-    let display_last_trigger = std::sync::atomic::AtomicU64::new(0);
+    let display_debounce = ShortcutDebounce::new();
     let display_register =
         app.global_shortcut()
             .on_shortcut(display_shortcut, move |app, _, event| {
                 if event.state() != ShortcutState::Pressed {
                     return;
                 }
-                let now_ms = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_millis() as u64)
-                    .unwrap_or(0);
-                let previous = display_last_trigger.load(Ordering::SeqCst);
-                if now_ms.saturating_sub(previous) < 500 {
+                if !display_debounce.allow_at(Instant::now()) {
                     return;
                 }
-                display_last_trigger.store(now_ms, Ordering::SeqCst);
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
                     if commands::settings::set_subtitle_display_mode(&app, None)
@@ -384,5 +383,14 @@ mod tests {
             quote_executable("/home/user/Mimi's $(touch nope).AppImage"),
             "'/home/user/Mimi'\\''s $(touch nope).AppImage'"
         );
+    }
+
+    #[test]
+    fn monotonic_shortcut_debounce_ignores_repeats_within_window_only() {
+        let debounce = ShortcutDebounce::new();
+        let start = Instant::now();
+        assert!(debounce.allow_at(start));
+        assert!(!debounce.allow_at(start + Duration::from_millis(499)));
+        assert!(debounce.allow_at(start + Duration::from_millis(500)));
     }
 }

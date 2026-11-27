@@ -68,12 +68,14 @@ objc2-core-audio-types = { version = "0.3", features = ["objc2"] }
 # system mix on macOS 14.2+. New tap entry points are resolved at runtime.
 objc2-core-audio = { version = "0.3", default-features = false, features = ["std", "AudioHardware", "objc2", "objc2-core-audio-types", "objc2-foundation"] }
 objc2-core-foundation = { version = "0.3", features = ["CFDictionary"] }
-libc = "0.2"
 objc2-foundation = { version = "0.3", features = ["NSArray", "NSString", "NSError", "NSObject", "NSBundle"] }
 dispatch2 = "0.3"
 # Existing transitive library; exact metadata-only login-Keychain lookup.
 security-framework = "3"
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel.git", rev = "c9ec2130422200f0863b23dfdad02b133a529b07" }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 # Direct reference required by the Windows COM implementation macro; already

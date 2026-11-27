@@ -23,6 +23,9 @@ pub(crate) fn effective_native_ui_language(
         _ => system_language,
     }
     .unwrap_or("en")
+    .split(['.', '@'])
+    .next()
+    .unwrap_or("en")
     .to_ascii_lowercase()
     .replace('_', "-");
     if language.starts_with("zh") {
@@ -104,9 +107,37 @@ pub(crate) fn system_language_code() -> Option<String> {
     None
 }
 
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn posix_locales_strip_charset_and_modifier_before_chinese_script_detection() {
+        assert_eq!(
+            effective_native_ui_language(None, Some("zh_TW.UTF-8")),
+            NativeUiLanguage::TraditionalChinese
+        );
+        assert_eq!(
+            effective_native_ui_language(None, Some("zh_HK.UTF-8@euro")),
+            NativeUiLanguage::TraditionalChinese
+        );
+        assert_eq!(
+            effective_native_ui_language(None, Some("zh-Hant-TW")),
+            NativeUiLanguage::TraditionalChinese
+        );
+        assert_eq!(
+            effective_native_ui_language(None, Some("zh_CN.UTF-8")),
+            NativeUiLanguage::Chinese
+        );
+        assert_eq!(
+            effective_native_ui_language(None, Some("zh-Hans-CN")),
+            NativeUiLanguage::Chinese
+        );
+        assert_eq!(
+            effective_native_ui_language(Some("zh-TW"), Some("zh_CN.UTF-8")),
+            NativeUiLanguage::TraditionalChinese
+        );
+    }
 
     #[cfg(target_os = "macos")]
     #[test]

@@ -11,6 +11,22 @@ use crate::windows::work_area::{
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
+const MAX_POINTER_COORDINATE: f64 = 1_000_000.0;
+
+pub(super) fn is_valid_pointer(x: f64, y: f64) -> bool {
+    x.is_finite()
+        && y.is_finite()
+        && x.abs() <= MAX_POINTER_COORDINATE
+        && y.abs() <= MAX_POINTER_COORDINATE
+}
+
+fn frame_is_finite(frame: &OverlayFrame) -> bool {
+    frame.x.is_finite()
+        && frame.y.is_finite()
+        && frame.width.is_finite()
+        && frame.height.is_finite()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct ResizeGesture {
     pub(super) pointer: (f64, f64),
@@ -50,6 +66,9 @@ impl OverlayWindowManager {
         x: f64,
         y: f64,
     ) -> Result<(), String> {
+        if !is_valid_pointer(x, y) {
+            return Err("invalid resize pointer coordinates".to_string());
+        }
         let region = ResizeRegion::from_name(region_name)
             .ok_or_else(|| format!("unknown resize region: {region_name}"))?;
         let Some(window) = app.get_webview_window("overlay") else {
@@ -57,6 +76,9 @@ impl OverlayWindowManager {
         };
         let work_area = current_work_area_logical(app, &window);
         let pointer = resize_pointer_position((x, y));
+        if !is_valid_pointer(pointer.0, pointer.1) {
+            return Err("invalid resize pointer coordinates".to_string());
+        }
         let (mut state, observed_frame, _, _) =
             lock_overlay_after_native_geometry_read(app, overlay_state);
         // Resizing is meaningless (and corrupting) in any transient mode.
@@ -99,7 +121,14 @@ impl OverlayWindowManager {
         x: f64,
         y: f64,
     ) {
+        if !is_valid_pointer(x, y) {
+            return;
+        }
         if app.get_webview_window("overlay").is_none() {
+            return;
+        }
+        let pointer = resize_pointer_position((x, y));
+        if !is_valid_pointer(pointer.0, pointer.1) {
             return;
         }
         let mut state = overlay_state.lock().unwrap();
@@ -112,12 +141,10 @@ impl OverlayWindowManager {
         let Some(start) = state.resize_start else {
             return;
         };
-        let frame = resized_frame_for_pointer(
-            region,
-            start,
-            resize_pointer_position((x, y)),
-            state.minimum_height,
-        );
+        let frame = resized_frame_for_pointer(region, start, pointer, state.minimum_height);
+        if !frame_is_finite(&frame) {
+            return;
+        }
         // Skip sub-pixel jitter: unchanged frames do not need window ops.
         if (frame.x - state.user_frame.x).abs() < 0.5
             && (frame.y - state.user_frame.y).abs() < 0.5
@@ -214,6 +241,13 @@ pub(super) fn resized_frame_for_pointer(
 ) -> OverlayFrame {
     let work_area = start.work_area;
     let scale = work_area.coordinate_scale;
+    if !is_valid_pointer(pointer.0, pointer.1)
+        || !is_valid_pointer(start.pointer.0, start.pointer.1)
+        || !scale.is_finite()
+        || scale <= 0.0
+    {
+        return start.frame;
+    }
     let local_start_frame = OverlayFrame {
         x: start.frame.x - work_area.x,
         y: start.frame.y - work_area.y,
@@ -240,5 +274,9 @@ pub(super) fn resized_frame_for_pointer(
     frame.y += work_area.y;
     frame.width /= scale;
     frame.height /= scale;
-    frame
+    if frame_is_finite(&frame) {
+        frame
+    } else {
+        start.frame
+    }
 }

@@ -298,6 +298,9 @@ impl SessionManager {
             &self.active_generation,
             request_generation,
         ) {
+            if let Some(id) = history_id.as_deref() {
+                let _ = self.history.discard(id);
+            }
             return Ok(());
         }
         self.stopping_tail_generation
