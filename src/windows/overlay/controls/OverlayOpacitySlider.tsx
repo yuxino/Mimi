@@ -19,9 +19,17 @@ export function OverlayOpacitySlider({ opacity, disabled = false, onChange }: Ov
   const visualTrackRef = useRef<HTMLSpanElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const draggingPointerRef = useRef<number | null>(null);
+  const dragRectRef = useRef<{ top: number; height: number } | null>(null);
+  const clampedRef = useRef(0);
+  const onChangeRef = useRef(onChange);
   const [dragging, setDragging] = useState(false);
   const [nativeHovered, setNativeHovered] = useState(false);
   const clamped = clampOpacity(opacity);
+
+  useEffect(() => {
+    clampedRef.current = clamped;
+    onChangeRef.current = onChange;
+  }, [clamped, onChange]);
 
   useEffect(() => {
     const onPointerTarget = (event: Event) => {
@@ -32,19 +40,26 @@ export function OverlayOpacitySlider({ opacity, disabled = false, onChange }: Ov
     return () => document.removeEventListener(OVERLAY_POINTER_TARGET_EVENT, onPointerTarget);
   }, []);
 
-  const opacityFromClientY = useCallback((clientY: number) => {
+  const measureTrack = useCallback(() => {
     const visualRect = visualTrackRef.current?.getBoundingClientRect();
     const rect = visualRect && visualRect.height > 0 ? visualRect : controlRef.current?.getBoundingClientRect();
-    if (!rect || rect.height <= 0) return clamped;
+    if (!rect || rect.height <= 0) return null;
+    return { top: rect.top, height: rect.height };
+  }, []);
+
+  const opacityFromClientY = useCallback((clientY: number) => {
+    const rect = dragRectRef.current ?? measureTrack();
+    if (!rect || rect.height <= 0) return clampedRef.current;
     const ratio = 1 - (clientY - rect.top) / rect.height;
     return clampOpacity(ratio * 100);
-  }, [clamped]);
+  }, [measureTrack]);
 
   const finishDrag = useCallback((pointerId?: number) => {
     if (draggingPointerRef.current === null) return;
     if (pointerId !== undefined && draggingPointerRef.current !== pointerId) return;
     const activeId = draggingPointerRef.current;
     draggingPointerRef.current = null;
+    dragRectRef.current = null;
     setDragging(false);
     try {
       controlRef.current?.releasePointerCapture(activeId);
@@ -58,24 +73,43 @@ export function OverlayOpacitySlider({ opacity, disabled = false, onChange }: Ov
   }, [disabled, finishDrag]);
 
   useEffect(() => {
+    if (!dragging) return;
+    const move = (event: PointerEvent) => {
+      if (disabled || draggingPointerRef.current !== event.pointerId) return;
+      if (event.pointerType === "mouse" && (event.buttons & 1) === 0) {
+        finishDrag(event.pointerId);
+        return;
+      }
+      event.preventDefault();
+      const next = opacityFromClientY(event.clientY);
+      if (next !== clampedRef.current) {
+        clampedRef.current = next;
+        onChangeRef.current(next);
+      }
+    };
     const release = (event: PointerEvent) => finishDrag(event.pointerId);
     const blur = () => finishDrag();
+    window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", release);
     window.addEventListener("pointercancel", release);
     window.addEventListener("blur", blur);
     return () => {
+      window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", release);
       window.removeEventListener("pointercancel", release);
       window.removeEventListener("blur", blur);
-      finishDrag();
     };
-  }, [finishDrag]);
+  }, [disabled, dragging, finishDrag, opacityFromClientY]);
+
+  useEffect(() => () => finishDrag(), [finishDrag]);
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (disabled || event.button !== 0 || event.isPrimary === false) return;
     event.preventDefault();
     event.stopPropagation();
     draggingPointerRef.current = event.pointerId;
+    dragRectRef.current = measureTrack();
+    clampedRef.current = clamped;
     setDragging(true);
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -83,7 +117,10 @@ export function OverlayOpacitySlider({ opacity, disabled = false, onChange }: Ov
       // Window listeners finish the gesture when pointer capture is unavailable.
     }
     const next = opacityFromClientY(event.clientY);
-    if (next !== clamped) onChange(next);
+    if (next !== clamped) {
+      clampedRef.current = next;
+      onChange(next);
+    }
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -94,7 +131,10 @@ export function OverlayOpacitySlider({ opacity, disabled = false, onChange }: Ov
     }
     event.preventDefault();
     const next = opacityFromClientY(event.clientY);
-    if (next !== clamped) onChange(next);
+    if (next !== clampedRef.current) {
+      clampedRef.current = next;
+      onChange(next);
+    }
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {

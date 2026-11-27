@@ -75,8 +75,14 @@ describe("OverlayOpacitySlider", () => {
     });
     expect(onChange).toHaveBeenLastCalledWith(10);
 
+    // Continues tracking via window pointermove even if the cursor drifts off the narrow strip.
     act(() => {
-      control.dispatchEvent(pointerEvent("pointerup", { clientY: 190, pointerId: 1 }));
+      window.dispatchEvent(pointerEvent("pointermove", { clientY: 120, buttons: 1, pointerId: 1 }));
+    });
+    expect(onChange).toHaveBeenLastCalledWith(80);
+
+    act(() => {
+      window.dispatchEvent(pointerEvent("pointerup", { clientY: 120, pointerId: 1 }));
     });
     expect(host?.querySelector("[data-dragging]")).toBeNull();
   });

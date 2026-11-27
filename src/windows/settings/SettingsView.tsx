@@ -301,6 +301,7 @@ export function SettingsView() {
                       </div>
                       <div
                         className="subtitle-preview__text"
+                        data-light-surface={previewLightSurface ? "" : undefined}
                         style={{
                           background: settings.subtitleBlendsWithBackground
                             ? "transparent"

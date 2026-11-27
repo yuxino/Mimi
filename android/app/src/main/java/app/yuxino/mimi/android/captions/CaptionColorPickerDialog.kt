@@ -162,6 +162,7 @@ internal object CaptionColorPickerDialog {
             val parsed = CaptionColorMath.parseHexColor(hexInput.text?.toString())
             if (parsed == null) {
                 errorText.visibility = View.VISIBLE
+                scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
                 return
             }
             onSelected(parsed)
