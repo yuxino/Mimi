@@ -483,8 +483,10 @@ fn sine_samples(sample_rate_hz: f64, frames: usize) -> Vec<f32> {
 }
 
 fn pcm16_peak(pcm: &[u8]) -> i16 {
-    pcm.chunks_exact(2)
-        .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]).saturating_abs())
+    pcm.as_chunks::<2>()
+        .0
+        .iter()
+        .map(|chunk| i16::from_le_bytes(*chunk).saturating_abs())
         .max()
         .unwrap_or(0)
 }
