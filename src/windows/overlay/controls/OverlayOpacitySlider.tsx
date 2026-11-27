@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { I18N } from "../../../lib/i18n";
+import { OVERLAY_POINTER_TARGET_EVENT } from "../../../lib/overlay/overlayPointer";
 
 interface OverlayOpacitySliderProps {
   /** Background opacity in percent (0 = transparent, 100 = solid). */
@@ -19,7 +20,17 @@ export function OverlayOpacitySlider({ opacity, disabled = false, onChange }: Ov
   const inputRef = useRef<HTMLInputElement>(null);
   const draggingPointerRef = useRef<number | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [nativeHovered, setNativeHovered] = useState(false);
   const clamped = clampOpacity(opacity);
+
+  useEffect(() => {
+    const onPointerTarget = (event: Event) => {
+      const target = (event as CustomEvent<Element | null>).detail;
+      setNativeHovered(Boolean(target instanceof Node && controlRef.current?.contains(target)));
+    };
+    document.addEventListener(OVERLAY_POINTER_TARGET_EVENT, onPointerTarget);
+    return () => document.removeEventListener(OVERLAY_POINTER_TARGET_EVENT, onPointerTarget);
+  }, []);
 
   const opacityFromClientY = useCallback((clientY: number) => {
     const visualRect = visualTrackRef.current?.getBoundingClientRect();
@@ -140,6 +151,7 @@ export function OverlayOpacitySlider({ opacity, disabled = false, onChange }: Ov
     <div
       className="overlay-hover-control overlay-opacity-slider"
       data-dragging={dragging ? "" : undefined}
+      data-hovered={nativeHovered && !disabled ? "" : undefined}
       data-testid="overlay-opacity-slider"
     >
       <div

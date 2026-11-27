@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { OVERLAY_POINTER_TARGET_EVENT } from "../../../lib/overlay/overlayPointer";
 import { OverlayOpacitySlider } from "./OverlayOpacitySlider";
 
 let host: HTMLDivElement | null = null;
@@ -96,6 +97,22 @@ describe("OverlayOpacitySlider", () => {
       control.dispatchEvent(new WheelEvent("wheel", { deltaY: 10, bubbles: true, cancelable: true }));
     });
     expect(onChange).toHaveBeenLastCalledWith(45);
+  });
+
+  it("tracks native pointer hover targets for nonactivating overlay windows", () => {
+    const { input } = mount(80, vi.fn());
+    const slider = host!.querySelector('[data-testid="overlay-opacity-slider"]')!;
+    expect(slider.hasAttribute("data-hovered")).toBe(false);
+
+    act(() => {
+      document.dispatchEvent(new CustomEvent(OVERLAY_POINTER_TARGET_EVENT, { detail: input }));
+    });
+    expect(slider.hasAttribute("data-hovered")).toBe(true);
+
+    act(() => {
+      document.dispatchEvent(new CustomEvent(OVERLAY_POINTER_TARGET_EVENT, { detail: null }));
+    });
+    expect(slider.hasAttribute("data-hovered")).toBe(false);
   });
 
   it("ignores input when disabled", () => {

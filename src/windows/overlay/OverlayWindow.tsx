@@ -553,6 +553,7 @@ export function OverlayWindow() {
     return (
       <div
         className="overlay-compact-canvas relative h-full w-full"
+        data-low-opacity={(settings.subtitleBackgroundOpacity ?? 80) < 70 ? "" : undefined}
         data-light-surface={lightSurface ? "" : undefined}
         role="group"
         aria-label={`${I18N.overlay.collapsedAccessibilityPrefix}${phaseLabel} · ${audioInputLabel(settings.audioInput, settings.systemAudioTarget)}${recordingLabel ? ` · ${recordingLabel}` : ""}`}

@@ -87,8 +87,14 @@
   font-size: 11px;
 }
 
-.overlay-expanded-canvas[data-low-opacity] .overlay-action-strip .overlay-control-button svg {
+.overlay-expanded-canvas[data-low-opacity] .overlay-action-strip .overlay-control-button svg,
+.overlay-compact-canvas[data-low-opacity]:not([data-light-surface]) .overlay-control-button svg,
+.overlay-compact-canvas[data-low-opacity]:not([data-light-surface]) .audio-input-indicator svg {
   filter: drop-shadow(0 0 1px #222) drop-shadow(0 1px 1px #222);
+}
+
+.overlay-compact-canvas[data-low-opacity]:not([data-light-surface]) .overlay-compact-reading > span {
+  text-shadow: 0 0 2px #222, 0 1px 2px #222;
 }
 
 .overlay-action-strip .overlay-control-button:focus-visible {
@@ -145,7 +151,7 @@
   outline: none;
 }
 
-.overlay-opacity-slider:is([data-dragging], :has(.overlay-opacity-slider__control:hover), :has(.overlay-opacity-slider__input:focus-visible)) .overlay-opacity-slider__control {
+.overlay-opacity-slider:is([data-dragging], [data-hovered], :has(.overlay-opacity-slider__control:hover), :has(.overlay-opacity-slider__input:focus-visible)) .overlay-opacity-slider__control {
   background: var(--overlay-slider-scrim, rgba(16, 16, 16, 0.72));
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
 }
@@ -215,7 +221,7 @@
   pointer-events: none;
 }
 
-.overlay-opacity-slider:is([data-dragging], :has(.overlay-opacity-slider__control:hover), :has(.overlay-opacity-slider__input:focus-visible)) .overlay-opacity-slider__readout {
+.overlay-opacity-slider:is([data-dragging], [data-hovered], :has(.overlay-opacity-slider__control:hover), :has(.overlay-opacity-slider__input:focus-visible)) .overlay-opacity-slider__readout {
   opacity: 1;
 }
 

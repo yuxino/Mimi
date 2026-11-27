@@ -20,7 +20,6 @@ import android.widget.Toast
 import app.yuxino.mimi.android.MainActivity
 import app.yuxino.mimi.android.R
 import app.yuxino.mimi.android.captions.CaptionAdjustmentSwitch
-import app.yuxino.mimi.android.captions.CaptionColorMath
 import app.yuxino.mimi.android.captions.CaptionDisplayMode
 import app.yuxino.mimi.android.captions.CaptionFrameContent
 import app.yuxino.mimi.android.captions.CaptionFrameStyle
@@ -862,15 +861,7 @@ internal class CaptureOverlayWindow(
         }
         expandedView?.let {
             it.showContent(content, mode, expanded)
-            val lightSurface = CaptionColorMath.isLightSurface(
-                SettingsStore.overlayBgColor(service),
-                SettingsStore.overlayBgAlpha(service),
-            )
-            it.source.setTextColor(when {
-                mode == CaptionDisplayMode.ORIGINAL -> SettingsStore.translationColor(service)
-                lightSurface -> 0xFF3A3A3C.toInt()
-                else -> 0xFFD5D5D5.toInt()
-            })
+            it.applySourceTextColor(mode, SettingsStore.translationColor(service))
         }
         updateOverlayGeometry()
         val hasCaption = listOf(sourceView, translationView).any {
