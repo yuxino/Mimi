@@ -615,6 +615,10 @@
     color: var(--control-text) !important;
   }
 
+  .overlay-control-embedded[data-low-opacity] > div > .overlay-control-island svg {
+    filter: none;
+  }
+
   .overlay-control-settings-link:hover:not(:disabled),
   .overlay-control-header__collapse:hover,
   .overlay-control-capture__toggle:hover:not(:disabled) {

@@ -127,4 +127,65 @@ describe("OverlayOpacitySlider", () => {
     act(() => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })); });
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it("clears dragging if pointerup arrives immediately before effect commit and ignores secondary pointers", () => {
+    const onChange = vi.fn();
+    const { control } = mount(80, onChange);
+    control.getBoundingClientRect = () => ({
+      x: 0, y: 100, left: 0, top: 100, right: 24, bottom: 200, width: 24, height: 100, toJSON: () => ({}),
+    });
+    const pointerEvent = (type: string, init: MouseEventInit & { pointerId?: number; isPrimary?: boolean }) => {
+      const event = new MouseEvent(type, { bubbles: true, ...init });
+      Object.defineProperty(event, "pointerId", { value: init.pointerId ?? 1 });
+      Object.defineProperty(event, "isPrimary", { value: init.isPrimary ?? true });
+      return event;
+    };
+
+    // Secondary pointer while primary is already dragging must be ignored.
+    act(() => {
+      control.dispatchEvent(pointerEvent("pointerdown", { clientY: 140, button: 0, pointerId: 1 }));
+      control.dispatchEvent(pointerEvent("pointerdown", { clientY: 180, button: 0, pointerId: 2 }));
+    });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith(60);
+
+    // Releasing pointer 2 must not end pointer 1; releasing pointer 1 ends drag.
+    act(() => {
+      window.dispatchEvent(pointerEvent("pointerup", { clientY: 180, pointerId: 2 }));
+    });
+    expect(host?.querySelector("[data-dragging]")).not.toBeNull();
+    act(() => {
+      window.dispatchEvent(pointerEvent("pointerup", { clientY: 140, pointerId: 1 }));
+    });
+    expect(host?.querySelector("[data-dragging]")).toBeNull();
+
+    // Pointerdown + window pointerup inside the same act batch must not leave data-dragging stuck.
+    act(() => {
+      control.dispatchEvent(pointerEvent("pointerdown", { clientY: 150, button: 0, pointerId: 3 }));
+      window.dispatchEvent(pointerEvent("pointerup", { clientY: 150, pointerId: 3 }));
+    });
+    expect(host?.querySelector("[data-dragging]")).toBeNull();
+  });
+
+  it("keeps wheel listener stable across parent rerenders while reading updated props", () => {
+    const firstOnChange = vi.fn();
+    const secondOnChange = vi.fn();
+    const { control } = mount(50, firstOnChange);
+    const addSpy = vi.spyOn(control, "addEventListener");
+    const removeSpy = vi.spyOn(control, "removeEventListener");
+
+    // Simulate frequent parent rerenders with updated opacity & new onChange identities.
+    act(() => {
+      root!.render(<OverlayOpacitySlider opacity={55} onChange={firstOnChange} />);
+      root!.render(<OverlayOpacitySlider opacity={60} onChange={secondOnChange} />);
+    });
+    expect(addSpy).not.toHaveBeenCalled();
+    expect(removeSpy).not.toHaveBeenCalled();
+
+    act(() => {
+      control.dispatchEvent(new WheelEvent("wheel", { deltaY: -10, bubbles: true, cancelable: true }));
+    });
+    expect(firstOnChange).not.toHaveBeenCalled();
+    expect(secondOnChange).toHaveBeenCalledWith(65);
+  });
 });

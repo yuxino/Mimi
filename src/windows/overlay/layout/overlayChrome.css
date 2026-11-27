@@ -87,7 +87,7 @@
   font-size: 11px;
 }
 
-.overlay-expanded-canvas[data-low-opacity] .overlay-action-strip .overlay-control-button svg,
+.overlay-expanded-canvas[data-low-opacity]:not([data-light-surface]) .overlay-action-strip .overlay-control-button svg,
 .overlay-compact-canvas[data-low-opacity]:not([data-light-surface]) .overlay-control-button svg,
 .overlay-compact-canvas[data-low-opacity]:not([data-light-surface]) .audio-input-indicator svg {
   filter: drop-shadow(0 0 1px #222) drop-shadow(0 1px 1px #222);
@@ -151,7 +151,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
+  width: 24px;
   height: 100%;
   max-height: 96px;
   min-height: 24px;
@@ -168,7 +168,7 @@
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
 }
 
-.overlay-expanded-canvas[data-low-opacity] .overlay-opacity-slider__track {
+.overlay-expanded-canvas[data-low-opacity]:not([data-light-surface]) .overlay-opacity-slider__track {
   filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85));
 }
 
@@ -184,6 +184,8 @@
   width: 100%;
   height: 100%;
   margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
   opacity: 0;
   cursor: ns-resize;
 }
@@ -241,6 +243,7 @@
 .overlay-expanded-canvas[data-light-surface],
 .overlay-compact-canvas[data-light-surface] {
   --control-text: rgba(0, 0, 0, 0.78);
+  --overlay-control-focus: rgba(0, 0, 0, 0.78);
   --overlay-canvas-outline: rgba(0, 0, 0, 0.16);
   --overlay-empty-text: rgba(0, 0, 0, 0.56);
   --overlay-slider-track: rgba(0, 0, 0, 0.22);
@@ -250,15 +253,23 @@
   --overlay-slider-scrim: rgba(255, 255, 255, 0.86);
 }
 
-.overlay-expanded-canvas[data-light-surface] .overlay-action-strip .overlay-control-button,
+.overlay-expanded-canvas[data-light-surface] .overlay-action-strip .overlay-control-button {
+  color: rgba(0, 0, 0, 0.78);
+}
+
 .overlay-compact-canvas[data-light-surface] .overlay-control-button {
+  border-color: rgba(0, 0, 0, 0.14);
+  background: rgba(255, 255, 255, 0.68);
   color: rgba(0, 0, 0, 0.78);
 }
 
 .overlay-expanded-canvas[data-light-surface] .overlay-action-strip .overlay-control-button:is(:hover, :focus-visible):not(:disabled),
 .overlay-expanded-canvas[data-light-surface] .overlay-action-strip .overlay-control-button[data-hovered="true"]:not(:disabled),
-.overlay-compact-canvas[data-light-surface] .overlay-control-button:is(:hover, :focus-visible):not(:disabled) {
+.overlay-compact-canvas[data-light-surface] .overlay-control-button:is(:hover, :focus-visible):not(:disabled),
+.overlay-compact-canvas[data-light-surface] .overlay-control-button[data-hovered="true"]:not(:disabled) {
+  border-color: rgba(0, 0, 0, 0.24);
   background: rgba(0, 0, 0, 0.10);
+  color: #141414;
 }
 
 .overlay-expanded-canvas[data-light-surface] .overlay-action-strip .overlay-control-button:active:not(:disabled),

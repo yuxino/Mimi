@@ -129,16 +129,16 @@ it("rejects every coalesced caller, rolls back both sliders and continues the qu
   save({ fontSize: 19 }); await flush();
   const pending = [save({ fontSize: 20 }), save({ subtitleBackgroundOpacity: 50 }), save({ fontSize: 16 })];
   const results = Promise.allSettled(pending);
-  const next = save({ subtitleColor: "pink" });
+  const next = save({ subtitleAlignment: "right" });
   await finish(0);
   const failure = new Error("synthetic coalesced write failure");
   requests[1].reject(failure);
   expect(await results).toEqual(pending.map(() => ({ status: "rejected", reason: failure })));
   await flush();
   expect(useStore.getState().settings).toMatchObject({ fontSize: 19, subtitleBackgroundOpacity: 80 });
-  expect(requests[2].draft).toEqual({ subtitleColor: "pink" });
+  expect(requests[2].draft).toEqual({ subtitleAlignment: "right" });
   await finish(2); await next;
-  expect(useStore.getState().settings).toMatchObject({ fontSize: 19, subtitleBackgroundOpacity: 80, subtitleColor: "pink" });
+  expect(useStore.getState().settings).toMatchObject({ fontSize: 19, subtitleBackgroundOpacity: 80, subtitleAlignment: "right" });
 });
 
 it("rolls back only the still-owned field of a failed coalesced write after an external slider edit", async () => {
@@ -230,36 +230,56 @@ it.each([false, true])("does not use a pre-external-edit acknowledgement as a ne
 });
 
 it.each(["success", "failure"] as const)("removes an earlier failed ordinary preview when the last slider save settles with %s without a broadcast", async outcome => {
-  const color = save({ subtitleColor: "pink" }); const font = save({ fontSize: 20 }); await flush();
-  requests[0].reject(new Error("synthetic color failure"));
-  await expect(color).rejects.toThrow("synthetic color failure"); await flush();
+  const alignment = save({ subtitleAlignment: "right" }); const font = save({ fontSize: 20 }); await flush();
+  requests[0].reject(new Error("synthetic alignment failure"));
+  await expect(alignment).rejects.toThrow("synthetic alignment failure"); await flush();
   if (outcome === "success") {
     requests[1].resolve({ ...persisted, fontSize: 20 }); await font;
   } else {
     requests[1].reject(new Error("synthetic font failure"));
     await expect(font).rejects.toThrow("synthetic font failure");
   }
-  expect(useStore.getState().settings).toMatchObject({ fontSize: outcome === "success" ? 20 : 18, subtitleColor: "white" });
+  expect(useStore.getState().settings).toMatchObject({ fontSize: outcome === "success" ? 20 : 18, subtitleAlignment: "center" });
 });
 
 it("keeps a newer ordinary preview when an earlier slider save succeeds without a broadcast", async () => {
-  save({ fontSize: 20 }); const color = save({ subtitleColor: "pink" }); await flush();
+  save({ fontSize: 20 }); const alignment = save({ subtitleAlignment: "right" }); await flush();
   await finish(0, false);
-  expect(useStore.getState().settings).toMatchObject({ fontSize: 20, subtitleColor: "pink" });
-  requests[1].reject(new Error("synthetic later color failure"));
-  await expect(color).rejects.toThrow("synthetic later color failure");
-  expect(useStore.getState().settings).toMatchObject({ fontSize: 20, subtitleColor: "white" });
+  expect(useStore.getState().settings).toMatchObject({ fontSize: 20, subtitleAlignment: "right" });
+  requests[1].reject(new Error("synthetic later alignment failure"));
+  await expect(alignment).rejects.toThrow("synthetic later alignment failure");
+  expect(useStore.getState().settings).toMatchObject({ fontSize: 20, subtitleAlignment: "center" });
 });
 
 it("does not resurrect a failed slider from a later ordinary operation's rollback snapshot", async () => {
   save({ fontSize: 19 }); const font = save({ fontSize: 20 }); await flush();
   persisted = { ...persisted, fontSize: 19 }; emitSettings(persisted);
-  const color = save({ subtitleColor: "pink" });
+  const alignment = save({ subtitleAlignment: "right" });
   requests[0].resolve(persisted); await operations[0]; await flush();
   requests[1].reject(new Error("synthetic font failure"));
   await expect(font).rejects.toThrow("synthetic font failure"); await flush();
-  expect(useStore.getState().settings).toMatchObject({ fontSize: 19, subtitleColor: "pink" });
-  requests[2].reject(new Error("synthetic color failure"));
-  await expect(color).rejects.toThrow("synthetic color failure");
-  expect(useStore.getState().settings).toMatchObject({ fontSize: 19, subtitleColor: "white" });
+  expect(useStore.getState().settings).toMatchObject({ fontSize: 19, subtitleAlignment: "right" });
+  requests[2].reject(new Error("synthetic alignment failure"));
+  await expect(alignment).rejects.toThrow("synthetic alignment failure");
+  expect(useStore.getState().settings).toMatchObject({ fontSize: 19, subtitleAlignment: "center" });
+});
+
+it.each([
+  ["subtitleColor", ["#112233", "#445566", "#778899"]],
+  ["microphoneSubtitleColor", ["#223344", "#556677", "#223344"]],
+  ["subtitleBackgroundColor", ["#101010", "#1E293B", "#FFFFFF"]],
+] as const)("keeps the latest %s preview when an earlier native color save broadcasts", async (field, values) => {
+  values.forEach(value => save({ [field]: value }));
+  await flush();
+  expect(requests).toHaveLength(1);
+  expect(useStore.getState().settings[field]).toBe(values.at(-1));
+  for (let index = 0; index < 2; index++) {
+    persisted = { ...persisted, ...requests[index].draft };
+    emitSettings(persisted);
+    expect(useStore.getState().settings[field]).toBe(values.at(-1));
+    requests[index].resolve(persisted); await flush();
+  }
+  await Promise.all(operations);
+  expect(requests.map(request => request.draft)).toEqual([{ [field]: values[0] }, { [field]: values.at(-1) }]);
+  expect(useStore.getState().settings[field]).toBe(values.at(-1));
 });

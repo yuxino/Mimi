@@ -73,6 +73,19 @@ export function OverlayOpacitySlider({ opacity, disabled = false, onChange }: Ov
   }, [disabled, finishDrag]);
 
   useEffect(() => {
+    const release = (event: PointerEvent) => finishDrag(event.pointerId);
+    const blur = () => finishDrag();
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    window.addEventListener("blur", blur);
+    return () => {
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+      window.removeEventListener("blur", blur);
+    };
+  }, [finishDrag]);
+
+  useEffect(() => {
     if (!dragging) return;
     const move = (event: PointerEvent) => {
       if (disabled || draggingPointerRef.current !== event.pointerId) return;
@@ -87,24 +100,16 @@ export function OverlayOpacitySlider({ opacity, disabled = false, onChange }: Ov
         onChangeRef.current(next);
       }
     };
-    const release = (event: PointerEvent) => finishDrag(event.pointerId);
-    const blur = () => finishDrag();
     window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", release);
-    window.addEventListener("pointercancel", release);
-    window.addEventListener("blur", blur);
     return () => {
       window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", release);
-      window.removeEventListener("pointercancel", release);
-      window.removeEventListener("blur", blur);
     };
   }, [disabled, dragging, finishDrag, opacityFromClientY]);
 
   useEffect(() => () => finishDrag(), [finishDrag]);
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (disabled || event.button !== 0 || event.isPrimary === false) return;
+    if (disabled || event.button !== 0 || event.isPrimary === false || draggingPointerRef.current !== null) return;
     event.preventDefault();
     event.stopPropagation();
     draggingPointerRef.current = event.pointerId;
@@ -119,21 +124,7 @@ export function OverlayOpacitySlider({ opacity, disabled = false, onChange }: Ov
     const next = opacityFromClientY(event.clientY);
     if (next !== clamped) {
       clampedRef.current = next;
-      onChange(next);
-    }
-  };
-
-  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (disabled || draggingPointerRef.current !== event.pointerId) return;
-    if (event.pointerType === "mouse" && (event.buttons & 1) === 0) {
-      finishDrag(event.pointerId);
-      return;
-    }
-    event.preventDefault();
-    const next = opacityFromClientY(event.clientY);
-    if (next !== clampedRef.current) {
-      clampedRef.current = next;
-      onChange(next);
+      onChangeRef.current(next);
     }
   };
 
@@ -171,18 +162,20 @@ export function OverlayOpacitySlider({ opacity, disabled = false, onChange }: Ov
 
   useEffect(() => {
     const control = controlRef.current;
-    if (!control) return;
+    if (!control || disabled) return;
     const handleWheel = (event: WheelEvent) => {
-      if (disabled || event.deltaY === 0) return;
+      if (event.deltaY === 0) return;
       event.preventDefault();
       event.stopPropagation();
       const step = event.deltaY < 0 ? 5 : -5;
-      const next = clampOpacity(clamped + step);
-      if (next !== clamped) onChange(next);
+      const next = clampOpacity(clampedRef.current + step);
+      if (next !== clampedRef.current) {
+        onChangeRef.current(next);
+      }
     };
     control.addEventListener("wheel", handleWheel, { passive: false });
     return () => control.removeEventListener("wheel", handleWheel);
-  }, [clamped, disabled, onChange]);
+  }, [disabled]);
 
   const label = I18N.overlay.backgroundOpacity;
   const valueText = `${clamped}%`;
@@ -199,7 +192,6 @@ export function OverlayOpacitySlider({ opacity, disabled = false, onChange }: Ov
         className="overlay-opacity-slider__control"
         title={`${label}: ${valueText}`}
         onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
         onPointerUp={(event) => finishDrag(event.pointerId)}
         onPointerCancel={(event) => finishDrag(event.pointerId)}
         onLostPointerCapture={(event) => finishDrag(event.pointerId)}

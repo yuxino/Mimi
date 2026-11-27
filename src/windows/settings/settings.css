@@ -2377,6 +2377,7 @@
 }
 
 .subtitle-color-control {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -2468,6 +2469,11 @@
   cursor: not-allowed;
 }
 .subtitle-color-hex-error {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  white-space: nowrap;
+  pointer-events: none;
   color: var(--settings-danger, #dc2626);
   font-size: 12px;
   line-height: 1.35;
